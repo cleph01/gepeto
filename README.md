@@ -1,159 +1,132 @@
-# Turborepo starter
+<p align="center">
+  <img src="gepeto-logo.png" alt="Gepeto" width="160" />
+</p>
 
-This Turborepo starter is maintained by the Turborepo core team.
+<h1 align="center">Gepeto</h1>
+<p align="center"><strong>Dental Lab Delivery & Driver Tracking Platform</strong></p>
+<p align="center">An Uber-style dispatch and real-time tracking system built for the dental supply chain.</p>
 
-## Using this example
+---
 
-Run the following command:
+## Overview
 
-```sh
-npx create-turbo@latest
+Gepeto connects dental labs, drivers, and dental offices into a single, purpose-built logistics platform. Dispatchers create and assign delivery jobs, drivers receive and fulfill them via mobile, and dental offices track their deliveries in real time through a magic-link portal — no login required.
+
+---
+
+## Applications
+
+| App | Tech | Description |
+|---|---|---|
+| `dispatcher-web` | Next.js 16, Tailwind CSS | Operational dashboard for lab staff — job creation, live map, driver roster |
+| `driver-app` | Expo (React Native) | Mobile app for drivers — job queue, GPS reporting, proof of delivery |
+| `office-portal` | Next.js 16, Tailwind CSS | Public tracking portal for dental offices — magic-link, no account needed |
+
+---
+
+## Monorepo Structure
+
+```
+gepeto/
+  apps/
+    dispatcher-web/       ← Next.js web dashboard
+    driver-app/           ← Expo React Native mobile app
+    office-portal/        ← Next.js public tracking portal
+  packages/
+    types/                ← Shared TypeScript interfaces (Job, Driver, Office, Message)
+    api-client/           ← Typed fetch wrappers used by all three apps
+    ui/                   ← Shared design system (buttons, badges, cards)
+    eslint-config/        ← Shared ESLint config
+    typescript-config/    ← Shared tsconfig base
+  turbo.json
+  pnpm-workspace.yaml
+  package.json
 ```
 
-## What's inside?
+---
 
-This Turborepo includes the following packages/apps:
+## Tech Stack
 
-### Apps and Packages
+- **Monorepo:** Turborepo + pnpm workspaces
+- **Web apps:** Next.js 16 (App Router), TypeScript, Tailwind CSS v4
+- **Mobile:** Expo (React Native), TypeScript, Expo Router
+- **Database:** PostgreSQL via Prisma ORM
+- **Real-time:** Pusher or Ably (WebSocket-as-a-service)
+- **Auth:** NextAuth.js (dispatcher) + magic-link tokens (office portal)
+- **Maps:** Google Maps SDK
+- **File storage:** AWS S3 (proof-of-delivery photos)
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+---
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## Getting Started
 
-### Utilities
+### Prerequisites
 
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+- Node.js 18+
+- pnpm 9+
 
 ```sh
-cd my-turborepo
-turbo build
+npm install -g pnpm
 ```
 
-Without global `turbo`, use your package manager:
+### Install dependencies
 
 ```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+pnpm install
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+### Run all apps in development
 
 ```sh
-turbo build --filter=docs
+pnpm dev
 ```
 
-Without global `turbo`:
+### Run a single app
 
 ```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+pnpm dev --filter=dispatcher-web
+pnpm dev --filter=office-portal
+pnpm dev --filter=driver-app
 ```
 
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+### Build all apps
 
 ```sh
-cd my-turborepo
-turbo dev
+pnpm build
 ```
 
-Without global `turbo`, use your package manager:
+### Type check
 
 ```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+pnpm check-types
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+---
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Environment Variables
 
-```sh
-turbo dev --filter=web
-```
+Each app uses a `.env.local` file. See the Environment Variables section in each app's README for the full variable reference.
 
-Without global `turbo`:
+---
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+## Deployment
 
-### Remote Caching
+| App | Platform | Domain |
+|---|---|---|
+| `dispatcher-web` | Vercel (Root Dir: `apps/dispatcher-web`) | `app.gepeto.com` |
+| `office-portal` | Vercel (Root Dir: `apps/office-portal`) | `track.gepeto.com` |
+| `driver-app` | Expo EAS Build → App Store / Play Store | — |
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+---
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+## Build Phases
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+1. **Phase 1** — Data foundation: types, Prisma schema, seed data, API routes
+2. **Phase 2** — Dispatcher web: auth, dashboard, job creation, map panel
+3. **Phase 3** — Driver mobile app: job queue, status updates, GPS, proof of delivery
+4. **Phase 4** — Real-time layer: Pusher/Ably wiring across all apps
+5. **Phase 5** — Office portal: magic-link tracking, ETA countdown, driver map
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+---
 
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+*Gepeto — Confidential — MVP v1.0*
