@@ -23,15 +23,7 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body className="flex h-full">
         <Sidebar />
-        <main
-          style={{
-            marginLeft: 240,
-            flex: 1,
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
+        <main className="main-content">
           {children}
         </main>
       </body>

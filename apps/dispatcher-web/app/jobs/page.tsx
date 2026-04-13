@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -510,25 +511,30 @@ function DetailField({ label, value }: { label: string; value: string }) {
 
 function JobRow({
   job,
+  bp,
   isLast,
   expanded,
   onToggleExpand,
   onUpdateStatus,
 }: {
   job: Job;
+  bp: "tablet" | "desktop";
   isLast: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
   onUpdateStatus: () => void;
 }) {
   const status = STATUS_CONFIG[job.status];
+  const cols = bp === "tablet"
+    ? "32px 100px 1fr 120px 100px"
+    : "32px 110px 1fr 130px 80px 120px 90px 110px";
 
   return (
     <>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "32px 110px 1fr 130px 80px 120px 90px 110px",
+          gridTemplateColumns: cols,
           padding: "9px 16px",
           borderBottom: !isLast || expanded ? "1px solid rgba(0,0,0,0.05)" : "none",
           alignItems: "center",
@@ -565,21 +571,25 @@ function JobRow({
           {job.office}
         </span>
 
-        {/* Driver */}
-        <span style={{ fontSize: 12.5, color: job.driver ? "#3a3a3a" : "#9a9a9a" }}>
-          {job.driver ?? "Unassigned"}
-        </span>
+        {/* Driver — desktop only */}
+        {bp === "desktop" && (
+          <span style={{ fontSize: 12.5, color: job.driver ? "#3a3a3a" : "#9a9a9a" }}>
+            {job.driver ?? "Unassigned"}
+          </span>
+        )}
 
-        {/* Priority */}
-        <span>
-          {job.priority === "stat" ? (
-            <span style={{ fontSize: 10.5, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.03em", textTransform: "uppercase" }}>
-              STAT
-            </span>
-          ) : (
-            <span style={{ fontSize: 12, color: "#9a9a9a" }}>Standard</span>
-          )}
-        </span>
+        {/* Priority — desktop only */}
+        {bp === "desktop" && (
+          <span>
+            {job.priority === "stat" ? (
+              <span style={{ fontSize: 10.5, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                STAT
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: "#9a9a9a" }}>Standard</span>
+            )}
+          </span>
+        )}
 
         {/* Status */}
         <span>
@@ -588,8 +598,10 @@ function JobRow({
           </span>
         </span>
 
-        {/* Updated */}
-        <span style={{ fontSize: 12, color: "#9a9a9a" }}>{job.updatedAt}</span>
+        {/* Updated — desktop only */}
+        {bp === "desktop" && (
+          <span style={{ fontSize: 12, color: "#9a9a9a" }}>{job.updatedAt}</span>
+        )}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 5, justifyContent: "flex-end" }}>
@@ -609,9 +621,62 @@ function JobRow({
   );
 }
 
+// ─── Mobile Job Card ──────────────────────────────────────────────────────────
+
+function JobCard({ job, onUpdateStatus }: { job: Job; onUpdateStatus: () => void }) {
+  const status = STATUS_CONFIG[job.status];
+  return (
+    <div
+      style={{
+        padding: "12px 16px",
+        borderBottom: "1px solid rgba(0,0,0,0.06)",
+        background: "#fff",
+      }}
+    >
+      {/* Top row: case ID + priority */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#185FA5", fontFamily: "monospace" }}>
+          {job.caseId}
+        </span>
+        {job.priority === "stat" && (
+          <span style={{ fontSize: 10, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            STAT
+          </span>
+        )}
+      </div>
+
+      {/* Office */}
+      <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>{job.office}</div>
+
+      {/* Driver */}
+      <div style={{ fontSize: 12, color: job.driver ? "#5F5E5A" : "#9a9a9a", marginBottom: 10 }}>
+        {job.driver ? `Driver: ${job.driver}` : "Unassigned"}
+      </div>
+
+      {/* Bottom row: status + action + timestamp */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 500, background: status.bg, color: status.color, borderRadius: 20, padding: "3px 10px" }}>
+          {status.label}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11, color: "#9a9a9a" }}>{job.updatedAt}</span>
+          <ActionButton onClick={onUpdateStatus} title="Update status">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1.5A4.5 4.5 0 101 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <path d="M1 2.5V6h3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span style={{ fontSize: 11.5 }}>Status</span>
+          </ActionButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function JobsPage() {
+  const bp = useBreakpoint();
   const [jobs, setJobs]               = useState<Job[]>(SEED_JOBS);
   const [showNewJob, setShowNewJob]   = useState(false);
   const [statusJob, setStatusJob]     = useState<Job | null>(null);
@@ -686,10 +751,10 @@ export default function JobsPage() {
       </header>
 
       {/* Body */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: bp === "mobile" ? "12px" : "20px 24px" }}>
 
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div className="stats-grid">
           <StatCard label="Total Jobs"      value={counts.all}        />
           <StatCard label="Active"          value={activeCount}       color="#185FA5" />
           <StatCard label="Delivered Today" value={counts.delivered}  color="#3B6D11" />
@@ -744,35 +809,50 @@ export default function JobsPage() {
             </div>
           </div>
 
-          {/* Column headers */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "32px 110px 1fr 130px 80px 120px 90px 110px",
-              padding: "6px 16px",
-              background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
-            }}
-          >
-            {["", "Case ID", "Office", "Driver", "Priority", "Status", "Updated", ""].map((col, i) => (
-              <span
-                key={i}
-                style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}
-              >
-                {col}
-              </span>
-            ))}
-          </div>
+          {/* Column headers — hidden on mobile (cards have no header row) */}
+          {bp !== "mobile" && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: bp === "tablet"
+                  ? "32px 100px 1fr 120px 100px"
+                  : "32px 110px 1fr 130px 80px 120px 90px 110px",
+                padding: "6px 16px",
+                background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
+              }}
+            >
+              {(bp === "tablet"
+                ? ["", "Case ID", "Office", "Status", ""]
+                : ["", "Case ID", "Office", "Driver", "Priority", "Status", "Updated", ""]
+              ).map((col, i) => (
+                <span key={i} style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  {col}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Rows */}
           {filtered.length === 0 ? (
             <div style={{ padding: "40px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
               No jobs with this status.
             </div>
+          ) : bp === "mobile" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {filtered.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  onUpdateStatus={() => setStatusJob(job)}
+                />
+              ))}
+            </div>
           ) : (
             filtered.map((job, i) => (
               <JobRow
                 key={job.id}
                 job={job}
+                bp={bp}
                 isLast={i === filtered.length - 1}
                 expanded={expandedId === job.id}
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}

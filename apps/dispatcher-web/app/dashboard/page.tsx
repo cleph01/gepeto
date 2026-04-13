@@ -70,20 +70,11 @@ export default function DashboardPage() {
       </header>
 
       {/* Body: left panel + map panel */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <div className="dashboard-body">
         {/* LEFT PANEL */}
-        <div
-          style={{
-            flex: "0 0 55%",
-            overflowY: "auto",
-            padding: "20px 24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
+        <div className="dashboard-left">
           {/* Metrics row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+          <div className="stats-grid">
             <MetricCard value="42" label="Total Jobs" />
             <MetricCard value="8" label="In Transit" color="#185FA5" />
             <MetricCard value="31" label="Delivered Today" color="#3B6D11" />
@@ -196,14 +187,7 @@ export default function DashboardPage() {
         </div>
 
         {/* RIGHT PANEL — Live Map */}
-        <div
-          style={{
-            flex: "0 0 45%",
-            padding: "20px 24px 20px 0",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
+        <div className="dashboard-right">
           <div
             style={{
               background: "#1a2535",

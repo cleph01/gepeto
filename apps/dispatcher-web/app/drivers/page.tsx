@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -298,6 +299,7 @@ function DeactivateConfirm({ driver, onClose, onConfirm }: { driver: Driver; onC
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DriversPage() {
+  const bp = useBreakpoint();
   const [drivers, setDrivers]         = useState<Driver[]>(SEED_DRIVERS);
   const [modalDriver, setModalDriver] = useState<Partial<Driver> | null | "new">(null);
   const [deactivating, setDeactivating] = useState<Driver | null>(null);
@@ -379,10 +381,10 @@ export default function DriversPage() {
       </header>
 
       {/* Body */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: bp === "mobile" ? "12px" : "20px 24px" }}>
 
         {/* Stats row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div className="stats-grid">
           <StatCard label="Total Drivers"  value={counts.all}         />
           <StatCard label="On Delivery"    value={counts.on_delivery} color="#185FA5" />
           <StatCard label="Available"      value={counts.available}   color="#3B6D11" />
@@ -438,35 +440,53 @@ export default function DriversPage() {
             </div>
           </div>
 
-          {/* Column headers */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "2fr 140px 120px 100px 110px 120px",
-              padding: "6px 16px",
-              background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
-            }}
-          >
-            {["Driver", "Phone", "Status", "Jobs", "Location", ""].map((col) => (
-              <span
-                key={col}
-                style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}
-              >
-                {col}
-              </span>
-            ))}
-          </div>
+          {/* Column headers — hidden on mobile */}
+          {bp !== "mobile" && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: bp === "tablet"
+                  ? "2fr 120px 100px 100px"
+                  : "2fr 140px 120px 100px 110px 120px",
+                padding: "6px 16px",
+                background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
+              }}
+            >
+              {(bp === "tablet"
+                ? ["Driver", "Status", "Jobs", ""]
+                : ["Driver", "Phone", "Status", "Jobs", "Location", ""]
+              ).map((col) => (
+                <span key={col} style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  {col}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Rows */}
           {filtered.length === 0 ? (
             <div style={{ padding: "40px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
               No drivers with this status.
             </div>
+          ) : bp === "mobile" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {filtered.map((driver, i) => (
+                <DriverCard
+                  key={driver.id}
+                  driver={driver}
+                  index={i}
+                  onEdit={() => setModalDriver(driver)}
+                  onDeactivate={() => setDeactivating(driver)}
+                  onReactivate={() => onReactivate(driver)}
+                />
+              ))}
+            </div>
           ) : (
             filtered.map((driver, i) => (
               <DriverRow
                 key={driver.id}
                 driver={driver}
+                bp={bp}
                 index={i}
                 isLast={i === filtered.length - 1}
                 onEdit={() => setModalDriver(driver)}
@@ -519,9 +539,10 @@ function StatCard({ label, value, color = "#1a1a1a" }: { label: string; value: n
 }
 
 function DriverRow({
-  driver, index, isLast, onEdit, onDeactivate, onReactivate,
+  driver, bp, index, isLast, onEdit, onDeactivate, onReactivate,
 }: {
   driver: Driver;
+  bp: "tablet" | "desktop";
   index: number;
   isLast: boolean;
   onEdit: () => void;
@@ -531,12 +552,15 @@ function DriverRow({
   const s = STATUS_CONFIG[driver.status];
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
   const isOffDuty = driver.status === "off_duty";
+  const cols = bp === "tablet"
+    ? "2fr 120px 100px 100px"
+    : "2fr 140px 120px 100px 110px 120px";
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "2fr 140px 120px 100px 110px 120px",
+        gridTemplateColumns: cols,
         padding: "10px 16px",
         borderBottom: isLast ? "none" : "1px solid rgba(0,0,0,0.05)",
         alignItems: "center",
@@ -548,14 +572,7 @@ function DriverRow({
     >
       {/* Name + avatar */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div
-          style={{
-            width: 32, height: 32, borderRadius: "50%",
-            background: avatarColor,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 600, color: "white", flexShrink: 0,
-          }}
-        >
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "white", flexShrink: 0 }}>
           {initials(driver.name)}
         </div>
         <div>
@@ -564,18 +581,14 @@ function DriverRow({
         </div>
       </div>
 
-      {/* Phone */}
-      <span style={{ fontSize: 13, color: "#3a3a3a" }}>{driver.phone}</span>
+      {/* Phone — desktop only */}
+      {bp === "desktop" && (
+        <span style={{ fontSize: 13, color: "#3a3a3a" }}>{driver.phone}</span>
+      )}
 
-      {/* Status badge */}
+      {/* Status */}
       <span>
-        <span
-          style={{
-            fontSize: 11.5, fontWeight: 500,
-            background: s.bg, color: s.color,
-            borderRadius: 20, padding: "2.5px 9px",
-          }}
-        >
+        <span style={{ fontSize: 11.5, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "2.5px 9px" }}>
           {s.label}
         </span>
       </span>
@@ -585,8 +598,10 @@ function DriverRow({
         {driver.activeJobs > 0 ? `${driver.activeJobs} active` : "—"}
       </span>
 
-      {/* Location */}
-      <span style={{ fontSize: 12.5, color: "#5F5E5A" }}>{driver.location}</span>
+      {/* Location — desktop only */}
+      {bp === "desktop" && (
+        <span style={{ fontSize: 12.5, color: "#5F5E5A" }}>{driver.location}</span>
+      )}
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -610,6 +625,69 @@ function DriverRow({
             </svg>
           </ActionButton>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mobile Driver Card ───────────────────────────────────────────────────────
+
+function DriverCard({
+  driver, index, onEdit, onDeactivate, onReactivate,
+}: {
+  driver: Driver;
+  index: number;
+  onEdit: () => void;
+  onDeactivate: () => void;
+  onReactivate: () => void;
+}) {
+  const s = STATUS_CONFIG[driver.status];
+  const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const isOffDuty = driver.status === "off_duty";
+
+  return (
+    <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.06)", background: "#fff", opacity: isOffDuty ? 0.65 : 1 }}>
+      {/* Top row: avatar + name + status */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", background: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "white", flexShrink: 0 }}>
+          {initials(driver.name)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a" }}>{driver.name}</div>
+          <div style={{ fontSize: 12, color: "#9a9a9a" }}>{driver.phone}</div>
+        </div>
+        <span style={{ fontSize: 11.5, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "3px 10px", flexShrink: 0 }}>
+          {s.label}
+        </span>
+      </div>
+
+      {/* Bottom row: location/jobs + actions */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 12, color: "#5F5E5A" }}>
+          {driver.activeJobs > 0 ? `${driver.activeJobs} active · ` : ""}{driver.location}
+        </span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <ActionButton onClick={onEdit} title="Edit">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M9 2l2 2-7 7H2v-2L9 2z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </ActionButton>
+          {isOffDuty ? (
+            <ActionButton onClick={onReactivate} title="Reactivate" accent>
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M2.5 6.5a4 4 0 107 -2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                <path d="M7.5 2.5l2 1.2-2 1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </ActionButton>
+          ) : (
+            <ActionButton onClick={onDeactivate} title="Deactivate" danger>
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M4.5 4.5l4 4M8.5 4.5l-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            </ActionButton>
+          )}
+        </div>
       </div>
     </div>
   );

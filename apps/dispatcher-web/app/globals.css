@@ -35,6 +35,88 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Responsive layout ─────────────────────────────────────────────────────── */
+
+/* Main content area — offset by sidebar on desktop */
+.main-content {
+  margin-left: 240px;
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Dashboard split panel */
+.dashboard-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.dashboard-left {
+  flex: 0 0 55%;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dashboard-right {
+  flex: 0 0 45%;
+  padding: 20px 24px 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stats row — 4 cols on desktop */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1023px) {
+  /* Sidebar is now a drawer — content fills full width */
+  .main-content {
+    margin-left: 0;
+    padding-top: 56px; /* space for mobile top header */
+  }
+
+  /* Dashboard: stack panels vertically */
+  .dashboard-body {
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .dashboard-left {
+    flex: none;
+    overflow-y: visible;
+    padding: 16px;
+  }
+  .dashboard-right {
+    flex: none;
+    padding: 0 16px 16px;
+    height: 300px;
+  }
+
+  /* Stats grid: 2 cols on tablet */
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-left {
+    padding: 12px;
+  }
+  .dashboard-right {
+    padding: 0 12px 12px;
+    height: 240px;
+  }
+}
+
+/* ── Scrollbar styling ──────────────────────────────────────────────────────── */
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
