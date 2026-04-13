@@ -298,18 +298,18 @@ function Nav({ scrolled }: { scrolled: boolean }) {
     >
       <div className="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
-        <a href="#" className="flex items-center gap-3 shrink-0">
-          <Image
-            src="/gepeto-logo.png"
-            alt=""
-            width={1024}
-            height={1024}
-            priority
-            style={{ width: "auto" }}
-            className={`h-10 transition-all duration-300 ${
-              scrolled ? "" : "brightness-0 invert"
-            }`}
-          />
+        <a href="#" className="flex items-center gap-2.5 shrink-0">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "#185FA5" }}
+          >
+            <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+              <path
+                d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z"
+                fill="white"
+              />
+            </svg>
+          </div>
           <span
             className={`text-lg font-bold tracking-tight transition-colors duration-300 ${
               scrolled ? "text-gray-900" : "text-white"
