@@ -11,6 +11,8 @@ export type JobStatus =
 
 export type JobPriority = "stat" | "standard";
 
+export type DriverResponse = "pending" | "accepted" | "rejected";
+
 export type ItemFlag =
   | "fragile"
   | "temperature_sensitive"
@@ -38,6 +40,7 @@ export interface Job {
   officeId: string;
   status: JobStatus;
   priority: JobPriority;
+  driverResponse: DriverResponse;
   items: JobItem[];
   pickupAddress: string;
   deliveryAddress: string;
@@ -64,6 +67,20 @@ export interface Driver {
   labId: string;
   status: DriverStatus;
   currentLocation: DriverLocation | null;
+}
+
+// ─── Lab user ────────────────────────────────────────────────────────────────
+
+export type LabRole = 'owner' | 'dispatcher';
+
+export interface LabUser {
+  id: string;
+  labId: string;
+  userId: string;
+  name: string;
+  email: string;
+  labRole: LabRole;
+  createdAt: string;
 }
 
 // ─── Lab ────────────────────────────────────────────────────────────────────
@@ -96,15 +113,17 @@ export interface Office {
 
 // ─── Message ────────────────────────────────────────────────────────────────
 
-export type SenderRole = "dispatcher" | "driver";
+export type SenderRole = "dispatcher" | "driver" | "office";
 
 export interface Message {
   id: string;
   jobId: string;
-  senderId: string;
   senderRole: SenderRole;
+  senderId: string | null;
+  officeToken: string | null;
   body: string;
-  createdAt: string; // ISO 8601
+  createdAt: string;
+  readAt: string | null;
 }
 
 // ─── API response envelopes ──────────────────────────────────────────────────

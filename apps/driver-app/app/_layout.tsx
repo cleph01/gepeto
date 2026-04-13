@@ -1,24 +1,52 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import 'react-native-url-polyfill/auto';
+import { useEffect } from 'react';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { AuthProvider, useAuth } from '@/context/auth';
+import { Colors } from '@/constants/theme';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+function RouteGuard() {
+  const { session, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+  useEffect(() => {
+    if (loading) return;
+    const inAuthScreen = segments[0] === 'login';
+    if (!session && !inAuthScreen) {
+      router.replace('/login');
+    } else if (session && inAuthScreen) {
+      router.replace('/(tabs)');
+    }
+  }, [session, loading, segments]);
+
+  return null;
+}
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+    <AuthProvider>
+      <RouteGuard />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: Colors.card },
+          headerTintColor: Colors.text,
+          headerTitleStyle: { fontWeight: '600' },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: Colors.bg },
+        }}
+      >
+        <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen
+          name="job/[id]"
+          options={{
+            title: 'Job Detail',
+            headerBackTitle: 'Jobs',
+          }}
+        />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+      <StatusBar style="light" />
+    </AuthProvider>
   );
 }

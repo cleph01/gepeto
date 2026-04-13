@@ -1,112 +1,292 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { useAuth } from '@/context/auth';
+import {
+  clearNavPreference,
+  getNavPreference,
+  NavApp,
+  navigate,
+} from '@/lib/navigation';
+import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+const NAV_APP_LABELS: Record<NavApp, string> = {
+  apple_maps:     'Apple Maps',
+  google_maps:    'Google Maps',
+  waze:           'Waze',
+  system_default: 'System Default',
+};
 
-export default function TabTwoScreen() {
+export default function SettingsScreen() {
+  const { session, signOut } = useAuth();
+  const [navPref, setNavPref] = useState<NavApp | null>(null);
+
+  useEffect(() => {
+    getNavPreference().then(setNavPref);
+  }, []);
+
+  const handleChangeNav = async () => {
+    // Trigger the picker — choice gets saved to AsyncStorage automatically
+    await navigate({ address: 'test', lat: undefined, lng: undefined });
+    const updated = await getNavPreference();
+    setNavPref(updated);
+  };
+
+  const handleClearNav = () => {
+    Alert.alert(
+      'Clear navigation preference?',
+      "You'll be asked to choose again next time you navigate.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            await clearNavPreference();
+            setNavPref(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSignOut = () => {
+    Alert.alert('Sign out?', "You'll need to sign in again to access your jobs.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await signOut();
+        },
+      },
+    ]);
+  };
+
+  const email = session?.user.email ?? '—';
+  const initials = email.slice(0, 2).toUpperCase();
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.screenTitle}>Settings</Text>
+
+        {/* Account */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Account</Text>
+          <View style={styles.card}>
+            <View style={styles.profileRow}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>Driver</Text>
+                <Text style={styles.profileEmail}>{email}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Navigation preference */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Navigation</Text>
+          <View style={styles.card}>
+            <View style={styles.prefRow}>
+              <View style={styles.prefInfo}>
+                <Text style={styles.prefTitle}>Preferred App</Text>
+                <Text style={styles.prefValue}>
+                  {navPref ? NAV_APP_LABELS[navPref] : 'Ask each time'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.changeBtn}
+                onPress={handleChangeNav}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.changeBtnText}>Change</Text>
+              </TouchableOpacity>
+            </View>
+            {navPref && (
+              <>
+                <View style={styles.divider} />
+                <TouchableOpacity
+                  style={styles.rowButton}
+                  onPress={handleClearNav}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.rowButtonDanger}>Reset to ask each time</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* App info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>App</Text>
+          <View style={styles.card}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Version</Text>
+              <Text style={styles.infoValue}>1.0.0</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Sign out */}
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          onPress={handleSignOut}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.bg,
   },
-  titleContainer: {
+  content: {
+    padding: Spacing.lg,
+    gap: Spacing.xl,
+    paddingBottom: Spacing.xxl,
+  },
+  screenTitle: {
+    color: Colors.text,
+    fontSize: FontSize.xxl,
+    fontWeight: '700',
+  },
+  section: {
+    gap: Spacing.sm,
+  },
+  sectionLabel: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: Spacing.xs,
+  },
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  profileRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: FontSize.lg,
+    fontWeight: '700',
+  },
+  profileInfo: {
+    gap: 2,
+  },
+  profileName: {
+    color: Colors.text,
+    fontSize: FontSize.md,
+    fontWeight: '600',
+  },
+  profileEmail: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+  },
+  prefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.lg,
+  },
+  prefInfo: {
+    gap: 2,
+  },
+  prefTitle: {
+    color: Colors.text,
+    fontSize: FontSize.md,
+    fontWeight: '500',
+  },
+  prefValue: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+  },
+  changeBtn: {
+    backgroundColor: Colors.primaryDark,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  changeBtnText: {
+    color: Colors.primaryLight,
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: Spacing.lg,
+  },
+  rowButton: {
+    padding: Spacing.lg,
+  },
+  rowButtonDanger: {
+    color: Colors.danger,
+    fontSize: FontSize.sm,
+    fontWeight: '500',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  infoLabel: {
+    color: Colors.text,
+    fontSize: FontSize.md,
+    fontWeight: '500',
+  },
+  infoValue: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.md,
+  },
+  signOutBtn: {
+    backgroundColor: Colors.dangerBg,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.dangerBorder,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  signOutText: {
+    color: Colors.danger,
+    fontSize: FontSize.md,
+    fontWeight: '700',
   },
 });
