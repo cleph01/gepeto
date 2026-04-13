@@ -1,3 +1,5 @@
+"use client";
+
 export default function DashboardPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#F8F9FB" }}>
