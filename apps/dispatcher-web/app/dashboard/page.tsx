@@ -1,6 +1,9 @@
 "use client";
 
+import { useBreakpoint } from "@/hooks/use-breakpoint";
+
 export default function DashboardPage() {
+  const bp = useBreakpoint();
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#F8F9FB" }}>
       {/* Top header bar */}
@@ -70,9 +73,21 @@ export default function DashboardPage() {
       </header>
 
       {/* Body: left panel + map panel */}
-      <div className="dashboard-body">
+      <div style={{
+        display: "flex",
+        flex: 1,
+        overflow: bp === "desktop" ? "hidden" : "auto",
+        flexDirection: bp === "desktop" ? "row" : "column",
+      }}>
         {/* LEFT PANEL */}
-        <div className="dashboard-left">
+        <div style={{
+          flex: bp === "desktop" ? "0 0 55%" : "none",
+          overflowY: bp === "desktop" ? "auto" : "visible",
+          padding: bp === "mobile" ? "12px" : bp === "tablet" ? "16px" : "20px 24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}>
           {/* Metrics row */}
           <div className="stats-grid">
             <MetricCard value="42" label="Total Jobs" />
@@ -187,7 +202,13 @@ export default function DashboardPage() {
         </div>
 
         {/* RIGHT PANEL — Live Map */}
-        <div className="dashboard-right">
+        <div style={{
+          flex: bp === "desktop" ? "0 0 45%" : "none",
+          padding: bp === "mobile" ? "0 12px 12px" : bp === "tablet" ? "0 16px 16px" : "20px 24px 20px 0",
+          display: "flex",
+          flexDirection: "column",
+          height: bp === "mobile" ? 280 : bp === "tablet" ? 340 : undefined,
+        }}>
           <div
             style={{
               background: "#1a2535",
