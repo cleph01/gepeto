@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { useAuth } from "@/context/auth";
+import type { ApiResponse } from "@gepeto/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,16 +19,13 @@ interface Driver {
   joinedDate: string;
 }
 
-// ─── Seed data ────────────────────────────────────────────────────────────────
 
-const SEED_DRIVERS: Driver[] = [
-  { id: "1", name: "Marco Rivera",  phone: "(415) 555-0182", status: "on_delivery", activeJobs: 3, location: "Mission District", joinedDate: "Jan 2025" },
-  { id: "2", name: "Jordan Singh",  phone: "(415) 555-0247", status: "on_delivery", activeJobs: 2, location: "SoMa",             joinedDate: "Feb 2025" },
-  { id: "3", name: "Aisha Lambert", phone: "(415) 555-0391", status: "on_delivery", activeJobs: 1, location: "Civic Center",     joinedDate: "Feb 2025" },
-  { id: "4", name: "Tim Kowalski",  phone: "(415) 555-0468", status: "on_delivery", activeJobs: 2, location: "Castro",           joinedDate: "Mar 2025" },
-  { id: "5", name: "Chris Morgan",  phone: "(415) 555-0553", status: "available",   activeJobs: 0, location: "Depot",            joinedDate: "Mar 2025" },
-  { id: "6", name: "Dana Reyes",    phone: "(415) 555-0614", status: "off_duty",    activeJobs: 0, location: "—",                joinedDate: "Apr 2025" },
-];
+type ApiDriver = {
+  id: string; name: string; phone: string; email: string | null;
+  status: DriverStatus; activeJobs: number;
+  currentLocation: { lat: number; lng: number } | null;
+  createdAt: string;
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -55,28 +54,35 @@ function formatPhone(raw: string) {
 interface ModalProps {
   driver: Partial<Driver> | null;
   onClose: () => void;
-  onSave: (driver: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate">) => void;
+  onSave: (driver: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate"> & { email?: string }) => void;
 }
 
 function DriverModal({ driver, onClose, onSave }: ModalProps) {
   const isEdit = !!driver?.id;
   const [name, setName]     = useState(driver?.name  ?? "");
   const [phone, setPhone]   = useState(driver?.phone ?? "");
+  const [email, setEmail]   = useState("");
   const [status, setStatus] = useState<DriverStatus>(driver?.status ?? "available");
-  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; phone?: string; email?: string }>({});
 
   const validate = () => {
     const e: typeof errors = {};
     if (!name.trim())  e.name  = "Name is required.";
     if (!phone.trim()) e.phone = "Phone number is required.";
+    if (!isEdit && !email.trim()) e.email = "Email is required.";
+    if (!isEdit && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+      e.email = "Enter a valid email address.";
     return e;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const e2 = validate();
     if (Object.keys(e2).length) { setErrors(e2); return; }
-    onSave({ name: name.trim(), phone: formatPhone(phone.trim()), status });
+    setSaving(true);
+    await onSave({ name: name.trim(), phone: formatPhone(phone.trim()), status, ...(!isEdit && { email: email.trim() }) });
+    setSaving(false);
   };
 
   // Close on backdrop click
@@ -118,7 +124,7 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
               {isEdit ? "Edit Driver" : "Add New Driver"}
             </h2>
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
-              {isEdit ? "Update driver details below." : "Driver will appear in the roster immediately."}
+              {isEdit ? "Update driver details below." : "An invite email will be sent so they can log in."}
             </p>
           </div>
           <button
@@ -183,6 +189,34 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
             {errors.phone && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "#A32D2D" }}>{errors.phone}</p>}
           </div>
 
+          {/* Email — new drivers only */}
+          {!isEdit && (
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: "#3a3a3a", display: "block", marginBottom: 5 }}>
+                Email <span style={{ color: "#A32D2D" }}>*</span>
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setErrors((prev) => ({ ...prev, email: undefined })); }}
+                placeholder="driver@example.com"
+                style={{
+                  width: "100%", padding: "8px 11px", fontSize: 13.5,
+                  border: `1px solid ${errors.email ? "#A32D2D" : "rgba(0,0,0,0.14)"}`,
+                  borderRadius: 8, outline: "none", color: "#1a1a1a",
+                  background: errors.email ? "rgba(163,45,45,0.04)" : "#fff",
+                  boxSizing: "border-box",
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "#185FA5"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(24,95,165,0.10)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = errors.email ? "#A32D2D" : "rgba(0,0,0,0.14)"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+              {errors.email && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "#A32D2D" }}>{errors.email}</p>}
+              <p style={{ margin: "5px 0 0", fontSize: 11.5, color: "#5F5E5A" }}>
+                An invite will be emailed so the driver can set their password.
+              </p>
+            </div>
+          )}
+
           {/* Status */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: "#3a3a3a", display: "block", marginBottom: 5 }}>
@@ -228,13 +262,16 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
             </button>
             <button
               type="submit"
+              disabled={saving}
               style={{
                 flex: 2, padding: "9px", fontSize: 13.5, fontWeight: 600,
                 border: "none", borderRadius: 8,
-                background: "#185FA5", color: "white", cursor: "pointer",
+                background: "#185FA5", color: "white",
+                cursor: saving ? "default" : "pointer",
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              {isEdit ? "Save Changes" : "Add Driver"}
+              {saving ? (isEdit ? "Saving…" : "Sending invite…") : (isEdit ? "Save Changes" : "Add Driver")}
             </button>
           </div>
         </form>
@@ -300,40 +337,68 @@ function DeactivateConfirm({ driver, onClose, onConfirm }: { driver: Driver; onC
 
 export default function DriversPage() {
   const bp = useBreakpoint();
-  const [drivers, setDrivers]         = useState<Driver[]>(SEED_DRIVERS);
-  const [modalDriver, setModalDriver] = useState<Partial<Driver> | null | "new">(null);
+  const { apiFetch, session } = useAuth();
+  const [drivers, setDrivers]           = useState<Driver[]>([]);
+  const [modalDriver, setModalDriver]   = useState<Partial<Driver> | null | "new">(null);
   const [deactivating, setDeactivating] = useState<Driver | null>(null);
-  const [filter, setFilter]           = useState<DriverStatus | "all">("all");
+  const [filter, setFilter]             = useState<DriverStatus | "all">("all");
 
-  const onSave = (data: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate">) => {
+  useEffect(() => {
+    if (!session) return;
+    apiFetch<ApiResponse<ApiDriver[]>>("/api/drivers").then((res) => {
+      if (res.data) setDrivers(res.data.map((d) => ({
+        ...d,
+        location: "—",
+        joinedDate: new Date(d.createdAt)
+          .toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+      })));
+    });
+  }, [session]);
+
+  const onSave = async (data: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate"> & { email?: string }) => {
     if (modalDriver === "new") {
-      const newDriver: Driver = {
-        ...data,
-        id: String(Date.now()),
-        activeJobs: 0,
-        location: data.status === "available" ? "Depot" : "—",
-        joinedDate: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-      };
-      setDrivers((prev) => [newDriver, ...prev]);
+      const res = await apiFetch<ApiResponse<Driver>>("/api/drivers", {
+        method: "POST",
+        body: JSON.stringify({ name: data.name, phone: data.phone, email: data.email, status: data.status }),
+      });
+      if (res.data) {
+        setDrivers((prev) => [{
+          ...res.data!,
+          location: "—",
+          joinedDate: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+        }, ...prev]);
+      }
     } else if (modalDriver && "id" in modalDriver && modalDriver.id) {
-      setDrivers((prev) =>
-        prev.map((d) => d.id === modalDriver.id ? { ...d, ...data } : d)
-      );
+      const res = await apiFetch<ApiResponse<Driver>>(`/api/drivers/${modalDriver.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: data.name, phone: data.phone, status: data.status }),
+      });
+      if (res.data) {
+        setDrivers((prev) => prev.map((d) => d.id === modalDriver.id ? { ...d, ...res.data } : d));
+      }
     }
     setModalDriver(null);
   };
 
-  const onDeactivate = (driver: Driver) => {
-    setDrivers((prev) =>
-      prev.map((d) => d.id === driver.id ? { ...d, status: "off_duty", activeJobs: 0 } : d)
-    );
+  const onDeactivate = async (driver: Driver) => {
+    const res = await apiFetch<ApiResponse<Driver>>(`/api/drivers/${driver.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "off_duty" }),
+    });
+    if (res.data) {
+      setDrivers((prev) => prev.map((d) => d.id === driver.id ? { ...d, status: "off_duty" } : d));
+    }
     setDeactivating(null);
   };
 
-  const onReactivate = (driver: Driver) => {
-    setDrivers((prev) =>
-      prev.map((d) => d.id === driver.id ? { ...d, status: "available" } : d)
-    );
+  const onReactivate = async (driver: Driver) => {
+    const res = await apiFetch<ApiResponse<Driver>>(`/api/drivers/${driver.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "available" }),
+    });
+    if (res.data) {
+      setDrivers((prev) => prev.map((d) => d.id === driver.id ? { ...d, status: "available" } : d));
+    }
   };
 
   const filtered = filter === "all" ? drivers : drivers.filter((d) => d.status === filter);

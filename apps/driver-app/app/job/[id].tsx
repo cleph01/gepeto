@@ -17,6 +17,7 @@ import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Job, JobStatus, Message } from '@gepeto/types';
 import { supabase } from '@/lib/supabase';
+import { apiPatch, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/auth';
 import { navigate } from '@/lib/navigation';
 import {
@@ -165,11 +166,8 @@ export default function JobDetailScreen() {
   const handleAccept = async () => {
     if (!job) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const { error } = await supabase
-      .from('jobs')
-      .update({ driver_response: 'accepted' })
-      .eq('id', job.id);
-    if (!error) setJob({ ...job, driverResponse: 'accepted' });
+    const res = await apiPatch<Job>(`/api/jobs/${job.id}/response`, { driverResponse: 'accepted' });
+    if (res.data) setJob(res.data);
   };
 
   const handleReject = () => {
@@ -184,11 +182,9 @@ export default function JobDetailScreen() {
           onPress: async () => {
             if (!job) return;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            const { error } = await supabase
-              .from('jobs')
-              .update({ driver_response: 'rejected', status: 'rejected' })
-              .eq('id', job.id);
-            if (!error) setJob({ ...job, driverResponse: 'rejected', status: 'rejected' });
+            // API resets status to 'pending' and clears driver_id so the dispatcher can reassign
+            const res = await apiPatch<Job>(`/api/jobs/${job.id}/response`, { driverResponse: 'rejected' });
+            if (res.data) setJob(res.data);
           },
         },
       ]
@@ -208,11 +204,8 @@ export default function JobDetailScreen() {
 
     setUpdatingStatus(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { error } = await supabase
-      .from('jobs')
-      .update({ status: nextStatus })
-      .eq('id', job.id);
-    if (!error) setJob({ ...job, status: nextStatus });
+    const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, { status: nextStatus });
+    if (res.data) setJob(res.data);
     setUpdatingStatus(false);
   };
 
@@ -220,11 +213,8 @@ export default function JobDetailScreen() {
     if (!job) return;
     setUpdatingStatus(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { error } = await supabase
-      .from('jobs')
-      .update({ status: 'picked_up' })
-      .eq('id', job.id);
-    if (!error) setJob({ ...job, status: 'picked_up' });
+    const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, { status: 'picked_up' });
+    if (res.data) setJob(res.data);
     setUpdatingStatus(false);
   };
 
@@ -234,9 +224,10 @@ export default function JobDetailScreen() {
     const body = messageText.trim();
     setMessageText('');
 
-    // Optimistic update while the insert lands
+    // Optimistic update while the request lands
+    const optimisticId = `optimistic-${Date.now()}`;
     const optimistic: Message = {
-      id: `optimistic-${Date.now()}`,
+      id: optimisticId,
       jobId: job.id,
       senderRole: 'driver',
       senderId: driverId ?? null,
@@ -248,12 +239,13 @@ export default function JobDetailScreen() {
     setMessages((prev) => [...prev, optimistic]);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
 
-    await supabase.from('messages').insert({
-      job_id: job.id,
-      sender_role: 'driver',
-      sender_id: driverId ?? null,
-      body,
-    });
+    const res = await apiPost<Message>(`/api/jobs/${job.id}/messages`, { body });
+
+    if (res.data) {
+      // Replace the optimistic entry with the real server message so the
+      // incoming Realtime event (which carries the same UUID) gets deduped.
+      setMessages((prev) => prev.map((m) => (m.id === optimisticId ? res.data! : m)));
+    }
 
     setSendingMessage(false);
   };

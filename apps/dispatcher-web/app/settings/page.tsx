@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { useAuth } from "@/context/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,25 +25,15 @@ interface ProfileInfo {
   phone: string;
 }
 
-// ─── Seed data ────────────────────────────────────────────────────────────────
+// ─── Notification defaults ────────────────────────────────────────────────────
 
-const SEED_LAB: LabInfo = {
-  labName: "Valley Dental Lab",
-  address: "1280 Industrial Blvd",
-  city: "San Francisco",
-  state: "CA",
-  zip: "94103",
-  phone: "(415) 555-0100",
-  timezone: "America/Los_Angeles",
-  operatingHoursStart: "07:00",
-  operatingHoursEnd: "18:00",
-};
-
-const SEED_PROFILE: ProfileInfo = {
-  name: "Jamie Rivera",
-  email: "jamie.rivera@valleydentallab.com",
-  role: "Dispatcher",
-  phone: "(415) 555-0199",
+const DEFAULT_NOTIFS = {
+  statJobAlert:      true,
+  unassignedAlert:   true,
+  unassignedMinutes: "15",
+  lateDeliveryAlert: true,
+  lateDeliveryMins:  "30",
+  driverOffDuty:     false,
 };
 
 const TIMEZONES = [
@@ -69,26 +60,45 @@ export default function SettingsPage() {
   const bp = useBreakpoint();
   const isMobile = bp === "mobile";
   const isDesktop = bp === "desktop";
+  const { apiFetch, session } = useAuth();
 
   const [activeSection, setActiveSection] = useState<"profile" | "lab" | "notifications">("profile");
 
-  const [lab, setLab]         = useState<LabInfo>(SEED_LAB);
-  const [labDraft, setLabDraft] = useState<LabInfo>(SEED_LAB);
+  const emptyLab: LabInfo = { labName: "", address: "", city: "", state: "", zip: "", phone: "", timezone: "America/Los_Angeles", operatingHoursStart: "07:00", operatingHoursEnd: "18:00" };
+  const [lab, setLab]           = useState<LabInfo>(emptyLab);
+  const [labDraft, setLabDraft] = useState<LabInfo>(emptyLab);
   const [labDirty, setLabDirty] = useState(false);
   const [labSaved, setLabSaved] = useState(false);
 
-  const [profile]       = useState<ProfileInfo>(SEED_PROFILE);
+  const emptyProfile: ProfileInfo = { name: "", email: "", role: "", phone: "" };
+  const [profile, setProfile] = useState<ProfileInfo>(emptyProfile);
 
-  // Notification toggles
-  const [notifs, setNotifs] = useState({
-    statJobAlert:      true,
-    unassignedAlert:   true,
-    unassignedMinutes: "15",
-    lateDeliveryAlert: true,
-    lateDeliveryMins:  "30",
-    driverOffDuty:     false,
-  });
-  const [notifSaved, setNotifSaved]   = useState(false);
+  const [notifs, setNotifs] = useState(DEFAULT_NOTIFS);
+  const [notifSaved, setNotifSaved] = useState(false);
+
+  // ── Load settings ────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!session) return;
+    apiFetch<{ data: { lab: LabInfo & { name: string }; notifications: typeof DEFAULT_NOTIFS; profile: ProfileInfo } | null; error: null }>("/api/settings").then((res) => {
+      if (!res.data) return;
+      const labData: LabInfo = {
+        labName:              res.data.lab.name ?? res.data.lab.labName ?? "",
+        address:              res.data.lab.address,
+        city:                 res.data.lab.city,
+        state:                res.data.lab.state,
+        zip:                  res.data.lab.zip,
+        phone:                res.data.lab.phone,
+        timezone:             res.data.lab.timezone,
+        operatingHoursStart:  res.data.lab.operatingHoursStart,
+        operatingHoursEnd:    res.data.lab.operatingHoursEnd,
+      };
+      setLab(labData);
+      setLabDraft(labData);
+      setNotifs({ ...DEFAULT_NOTIFS, ...res.data.notifications });
+      setProfile(res.data.profile);
+    });
+  }, [session]);
 
   // ── Lab handlers ────────────────────────────────────────────────────────────
 
@@ -98,7 +108,21 @@ export default function SettingsPage() {
     setLabSaved(false);
   }
 
-  function handleLabSave() {
+  async function handleLabSave() {
+    await apiFetch("/api/settings/lab", {
+      method: "PATCH",
+      body: JSON.stringify({
+        name:                labDraft.labName,
+        address:             labDraft.address,
+        city:                labDraft.city,
+        state:               labDraft.state,
+        zip:                 labDraft.zip,
+        phone:               labDraft.phone,
+        timezone:            labDraft.timezone,
+        operatingHoursStart: labDraft.operatingHoursStart,
+        operatingHoursEnd:   labDraft.operatingHoursEnd,
+      }),
+    });
     setLab(labDraft);
     setLabDirty(false);
     setLabSaved(true);
@@ -113,7 +137,11 @@ export default function SettingsPage() {
 
   // ── Notif handlers ──────────────────────────────────────────────────────────
 
-  function handleNotifSave() {
+  async function handleNotifSave() {
+    await apiFetch("/api/settings/notifications", {
+      method: "PATCH",
+      body: JSON.stringify(notifs),
+    });
     setNotifSaved(true);
     setTimeout(() => setNotifSaved(false), 3000);
   }
@@ -282,7 +310,7 @@ export default function SettingsPage() {
                     color: "white",
                     flexShrink: 0,
                   }}>
-                    JR
+                    {profile.name.slice(0, 2).toUpperCase() || "??"}
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>{profile.name}</div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { rowToCamel } from '@/lib/transform';
+import { useLocationTracking } from '@/hooks/use-location-tracking';
 import {
   View,
   Text,
@@ -202,6 +203,12 @@ export default function JobQueueScreen() {
 
   const activeJobs = jobs.filter((j) => j.status !== 'delivered' && j.status !== 'rejected');
   const completedJobs = jobs.filter((j) => j.status === 'delivered' || j.status === 'rejected');
+
+  // Track location whenever the driver has at least one active job
+  const hasActiveJob = activeJobs.some((j) =>
+    ['assigned', 'picked_up', 'in_transit', 'arrived'].includes(j.status)
+  );
+  useLocationTracking(hasActiveJob);
 
   const sections = [
     { title: 'Active', data: activeJobs },

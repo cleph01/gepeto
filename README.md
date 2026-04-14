@@ -10,7 +10,7 @@
 
 ## Overview
 
-Gepeto connects dental labs, drivers, and dental offices into a single, purpose-built logistics platform. Dispatchers create and assign delivery jobs, drivers receive and fulfill them via mobile, and dental offices track their deliveries in real time through a magic-link portal — no login required.
+Gepeto connects dental labs, drivers, and dental offices into a single, purpose-built logistics platform. Dispatchers create and assign delivery jobs, drivers receive and fulfill them via mobile, and dental offices track their deliveries in real time through a token-based portal — no login required.
 
 ---
 
@@ -18,9 +18,9 @@ Gepeto connects dental labs, drivers, and dental offices into a single, purpose-
 
 | App | Tech | Description |
 |---|---|---|
-| `dispatcher-web` | Next.js 16, Tailwind CSS | Operational dashboard for lab staff — job creation, live map, driver roster |
+| `dispatcher-web` | Next.js 16, Tailwind CSS | Operational dashboard for lab staff — job creation, live map, driver roster, offices, settings |
 | `driver-app` | Expo (React Native) | Mobile app for drivers — job queue, GPS reporting, proof of delivery |
-| `office-portal` | Next.js 16, Tailwind CSS | Public tracking portal for dental offices — magic-link, no account needed |
+| `office-portal` | Next.js 16, Tailwind CSS | Public tracking portal for dental offices — token URL, no account needed |
 
 ---
 
@@ -33,6 +33,7 @@ gepeto/
     driver-app/           ← Expo React Native mobile app
     office-portal/        ← Next.js public tracking portal
   packages/
+    db/                   ← Knex.js client + migrations + seed data
     types/                ← Shared TypeScript interfaces (Job, Driver, Office, Message)
     api-client/           ← Typed fetch wrappers used by all three apps
     ui/                   ← Shared design system (buttons, badges, cards)
@@ -47,14 +48,18 @@ gepeto/
 
 ## Tech Stack
 
-- **Monorepo:** Turborepo + pnpm workspaces
-- **Web apps:** Next.js 16 (App Router), TypeScript, Tailwind CSS v4
-- **Mobile:** Expo (React Native), TypeScript, Expo Router
-- **Database:** PostgreSQL via Prisma ORM
-- **Real-time:** Pusher or Ably (WebSocket-as-a-service)
-- **Auth:** NextAuth.js (dispatcher) + magic-link tokens (office portal)
-- **Maps:** Google Maps SDK
-- **File storage:** AWS S3 (proof-of-delivery photos)
+| Layer | Technology |
+|---|---|
+| Monorepo | Turborepo + pnpm workspaces |
+| Web apps | Next.js 16 (App Router), TypeScript, Tailwind CSS v4 |
+| Mobile | Expo (React Native), TypeScript, Expo Router |
+| Database | PostgreSQL on Supabase, Knex.js (migrations + query builder) |
+| Auth | Supabase Auth — email/password (dispatchers), invite link (drivers), token URL (offices) |
+| Real-time | Supabase Realtime (`postgres_changes` subscriptions) |
+| Maps | Leaflet + OpenStreetMap (dispatcher dashboard) |
+| Geocoding | Nominatim (free, no API key) |
+| Email | Resend — transactional alerts |
+| Cron | Vercel Cron (`*/5 * * * *`) for time-based alerts |
 
 ---
 
@@ -101,11 +106,47 @@ pnpm build
 pnpm check-types
 ```
 
+### Run database migrations
+
+```sh
+cd packages/db
+npx knex migrate:latest
+npx knex seed:run   # optional seed data
+```
+
 ---
 
 ## Environment Variables
 
-Each app uses a `.env.local` file. See the Environment Variables section in each app's README for the full variable reference.
+### `apps/dispatcher-web/.env.local`
+
+```env
+# Supabase
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+
+# Email (Resend — resend.com)
+RESEND_API_KEY=
+
+# App URL (used in email CTAs)
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Tracking portal base URL (used to build office tracking links)
+NEXT_PUBLIC_TRACKING_BASE_URL=http://localhost:3001
+
+# Cron security (set the same value in Vercel project settings)
+CRON_SECRET=
+```
+
+### `apps/office-portal/.env.local`
+
+```env
+DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+```
 
 ---
 
@@ -117,15 +158,23 @@ Each app uses a `.env.local` file. See the Environment Variables section in each
 | `office-portal` | Vercel (Root Dir: `apps/office-portal`) | `track.gepeto.com` |
 | `driver-app` | Expo EAS Build → App Store / Play Store | — |
 
+Vercel Cron runs automatically on the `dispatcher-web` deployment — no additional configuration needed beyond setting `CRON_SECRET` in the project environment variables.
+
 ---
 
-## Build Phases
+## Multi-Tenant Architecture
 
-1. **Phase 1** — Data foundation: types, Prisma schema, seed data, API routes
-2. **Phase 2** — Dispatcher web: auth, dashboard, job creation, map panel
-3. **Phase 3** — Driver mobile app: job queue, status updates, GPS, proof of delivery
-4. **Phase 4** — Real-time layer: Pusher/Ably wiring across all apps
-5. **Phase 5** — Office portal: magic-link tracking, ETA countdown, driver map
+Each lab is an independent tenant. Row-Level Security (RLS) on Supabase enforces isolation at the database layer using JWT claims (`lab_id`, `role`, `driver_id`) stored in Supabase Auth `app_metadata`.
+
+- **Dispatchers** — full CRUD on their lab's data
+- **Drivers** — read their assigned jobs, update their own driver row
+- **Offices** — read-only access via opaque `tracking_token` (no auth)
+
+---
+
+## Features
+
+See [FEATURES.md](FEATURES.md) for a detailed breakdown of all apps, views, and features.
 
 ---
 

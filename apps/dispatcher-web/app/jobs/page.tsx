@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { useAuth } from "@/context/auth";
+import type { ApiResponse } from "@gepeto/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,37 +54,21 @@ const FLAG_CONFIG: Record<ItemFlag, { label: string; color: string; bg: string }
   biohazard:            { label: "Biohazard",      color: "#5F5E5A", bg: "rgba(95,94,90,0.10)"  },
 };
 
-const OFFICES = [
-  { name: "Bright Smile Dental",    address: "1420 Market St, San Francisco, CA" },
-  { name: "Sunrise Orthodontics",   address: "855 Post St, San Francisco, CA"    },
-  { name: "Pacific Dental Group",   address: "3250 16th St, San Francisco, CA"   },
-  { name: "Westside Family Dental", address: "2340 Noriega St, San Francisco, CA"},
-  { name: "Downtown Dental Arts",   address: "580 California St, San Francisco, CA" },
-  { name: "Bay Area Periodontics",  address: "490 Post St, San Francisco, CA"    },
-];
+type OfficeOption  = { id: string; name: string; address: string };
+type DriverOption  = { id: string; name: string };
 
-const DRIVERS = [
-  "Marco Rivera",
-  "Jordan Singh",
-  "Aisha Lambert",
-  "Tim Kowalski",
-  "Chris Morgan",
-];
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
-const SEED_JOBS: Job[] = [
-  { id: "1",  caseId: "LAB-2041", office: "Bright Smile Dental",    deliveryAddress: "1420 Market St, San Francisco, CA",    driver: "Marco Rivera",  priority: "stat",     status: "in_transit", itemDescription: "PFM Crown — Upper Right Molar",     flags: ["rush"],      createdAt: "Apr 12, 9:14 AM",  updatedAt: "2m ago"  },
-  { id: "2",  caseId: "LAB-2040", office: "Sunrise Orthodontics",   deliveryAddress: "855 Post St, San Francisco, CA",        driver: "Jordan Singh",  priority: "standard", status: "picked_up",  itemDescription: "Clear Aligner — Set 4",             flags: [],            createdAt: "Apr 12, 9:02 AM",  updatedAt: "8m ago"  },
-  { id: "3",  caseId: "LAB-2039", office: "Pacific Dental Group",   deliveryAddress: "3250 16th St, San Francisco, CA",       driver: "Aisha Lambert", priority: "stat",     status: "arrived",    itemDescription: "Zirconia Bridge — Lower Left",      flags: ["fragile"],   createdAt: "Apr 12, 8:51 AM",  updatedAt: "11m ago" },
-  { id: "4",  caseId: "LAB-2038", office: "Westside Family Dental", deliveryAddress: "2340 Noriega St, San Francisco, CA",    driver: "Tim Kowalski",  priority: "standard", status: "in_transit", itemDescription: "Partial Denture — Upper Arch",      flags: [],            createdAt: "Apr 12, 8:40 AM",  updatedAt: "18m ago" },
-  { id: "5",  caseId: "LAB-2037", office: "Downtown Dental Arts",   deliveryAddress: "580 California St, San Francisco, CA",  driver: "Chris Morgan",  priority: "standard", status: "delivered",  itemDescription: "Implant Crown — Tooth #14",         flags: [],            createdAt: "Apr 12, 7:30 AM",  updatedAt: "34m ago" },
-  { id: "6",  caseId: "LAB-2036", office: "Bay Area Periodontics",  deliveryAddress: "490 Post St, San Francisco, CA",        driver: null,            priority: "standard", status: "pending",    itemDescription: "Night Guard — Full Arch",           flags: [],            createdAt: "Apr 12, 8:15 AM",  updatedAt: "47m ago" },
-  { id: "7",  caseId: "LAB-2035", office: "Bright Smile Dental",    deliveryAddress: "1420 Market St, San Francisco, CA",    driver: "Marco Rivera",  priority: "standard", status: "delivered",  itemDescription: "Composite Veneer — Tooth #8, #9",   flags: [],            createdAt: "Apr 12, 7:10 AM",  updatedAt: "1h ago"  },
-  { id: "8",  caseId: "LAB-2034", office: "Sunrise Orthodontics",   deliveryAddress: "855 Post St, San Francisco, CA",        driver: null,            priority: "stat",     status: "pending",    itemDescription: "Retainer — Hawley Upper",           flags: ["rush"],      createdAt: "Apr 12, 9:20 AM",  updatedAt: "Just now"},
-  { id: "9",  caseId: "LAB-2033", office: "Pacific Dental Group",   deliveryAddress: "3250 16th St, San Francisco, CA",       driver: "Jordan Singh",  priority: "standard", status: "assigned",   itemDescription: "Full Denture — Lower Arch",         flags: ["fragile", "temperature_sensitive"], createdAt: "Apr 12, 8:58 AM", updatedAt: "5m ago" },
-  { id: "10", caseId: "LAB-2032", office: "Westside Family Dental", deliveryAddress: "2340 Noriega St, San Francisco, CA",    driver: "Tim Kowalski",  priority: "standard", status: "delivered",  itemDescription: "Gold Inlay — Tooth #3",             flags: [],            createdAt: "Apr 11, 3:45 PM",  updatedAt: "2h ago"  },
-];
 
 type FilterTab = "all" | JobStatus;
 
@@ -90,13 +76,15 @@ type FilterTab = "all" | JobStatus;
 
 interface NewJobModalProps {
   onClose: () => void;
-  onSave: (job: Omit<Job, "id" | "createdAt" | "updatedAt">) => void;
+  offices: OfficeOption[];
+  drivers: DriverOption[];
+  onSave: (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[] }) => void;
 }
 
-function NewJobModal({ onClose, onSave }: NewJobModalProps) {
+function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
   const [caseId, setCaseId]         = useState("");
-  const [office, setOffice]         = useState("");
-  const [driver, setDriver]         = useState<string | null>(null);
+  const [officeId, setOfficeId]     = useState("");
+  const [driverId, setDriverId]     = useState<string | null>(null);
   const [priority, setPriority]     = useState<JobPriority>("standard");
   const [itemDesc, setItemDesc]     = useState("");
   const [flags, setFlags]           = useState<ItemFlag[]>([]);
@@ -108,7 +96,7 @@ function NewJobModal({ onClose, onSave }: NewJobModalProps) {
   const validate = () => {
     const e: Record<string, string> = {};
     if (!caseId.trim())   e.caseId   = "Case ID is required.";
-    if (!office)          e.office   = "Please select an office.";
+    if (!officeId)        e.office   = "Please select an office.";
     if (!itemDesc.trim()) e.itemDesc = "Item description is required.";
     return e;
   };
@@ -117,14 +105,13 @@ function NewJobModal({ onClose, onSave }: NewJobModalProps) {
     e.preventDefault();
     const e2 = validate();
     if (Object.keys(e2).length) { setErrors(e2); return; }
-    const selectedOffice = OFFICES.find((o) => o.name === office);
+    const selectedOffice = offices.find((o) => o.id === officeId);
     onSave({
       caseId: caseId.trim().toUpperCase(),
-      office,
+      officeId,
       deliveryAddress: selectedOffice?.address ?? "",
-      driver: driver || null,
+      driverId: driverId || null,
       priority,
-      status: driver ? "assigned" : "pending",
       itemDescription: itemDesc.trim(),
       flags,
     });
@@ -201,15 +188,15 @@ function NewJobModal({ onClose, onSave }: NewJobModalProps) {
           <div>
             <label style={labelStyle}>Dental Office <Required /></label>
             <select
-              value={office}
-              onChange={(e) => { setOffice(e.target.value); clearError("office"); }}
-              style={{ ...inputStyle(!!errors.office), color: office ? "#1a1a1a" : "#9a9a9a" }}
+              value={officeId}
+              onChange={(e) => { setOfficeId(e.target.value); clearError("office"); }}
+              style={{ ...inputStyle(!!errors.office), color: officeId ? "#1a1a1a" : "#9a9a9a" }}
               onFocus={focusStyle}
               onBlur={(e) => blurStyle(e, !!errors.office)}
             >
               <option value="" disabled>Select an office…</option>
-              {OFFICES.map((o) => (
-                <option key={o.name} value={o.name}>{o.name}</option>
+              {offices.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
               ))}
             </select>
             {errors.office && <FieldError msg={errors.office} />}
@@ -219,15 +206,15 @@ function NewJobModal({ onClose, onSave }: NewJobModalProps) {
           <div>
             <label style={labelStyle}>Assign Driver <span style={{ color: "#9a9a9a", fontWeight: 400 }}>(optional)</span></label>
             <select
-              value={driver ?? ""}
-              onChange={(e) => setDriver(e.target.value || null)}
-              style={{ ...inputStyle(false), color: driver ? "#1a1a1a" : "#9a9a9a" }}
+              value={driverId ?? ""}
+              onChange={(e) => setDriverId(e.target.value || null)}
+              style={{ ...inputStyle(false), color: driverId ? "#1a1a1a" : "#9a9a9a" }}
               onFocus={focusStyle}
               onBlur={(e) => blurStyle(e, false)}
             >
               <option value="">Unassigned</option>
-              {DRIVERS.map((d) => (
-                <option key={d} value={d}>{d}</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
           </div>
@@ -675,29 +662,75 @@ function JobCard({ job, onUpdateStatus }: { job: Job; onUpdateStatus: () => void
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type ApiJobFull = {
+  id: string; caseId: string; officeName: string; driverName: string | null;
+  priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
+  deliveryAddress: string; createdAt: string; updatedAt: string;
+};
+
+function mapJob(j: ApiJobFull): Job {
+  return {
+    id: j.id,
+    caseId: j.caseId,
+    office: j.officeName,
+    deliveryAddress: j.deliveryAddress,
+    driver: j.driverName,
+    priority: j.priority,
+    status: j.status,
+    itemDescription: j.items?.[0]?.description ?? "",
+    flags: j.items?.[0]?.flags ?? [],
+    createdAt: new Date(j.createdAt).toLocaleString(),
+    updatedAt: timeAgo(j.updatedAt),
+  };
+}
+
 export default function JobsPage() {
   const bp = useBreakpoint();
-  const [jobs, setJobs]               = useState<Job[]>(SEED_JOBS);
+  const { apiFetch, session } = useAuth();
+  const [jobs, setJobs]               = useState<Job[]>([]);
+  const [offices, setOffices]         = useState<OfficeOption[]>([]);
+  const [drivers, setDrivers]         = useState<DriverOption[]>([]);
   const [showNewJob, setShowNewJob]   = useState(false);
   const [statusJob, setStatusJob]     = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
 
-  const onCreateJob = (data: Omit<Job, "id" | "createdAt" | "updatedAt">) => {
-    const newJob: Job = {
-      ...data,
-      id: String(Date.now()),
-      createdAt: "Just now",
-      updatedAt: "Just now",
-    };
-    setJobs((prev) => [newJob, ...prev]);
+  useEffect(() => {
+    if (!session) return;
+    Promise.all([
+      apiFetch<ApiResponse<ApiJobFull[]>>("/api/jobs"),
+      apiFetch<ApiResponse<OfficeOption[]>>("/api/offices"),
+      apiFetch<ApiResponse<DriverOption[]>>("/api/drivers"),
+    ]).then(([jobsRes, officesRes, driversRes]) => {
+      if (jobsRes.data)    setJobs(jobsRes.data.map(mapJob));
+      if (officesRes.data) setOffices(officesRes.data);
+      if (driversRes.data) setDrivers(driversRes.data);
+    });
+  }, [session]);
+
+  const onCreateJob = async (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[] }) => {
+    const res = await apiFetch<ApiResponse<ApiJobFull>>("/api/jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        caseId: data.caseId,
+        officeId: data.officeId,
+        driverId: data.driverId,
+        priority: data.priority,
+        pickupAddress: "Lab pickup",
+        deliveryAddress: data.deliveryAddress,
+        items: [{ description: data.itemDescription, quantity: 1, flags: data.flags }],
+      }),
+    });
+    if (res.data) setJobs((prev) => [mapJob(res.data!), ...prev]);
     setShowNewJob(false);
   };
 
-  const onUpdateStatus = (jobId: string, status: JobStatus) => {
-    setJobs((prev) =>
-      prev.map((j) => j.id === jobId ? { ...j, status, updatedAt: "Just now" } : j)
-    );
+  const onUpdateStatus = async (jobId: string, status: JobStatus) => {
+    const res = await apiFetch<ApiResponse<ApiJobFull>>(`/api/jobs/${jobId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+    if (res.data) setJobs((prev) => prev.map((j) => j.id === jobId ? mapJob(res.data!) : j));
     setStatusJob(null);
   };
 
@@ -865,7 +898,7 @@ export default function JobsPage() {
 
       {/* Modals */}
       {showNewJob && (
-        <NewJobModal onClose={() => setShowNewJob(false)} onSave={onCreateJob} />
+        <NewJobModal onClose={() => setShowNewJob(false)} onSave={onCreateJob} offices={offices} drivers={drivers} />
       )}
       {statusJob && (
         <StatusModal
