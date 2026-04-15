@@ -8,6 +8,7 @@ import {
   FlatList,
   TextInput,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ActivityIndicator,
   Alert,
@@ -93,6 +94,9 @@ export default function JobDetailScreen() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showPod, setShowPod] = useState(false);
+  const [recipientName, setRecipientName] = useState('');
+  const [submittingPod, setSubmittingPod] = useState(false);
 
   const listRef = useRef<FlatList>(null);
   const driverId = session?.user.user_metadata?.driver_id as string | undefined;
@@ -195,7 +199,8 @@ export default function JobDetailScreen() {
     if (!job) return;
 
     if (job.status === 'arrived') {
-      Alert.alert('Coming soon', 'Proof of delivery capture is in Phase 3.');
+      setRecipientName('');
+      setShowPod(true);
       return;
     }
 
@@ -207,6 +212,24 @@ export default function JobDetailScreen() {
     const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, { status: nextStatus });
     if (res.data) setJob(res.data);
     setUpdatingStatus(false);
+  };
+
+  const handleConfirmDelivery = async () => {
+    if (!job || !recipientName.trim()) return;
+    setSubmittingPod(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, {
+      status: 'delivered',
+      proofOfDelivery: {
+        recipientName: recipientName.trim(),
+        timestamp: new Date().toISOString(),
+      },
+    });
+    setSubmittingPod(false);
+    if (res.data) {
+      setJob(res.data);
+      setShowPod(false);
+    }
   };
 
   const handleMarkPickedUp = async () => {
@@ -446,6 +469,63 @@ export default function JobDetailScreen() {
             );
           }}
         />
+
+        {/* Proof of delivery modal */}
+        <Modal
+          visible={showPod}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowPod(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.podKav}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.podContainer}>
+              <View style={styles.podHeader}>
+                <Text style={styles.podTitle}>Proof of Delivery</Text>
+                <TouchableOpacity onPress={() => setShowPod(false)} activeOpacity={0.7}>
+                  <Text style={styles.podCancel}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.podSubtitle}>
+                Enter the name of the person who received the delivery.
+              </Text>
+
+              <View style={styles.podField}>
+                <Text style={styles.podLabel}>Recipient Name</Text>
+                <TextInput
+                  style={styles.podInput}
+                  value={recipientName}
+                  onChangeText={setRecipientName}
+                  placeholder="e.g. Jane Smith"
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleConfirmDelivery}
+                  autoFocus
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.podConfirmBtn,
+                  (!recipientName.trim() || submittingPod) && styles.podConfirmBtnDisabled,
+                ]}
+                onPress={handleConfirmDelivery}
+                disabled={!recipientName.trim() || submittingPod}
+                activeOpacity={0.8}
+              >
+                {submittingPod
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.podConfirmText}>Confirm Delivery</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
         {/* Message input */}
         {!isDelivered && !isRejected && (
@@ -747,6 +827,76 @@ const styles = StyleSheet.create({
   sendBtnText: {
     color: '#fff',
     fontSize: FontSize.sm,
+    fontWeight: '700',
+  },
+
+  // ── Proof of delivery modal ───────────────────────────────────────────────
+  podKav: {
+    flex: 1,
+    backgroundColor: Colors.bg,
+  },
+  podContainer: {
+    flex: 1,
+    padding: Spacing.xl,
+    gap: Spacing.xl,
+  },
+  podHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Spacing.md,
+  },
+  podTitle: {
+    color: Colors.text,
+    fontSize: FontSize.xl,
+    fontWeight: '700',
+  },
+  podCancel: {
+    color: Colors.primary,
+    fontSize: FontSize.md,
+    fontWeight: '500',
+  },
+  podSubtitle: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.md,
+    lineHeight: 22,
+    marginTop: -Spacing.md,
+  },
+  podField: {
+    gap: Spacing.xs,
+  },
+  podLabel: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  podInput: {
+    backgroundColor: Colors.card,
+    color: Colors.text,
+    fontSize: FontSize.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    height: 52,
+  },
+  podConfirmBtn: {
+    backgroundColor: Colors.success,
+    borderRadius: Radius.md,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.sm,
+  },
+  podConfirmBtnDisabled: {
+    opacity: 0.4,
+  },
+  podConfirmText: {
+    color: '#fff',
+    fontSize: FontSize.lg,
     fontWeight: '700',
   },
 });

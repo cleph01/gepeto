@@ -22,7 +22,7 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const { status } = await request.json();
+    const { status, proofOfDelivery } = await request.json();
 
     if (!VALID_STATUSES.includes(status)) {
       return Response.json(
@@ -46,6 +46,9 @@ export async function PATCH(
 
     if (status === "delivered") {
       updates.delivered_at = new Date().toISOString();
+      if (proofOfDelivery) {
+        updates.proof_of_delivery = JSON.stringify(proofOfDelivery);
+      }
     }
 
     const [updated] = await db("jobs").where({ id }).update(updates).returning("*");
