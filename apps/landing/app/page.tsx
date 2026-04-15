@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
 // ─────────────────────────────────────────────────────────────
 // Hooks
 // ─────────────────────────────────────────────────────────────
@@ -42,90 +44,8 @@ function useReveal() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Sign-up form (reused in Hero + CTA)
-// ─────────────────────────────────────────────────────────────
-
-function SignUpForm({ dark = false }: { dark?: boolean }) {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
-    setLoading(false);
-    setSubmitted(true);
-  };
-
-  if (submitted) {
-    return (
-      <div
-        className={`inline-flex items-center gap-2.5 px-5 py-3.5 rounded-xl text-sm font-medium ${
-          dark
-            ? "bg-white/10 text-white border border-white/15"
-            : "bg-blue-light text-blue border border-blue/20"
-        }`}
-      >
-        <CheckCircleIcon className="shrink-0" />
-        You&apos;re on the list — we&apos;ll be in touch soon.
-      </div>
-    );
-  }
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col sm:flex-row gap-2.5 w-full max-w-md"
-    >
-      <input
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="work@yourdentallabname.com"
-        className={`flex-1 px-4 py-3 rounded-xl text-sm font-medium outline-none transition-all ${
-          dark
-            ? "bg-white/8 border border-white/15 text-white placeholder:text-white/35 focus:border-blue focus:bg-white/12"
-            : "bg-white border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-blue focus:ring-2 focus:ring-blue/15"
-        }`}
-      />
-      <button
-        type="submit"
-        disabled={loading}
-        className="px-6 py-3 bg-blue hover:bg-blue-dark active:scale-[0.98] text-white text-sm font-semibold rounded-xl transition-all duration-150 whitespace-nowrap disabled:opacity-60 cursor-pointer"
-      >
-        {loading ? "Joining…" : "Get Started Free"}
-      </button>
-    </form>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // Icons
 // ─────────────────────────────────────────────────────────────
-
-function CheckCircleIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      className={className}
-    >
-      <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M5.5 9l2.5 2.5 4.5-5"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function EyeOffIcon() {
   return (
@@ -341,20 +261,40 @@ function Nav({ scrolled }: { scrolled: boolean }) {
             </a>
           ))}
           <a
-            href="#cta"
+            href={`${APP_URL}/login`}
+            className={`ml-1 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+              scrolled
+                ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                : "text-white/65 hover:text-white hover:bg-white/8"
+            }`}
+          >
+            Log In
+          </a>
+          <a
+            href={`${APP_URL}/signup`}
             className="ml-2 px-4 py-2 bg-blue hover:bg-blue-dark text-white text-sm font-semibold rounded-lg transition-colors"
           >
             Get Started
           </a>
         </nav>
 
-        {/* Mobile CTA */}
-        <a
-          href="#cta"
-          className="md:hidden px-4 py-2 bg-blue text-white text-sm font-semibold rounded-lg"
-        >
-          Get Started
-        </a>
+        {/* Mobile CTAs */}
+        <div className="md:hidden flex items-center gap-2">
+          <a
+            href={`${APP_URL}/login`}
+            className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+              scrolled ? "text-gray-600" : "text-white/65"
+            }`}
+          >
+            Log In
+          </a>
+          <a
+            href={`${APP_URL}/signup`}
+            className="px-4 py-2 bg-blue text-white text-sm font-semibold rounded-lg"
+          >
+            Get Started
+          </a>
+        </div>
       </div>
     </header>
   );
@@ -418,9 +358,22 @@ function Hero() {
           status updates — for every dental office you serve.
         </p>
 
-        {/* Form + secondary link */}
-        <div className="flex flex-col items-center gap-3.5">
-          <SignUpForm dark />
+        {/* CTAs */}
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <a
+              href={`${APP_URL}/signup`}
+              className="px-7 py-3.5 bg-blue hover:bg-blue-dark active:scale-[0.98] text-white text-sm font-semibold rounded-xl transition-all duration-150 whitespace-nowrap"
+            >
+              Start Free Trial →
+            </a>
+            <a
+              href={`${APP_URL}/login`}
+              className="px-7 py-3.5 text-white/70 hover:text-white text-sm font-medium rounded-xl border border-white/15 hover:bg-white/8 transition-all duration-150 whitespace-nowrap"
+            >
+              Log In
+            </a>
+          </div>
           <a
             href="mailto:hello@gepeto.com"
             className="text-sm text-white/35 hover:text-white/55 transition-colors"
@@ -687,8 +640,21 @@ function CTASection() {
           </p>
         </div>
 
-        <div className="reveal reveal-delay-1 flex flex-col items-center gap-3">
-          <SignUpForm dark />
+        <div className="reveal reveal-delay-1 flex flex-col items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <a
+              href={`${APP_URL}/signup`}
+              className="px-7 py-3.5 bg-blue hover:bg-blue-dark active:scale-[0.98] text-white text-sm font-semibold rounded-xl transition-all duration-150 whitespace-nowrap"
+            >
+              Start Free Trial →
+            </a>
+            <a
+              href={`${APP_URL}/login`}
+              className="px-7 py-3.5 text-white/70 hover:text-white text-sm font-medium rounded-xl border border-white/15 hover:bg-white/8 transition-all duration-150 whitespace-nowrap"
+            >
+              Log In
+            </a>
+          </div>
           <a
             href="mailto:hello@gepeto.com"
             className="text-sm text-white/35 hover:text-white/55 transition-colors"
