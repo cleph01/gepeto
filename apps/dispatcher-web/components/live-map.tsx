@@ -40,9 +40,13 @@ export default function LiveMap({ drivers, jobs }: LiveMapProps) {
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    let cancelled = false;
 
     // Dynamic import so Leaflet only runs client-side
     import("leaflet").then((L) => {
+      // Guard against unmount during async import (Strict Mode / Fast Refresh)
+      if (cancelled || !containerRef.current || mapRef.current) return;
+
       // Fix default icon paths broken by webpack
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -69,6 +73,7 @@ export default function LiveMap({ drivers, jobs }: LiveMapProps) {
     });
 
     return () => {
+      cancelled = true;
       if (mapRef.current?.map) {
         mapRef.current.map.remove();
         mapRef.current = null;
