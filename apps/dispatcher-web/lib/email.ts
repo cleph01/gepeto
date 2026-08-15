@@ -1,6 +1,10 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend() {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 
 const FROM = "Gepeto <notifications@gepeto.com>";
 
@@ -104,7 +108,7 @@ export async function sendStatJobAlert(to: string[], data: StatJobAlertData) {
       View in Dashboard →
     </a>`;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `[STAT] New job — ${data.caseId} · ${data.labName}`,
@@ -125,7 +129,7 @@ export async function sendDriverOffDutyAlert(to: string[], data: DriverOffDutyDa
       View Drivers →
     </a>`;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `Driver off-duty — ${data.driverName} · ${data.labName}`,
@@ -150,7 +154,7 @@ export async function sendUnassignedJobAlert(to: string[], data: UnassignedJobDa
       Assign a Driver →
     </a>`;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `Unassigned job — ${data.caseId} · ${data.labName}`,
@@ -176,7 +180,7 @@ export async function sendLateDeliveryAlert(to: string[], data: LateDeliveryData
       View Job →
     </a>`;
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `Late delivery — ${data.caseId} · ${data.labName}`,
@@ -192,7 +196,7 @@ const db = require("@gepeto/db");
 export async function getDispatcherEmails(labId: string): Promise<string[]> {
   const users = await db("lab_users")
     .where({ lab_id: labId })
-    .whereIn("role", ["owner", "dispatcher"])
+    .whereIn("labRole", ["owner", "dispatcher"])
     .select("email");
   return users.map((u: { email: string }) => u.email).filter(Boolean);
 }

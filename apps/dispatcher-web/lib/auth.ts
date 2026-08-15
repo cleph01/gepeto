@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "./supabase";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const db = require("@gepeto/db");
 
 export type AuthUser = {
   id: string;
@@ -32,11 +34,19 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
     );
   }
 
-  const meta = data.user.user_metadata as Record<string, unknown>;
-  const role = meta.role as string;
+  const appMeta  = (data.user.app_metadata  ?? {}) as Record<string, unknown>;
+  const userMeta = (data.user.user_metadata ?? {}) as Record<string, unknown>;
+  // app_metadata is admin-controlled (Stripe webhook); user_metadata is used by the seed
+  const meta  = appMeta.role ? appMeta : userMeta;
+  const role  = meta.role   as string;
   const labId = meta.lab_id as string;
 
+  // Fallback: look up the user in lab_users if metadata is missing (e.g. manually created users)
   if ((role !== "dispatcher" && role !== "driver") || !labId) {
+    const labUser = await db("lab_users").where({ user_id: data.user.id }).first();
+    if (labUser) {
+      return { id: data.user.id, role: "dispatcher", labId: labUser.labId, labRole: labUser.labRole };
+    }
     throw new Response(
       JSON.stringify({ data: null, error: { code: "FORBIDDEN", message: "Insufficient role" } }),
       { status: 403, headers: { "Content-Type": "application/json" } }

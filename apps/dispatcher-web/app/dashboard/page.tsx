@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const { apiFetch, session } = useAuth();
   const [jobs, setJobs]       = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
+  const [labName, setLabName] = useState<string | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -29,9 +30,11 @@ export default function DashboardPage() {
     Promise.all([
       apiFetch<ApiResponse<ApiJob[]>>("/api/jobs"),
       apiFetch<ApiResponse<ApiDriver[]>>("/api/drivers"),
-    ]).then(([jobsRes, driversRes]) => {
-      if (jobsRes.data)    setJobs(jobsRes.data);
-      if (driversRes.data) setDrivers(driversRes.data);
+      apiFetch<ApiResponse<{ lab: { name: string } }>>("/api/settings"),
+    ]).then(([jobsRes, driversRes, settingsRes]) => {
+      if (jobsRes.data)      setJobs(jobsRes.data);
+      if (driversRes.data)   setDrivers(driversRes.data);
+      if (settingsRes.data)  setLabName(settingsRes.data.lab.name);
     });
   }, [session]);
 
@@ -50,7 +53,13 @@ export default function DashboardPage() {
   // Live Realtime subscription
   useRealtimeDashboard({ session, setJobs, setDrivers, refetchJob });
 
-  const today = new Date().toDateString();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const today = now.toDateString();
   const metrics = {
     total:      jobs.length,
     inTransit:  jobs.filter((j) => j.status === "in_transit").length,
@@ -78,7 +87,10 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, fontWeight: 400 }}>
-            Saturday, April 12, 2026 · Valley Dental Lab
+            {now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            {" · "}
+            {now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+            {labName ? ` · ${labName}` : null}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
