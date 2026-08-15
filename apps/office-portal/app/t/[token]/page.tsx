@@ -57,7 +57,6 @@ export default async function TrackingPage({ params }: Props) {
         "jobs.delivery_address as deliveryAddress",
         "jobs.delivery_lat as deliveryLat",
         "jobs.delivery_lng as deliveryLng",
-        "jobs.scheduled_at as scheduledAt",
         "jobs.created_at as createdAt",
         "jobs.updated_at as updatedAt",
         "drivers.name as driverName",

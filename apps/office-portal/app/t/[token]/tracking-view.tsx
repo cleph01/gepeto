@@ -14,7 +14,6 @@ interface TrackingJob {
   deliveryAddress: string;
   deliveryLat: number | null;
   deliveryLng: number | null;
-  scheduledAt: string | null;
   createdAt: string;
   updatedAt: string;
   driverName: string | null;
