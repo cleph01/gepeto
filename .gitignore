@@ -37,5 +37,8 @@ yarn-error.log*
 .DS_Store
 *.pem
 
+# Claude Code local settings (per-machine, not project config)
+.claude/
+
 # Internal
 PROGRESS.md
