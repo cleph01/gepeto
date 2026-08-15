@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { caseId, officeId, driverId, priority, items, pickupAddress, deliveryAddress } = body;
+    const { caseId, officeId, driverId, priority, items, pickupAddress, deliveryAddress, scheduledAt } = body;
 
     if (!caseId || !officeId || !pickupAddress || !deliveryAddress) {
       return Response.json(
@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
         delivery_address: deliveryAddress,
         delivery_lat: coords?.lat ?? null,
         delivery_lng: coords?.lng ?? null,
+        scheduled_at: scheduledAt ?? null,
       })
       .returning("*");
 

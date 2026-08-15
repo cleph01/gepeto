@@ -45,6 +45,7 @@ export interface Job {
   pickupAddress: string;
   deliveryAddress: string;
   proofOfDelivery: ProofOfDelivery | null;
+  scheduledAt: string | null; // ISO 8601 — optional expected delivery time
   createdAt: string;
   updatedAt: string;
   deliveredAt: string | null;

@@ -78,7 +78,7 @@ interface NewJobModalProps {
   onClose: () => void;
   offices: OfficeOption[];
   drivers: DriverOption[];
-  onSave: (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[] }) => void;
+  onSave: (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[]; scheduledAt: string | null }) => void;
 }
 
 function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
@@ -88,6 +88,7 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
   const [priority, setPriority]     = useState<JobPriority>("standard");
   const [itemDesc, setItemDesc]     = useState("");
   const [flags, setFlags]           = useState<ItemFlag[]>([]);
+  const [scheduledAt, setScheduledAt] = useState("");
   const [errors, setErrors]         = useState<Record<string, string>>({});
 
   const toggleFlag = (f: ItemFlag) =>
@@ -114,6 +115,7 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
       priority,
       itemDescription: itemDesc.trim(),
       flags,
+      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
     });
   };
 
@@ -248,6 +250,19 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
                 );
               })}
             </div>
+          </div>
+
+          {/* Expected delivery time */}
+          <div>
+            <label style={labelStyle}>Expected Delivery Time <span style={{ color: "#9a9a9a", fontWeight: 400 }}>(optional)</span></label>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              style={inputStyle(false)}
+              onFocus={focusStyle}
+              onBlur={(e) => blurStyle(e, false)}
+            />
           </div>
 
           {/* Item description */}
@@ -708,7 +723,7 @@ export default function JobsPage() {
     });
   }, [session]);
 
-  const onCreateJob = async (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[] }) => {
+  const onCreateJob = async (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[]; scheduledAt: string | null }) => {
     const res = await apiFetch<ApiResponse<ApiJobFull>>("/api/jobs", {
       method: "POST",
       body: JSON.stringify({
@@ -719,6 +734,7 @@ export default function JobsPage() {
         pickupAddress: "Lab pickup",
         deliveryAddress: data.deliveryAddress,
         items: [{ description: data.itemDescription, quantity: 1, flags: data.flags }],
+        scheduledAt: data.scheduledAt,
       }),
     });
     if (res.data) setJobs((prev) => [mapJob(res.data!), ...prev]);
