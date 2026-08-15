@@ -5,6 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/context/auth";
 import Sidebar from "@/components/sidebar";
 
+const isPublicRoute = (pathname: string) =>
+  pathname === "/login" || pathname.startsWith("/signup");
+
 function Guard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   const router = useRouter();
@@ -12,10 +15,10 @@ function Guard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    if (!session && pathname !== "/login") {
+    if (!session && !isPublicRoute(pathname)) {
       router.replace("/login");
     }
-    if (session && pathname === "/login") {
+    if (session && isPublicRoute(pathname)) {
       router.replace("/dashboard");
     }
   }, [session, loading, pathname, router]);
@@ -34,12 +37,12 @@ function Guard({ children }: { children: React.ReactNode }) {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLogin = pathname === "/login";
+  const isPublic = isPublicRoute(pathname);
 
   return (
     <AuthProvider>
       <Guard>
-        {isLogin ? (
+        {isPublic ? (
           <>{children}</>
         ) : (
           <>

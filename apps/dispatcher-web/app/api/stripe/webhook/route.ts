@@ -5,10 +5,6 @@ import { supabaseAdmin } from "@/lib/supabase";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-03-25.dahlia",
-});
-
 /**
  * POST /api/stripe/webhook
  *
@@ -19,6 +15,14 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
  * the webhook signature.
  */
 export async function POST(request: NextRequest) {
+  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error("[webhook] STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET not set");
+    return Response.json({ error: "Billing is not configured yet" }, { status: 503 });
+  }
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: "2026-03-25.dahlia",
+  });
+
   const body = await request.text();
   const sig  = request.headers.get("stripe-signature");
 
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error("[webhook] signature verification failed:", err);
     return Response.json({ error: "Invalid signature" }, { status: 400 });
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Set app_metadata so requireAuth() can read lab_id + role from the JWT
     await supabaseAdmin.auth.admin.updateUserById(userId, {
-      app_metadata: { role: "dispatcher", lab_id: labId },
+      app_metadata: { role: "dispatcher", lab_id: labId, lab_role: "owner" },
     });
 
     // 4. Link the user to the lab as owner

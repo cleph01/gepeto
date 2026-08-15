@@ -1,16 +1,22 @@
 import Stripe from "stripe";
 import type { NextRequest } from "next/server";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-03-25.dahlia",
-});
-
 // POST /api/stripe/checkout
 // Creates a Stripe Checkout Session for a new lab subscription.
 // Body: { email: string; labName: string }
 // Returns: { url: string } — the Stripe hosted checkout URL
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return Response.json(
+        { data: null, error: { code: "NOT_CONFIGURED", message: "Billing is not configured yet" } },
+        { status: 503 }
+      );
+    }
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2026-03-25.dahlia",
+    });
+
     const { email, labName } = await request.json();
 
     if (!email?.trim() || !labName?.trim()) {
