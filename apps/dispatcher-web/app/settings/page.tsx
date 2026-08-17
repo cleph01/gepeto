@@ -25,6 +25,14 @@ interface ProfileInfo {
   phone: string;
 }
 
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  labRole: "owner" | "dispatcher";
+  createdAt: string;
+}
+
 // ─── Notification defaults ────────────────────────────────────────────────────
 
 const DEFAULT_NOTIFS = {
@@ -62,7 +70,7 @@ export default function SettingsPage() {
   const isDesktop = bp === "desktop";
   const { apiFetch, session } = useAuth();
 
-  const [activeSection, setActiveSection] = useState<"profile" | "lab" | "notifications">("profile");
+  const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications">("profile");
 
   const emptyLab: LabInfo = { labName: "", address: "", city: "", state: "", zip: "", phone: "", timezone: "America/Los_Angeles", operatingHoursStart: "07:00", operatingHoursEnd: "18:00" };
   const [lab, setLab]           = useState<LabInfo>(emptyLab);
@@ -75,6 +83,15 @@ export default function SettingsPage() {
 
   const [notifs, setNotifs] = useState(DEFAULT_NOTIFS);
   const [notifSaved, setNotifSaved] = useState(false);
+
+  const [team, setTeam]           = useState<TeamMember[]>([]);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  async function loadTeam() {
+    const res = await apiFetch<{ data: TeamMember[] | null; error: { message: string } | null }>("/api/team");
+    if (res.data) setTeam(res.data);
+  }
 
   // ── Load settings ────────────────────────────────────────────────────────────
 
@@ -98,7 +115,24 @@ export default function SettingsPage() {
       setNotifs({ ...DEFAULT_NOTIFS, ...res.data.notifications });
       setProfile(res.data.profile);
     });
+    loadTeam();
   }, [session]);
+
+  // ── Team handlers ───────────────────────────────────────────────────────────
+
+  async function handleInvite(data: { name: string; email: string }) {
+    setInviteError(null);
+    const res = await apiFetch<{ data: TeamMember | null; error: { message: string } | null }>("/api/team", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    if (!res.data) {
+      setInviteError(res.error?.message ?? "Something went wrong. Please try again.");
+      return;
+    }
+    setTeam((prev) => [...prev, res.data!]);
+    setShowInvite(false);
+  }
 
   // ── Lab handlers ────────────────────────────────────────────────────────────
 
@@ -148,7 +182,7 @@ export default function SettingsPage() {
 
   // ── Layout ──────────────────────────────────────────────────────────────────
 
-  const sections: { key: "profile" | "lab" | "notifications"; label: string; icon: React.ReactNode }[] = [
+  const sections: { key: "profile" | "lab" | "team" | "notifications"; label: string; icon: React.ReactNode }[] = [
     {
       key: "profile",
       label: "Profile",
@@ -167,6 +201,18 @@ export default function SettingsPage() {
           <rect x="1.5" y="5.5" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.25" fill="none" />
           <path d="M5 5.5V4a3 3 0 016 0v1.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
           <path d="M8 9v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      key: "team",
+      label: "Team",
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <circle cx="5.5" cy="5" r="2.25" stroke="currentColor" strokeWidth="1.25" fill="none" />
+          <path d="M1.5 13.5c0-2.485 1.79-3.75 4-3.75s4 1.265 4 3.75" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
+          <path d="M10.5 3.1c1.02.26 1.75 1.1 1.75 2.15s-.73 1.89-1.75 2.15" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
+          <path d="M10 9.9c1.7.28 2.9 1.42 2.9 3.6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
         </svg>
       ),
     },
@@ -474,6 +520,79 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* ── Team ── */}
+          {activeSection === "team" && (
+            <div style={{
+              background: "#FFFFFF",
+              border: "1px solid rgba(0,0,0,0.08)",
+              borderRadius: 12,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+              overflow: "hidden",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid rgba(0,0,0,0.07)", background: "#FAFAFA" }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>Team</div>
+                  <div style={{ fontSize: 11.5, color: "#5F5E5A", marginTop: 1 }}>Dispatchers with access to this lab</div>
+                </div>
+                {profile.role === "owner" && (
+                  <button
+                    onClick={() => setShowInvite(true)}
+                    style={{
+                      background: "#185FA5", color: "white", border: "none", borderRadius: 7,
+                      padding: "6px 14px", fontSize: 12.5, fontWeight: 500, cursor: "pointer",
+                    }}
+                  >
+                    + Invite Teammate
+                  </button>
+                )}
+              </div>
+              <div>
+                {team.map((m, i) => (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: isMobile ? "12px 16px" : "12px 24px",
+                      borderBottom: i === team.length - 1 ? "none" : "1px solid rgba(0,0,0,0.06)",
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: "50%", background: "#185FA5",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 13, fontWeight: 600, color: "white", flexShrink: 0,
+                    }}>
+                      {m.name.slice(0, 2).toUpperCase() || "??"}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1a1a1a", display: "flex", alignItems: "center", gap: 6 }}>
+                        {m.name}
+                        {m.email === profile.email && (
+                          <span style={{ fontSize: 10.5, fontWeight: 500, color: "#5F5E5A", background: "rgba(95,94,90,0.10)", padding: "1px 6px", borderRadius: 999 }}>
+                            You
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#5F5E5A", marginTop: 1 }}>{m.email}</div>
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 500, textTransform: "capitalize",
+                      color: m.labRole === "owner" ? "#854F0B" : "#185FA5",
+                      background: m.labRole === "owner" ? "rgba(133,79,11,0.10)" : "rgba(24,95,165,0.10)",
+                      padding: "3px 9px", borderRadius: 999,
+                    }}>
+                      {m.labRole}
+                    </span>
+                  </div>
+                ))}
+                {team.length === 0 && (
+                  <div style={{ padding: "32px 20px", textAlign: "center", fontSize: 13, color: "#5F5E5A" }}>
+                    No teammates yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ── Notifications ── */}
           {activeSection === "notifications" && (
             <div style={{
@@ -566,11 +685,180 @@ export default function SettingsPage() {
 
         </div>
       </div>
+
+      {/* Modals */}
+      {showInvite && (
+        <InviteTeammateModal
+          error={inviteError}
+          onClose={() => { setShowInvite(false); setInviteError(null); }}
+          onSave={handleInvite}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function InviteTeammateModal({
+  error,
+  onClose,
+  onSave,
+}: {
+  error: string | null;
+  onClose: () => void;
+  onSave: (data: { name: string; email: string }) => void;
+}) {
+  const [name, setName]     = useState("");
+  const [email, setEmail]   = useState("");
+  const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string }>({});
+
+  const validate = () => {
+    const e: typeof fieldErrors = {};
+    if (!name.trim()) e.name = "Name is required.";
+    if (!email.trim()) e.email = "Email is required.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = "Enter a valid email address.";
+    return e;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const e2 = validate();
+    if (Object.keys(e2).length) { setFieldErrors(e2); return; }
+    setSaving(true);
+    await onSave({ name: name.trim(), email: email.trim() });
+    setSaving(false);
+  };
+
+  const handleBackdrop = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return (
+    <div
+      onClick={handleBackdrop}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(2px)",
+      }}
+    >
+      <div style={{
+        background: "#fff", borderRadius: 14, width: "100%", maxWidth: 420,
+        margin: "0 16px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", overflow: "hidden",
+      }}>
+        <div style={{
+          padding: "18px 20px 14px", borderBottom: "1px solid rgba(0,0,0,0.07)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>
+              Invite Teammate
+            </h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
+              An invite email will be sent so they can log in as a dispatcher.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "#9a9a9a", padding: 4, borderRadius: 6,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          {error && (
+            <div style={{ background: "rgba(163,45,45,0.07)", border: "1px solid rgba(163,45,45,0.2)", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#A32D2D" }}>
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: "#3a3a3a", display: "block", marginBottom: 5 }}>
+              Full Name <span style={{ color: "#A32D2D" }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => { setName(e.target.value); setFieldErrors((prev) => ({ ...prev, name: undefined })); }}
+              placeholder="e.g. Jordan Lee"
+              style={{
+                width: "100%", padding: "8px 11px", fontSize: 13.5,
+                border: `1px solid ${fieldErrors.name ? "#A32D2D" : "rgba(0,0,0,0.14)"}`,
+                borderRadius: 8, outline: "none", color: "#1a1a1a",
+                background: fieldErrors.name ? "rgba(163,45,45,0.04)" : "#fff",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#185FA5"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(24,95,165,0.10)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = fieldErrors.name ? "#A32D2D" : "rgba(0,0,0,0.14)"; e.currentTarget.style.boxShadow = "none"; }}
+            />
+            {fieldErrors.name && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "#A32D2D" }}>{fieldErrors.name}</p>}
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: "#3a3a3a", display: "block", marginBottom: 5 }}>
+              Email <span style={{ color: "#A32D2D" }}>*</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setFieldErrors((prev) => ({ ...prev, email: undefined })); }}
+              placeholder="teammate@example.com"
+              style={{
+                width: "100%", padding: "8px 11px", fontSize: 13.5,
+                border: `1px solid ${fieldErrors.email ? "#A32D2D" : "rgba(0,0,0,0.14)"}`,
+                borderRadius: 8, outline: "none", color: "#1a1a1a",
+                background: fieldErrors.email ? "rgba(163,45,45,0.04)" : "#fff",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#185FA5"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(24,95,165,0.10)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = fieldErrors.email ? "#A32D2D" : "rgba(0,0,0,0.14)"; e.currentTarget.style.boxShadow = "none"; }}
+            />
+            {fieldErrors.email && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "#A32D2D" }}>{fieldErrors.email}</p>}
+            <p style={{ margin: "5px 0 0", fontSize: 11.5, color: "#5F5E5A" }}>
+              They'll be invited as a dispatcher — able to manage jobs, drivers, and offices.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                flex: 1, padding: "9px", fontSize: 13.5, fontWeight: 500,
+                border: "1px solid rgba(0,0,0,0.13)", borderRadius: 8,
+                background: "#fff", color: "#3a3a3a", cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                flex: 2, padding: "9px", fontSize: 13.5, fontWeight: 600,
+                border: "none", borderRadius: 8,
+                background: "#185FA5", color: "white", cursor: saving ? "default" : "pointer",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? "Sending Invite…" : "Send Invite"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
