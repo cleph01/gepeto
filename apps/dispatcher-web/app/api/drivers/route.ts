@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getDashboardUrl } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
       email.trim().toLowerCase(),
       {
         data: { name: name.trim() }, // stored in user_metadata (display purposes)
+        redirectTo: `${getDashboardUrl()}/accept-invite`,
       }
     );
 

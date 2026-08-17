@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import type { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getDashboardUrl } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -73,7 +74,9 @@ export async function POST(request: NextRequest) {
     // 2. Invite the user via Supabase Auth — sends the invite email with a
     //    password-setup link. The user is created immediately (before acceptance).
     const { data: inviteData, error: inviteError } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(email);
+      await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${getDashboardUrl()}/accept-invite`,
+      });
 
     if (inviteError) throw inviteError;
     const userId = inviteData.user.id;

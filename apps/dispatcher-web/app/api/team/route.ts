@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getDashboardUrl } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     //    is NOT NULL, so unlike drivers (nullable user_id) we can't insert-then-backfill.
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       normalizedEmail,
-      { data: { name: name.trim() } }
+      { data: { name: name.trim() }, redirectTo: `${getDashboardUrl()}/accept-invite` }
     );
 
     if (authError || !authData?.user) {

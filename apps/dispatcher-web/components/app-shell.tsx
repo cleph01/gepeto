@@ -8,6 +8,12 @@ import Sidebar from "@/components/sidebar";
 const isPublicRoute = (pathname: string) =>
   pathname === "/login" || pathname.startsWith("/signup");
 
+// /accept-invite is a special case: Supabase's invite link establishes a real
+// session (via detectSessionInUrl), so `session` is truthy there — but unlike
+// /login or /signup, being signed in is exactly the expected state and must
+// NOT bounce to /dashboard until the user has actually set a password.
+const isInviteRoute = (pathname: string) => pathname === "/accept-invite";
+
 function Guard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   const router = useRouter();
@@ -15,6 +21,7 @@ function Guard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
+    if (isInviteRoute(pathname)) return;
     if (!session && !isPublicRoute(pathname)) {
       router.replace("/login");
     }
@@ -37,7 +44,7 @@ function Guard({ children }: { children: React.ReactNode }) {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isPublic = isPublicRoute(pathname);
+  const isPublic = isPublicRoute(pathname) || isInviteRoute(pathname);
 
   return (
     <AuthProvider>
