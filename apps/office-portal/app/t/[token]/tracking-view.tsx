@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import JobMap from "./job-map";
+import MessageThread from "./message-thread";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -175,7 +177,7 @@ export default function TrackingView({
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {jobs.map((job) => (
-                <JobCard key={job.id} job={job} />
+                <JobCard key={job.id} job={job} token={token} />
               ))}
             </div>
           </section>
@@ -264,7 +266,7 @@ export default function TrackingView({
 
 // ── Job card ──────────────────────────────────────────────────────────────────
 
-function JobCard({ job }: { job: TrackingJob }) {
+function JobCard({ job, token }: { job: TrackingJob; token: string }) {
   const colors = STATUS_COLOR[job.status];
   const currentStep = stepIndex(job.status);
 
@@ -378,6 +380,19 @@ function JobCard({ job }: { job: TrackingJob }) {
           )}
         </div>
       )}
+
+      {/* Live map */}
+      {job.driverName && job.driverLocation && (
+        <JobMap
+          driverName={job.driverName}
+          driverLocation={job.driverLocation}
+          deliveryLat={job.deliveryLat}
+          deliveryLng={job.deliveryLng}
+        />
+      )}
+
+      {/* Messages */}
+      <MessageThread token={token} jobId={job.id} />
 
       {/* Footer meta */}
       <div style={{
