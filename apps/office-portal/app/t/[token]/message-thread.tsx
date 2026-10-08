@@ -70,6 +70,33 @@ function RoleIcon({ role, color, size = 10 }: { role: SenderRole; color: string;
   );
 }
 
+function ChatIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path
+        d="M2 3.5C2 2.67 2.67 2 3.5 2h9c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5H7l-3 3v-3H3.5C2.67 11 2 10.33 2 9.5v-6Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+    >
+      <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function RoleLegend() {
   const roles: SenderRole[] = ["office", "dispatcher", "driver"];
   return (
@@ -104,9 +131,14 @@ export default function MessageThread({ token, jobId }: { token: string; jobId: 
     }
   }, [token, jobId]);
 
+  // Load once on mount regardless of open state, so the collapsed toggle
+  // button can show a message count badge without polling every card.
+  useEffect(() => {
+    load();
+  }, [load]);
+
   useEffect(() => {
     if (!open) return;
-    load();
     const id = setInterval(load, 10_000);
     return () => clearInterval(id);
   }, [open, load]);
@@ -141,20 +173,36 @@ export default function MessageThread({ token, jobId }: { token: string; jobId: 
         onClick={() => setOpen((v) => !v)}
         style={{
           width: "100%",
-          padding: "10px 16px",
-          background: "none",
+          padding: "12px 16px",
+          background: open ? "#EBF2FA" : "#FAFAFA",
           border: "none",
           textAlign: "left",
-          fontSize: 12.5,
+          fontSize: 13.5,
           color: "#185FA5",
-          fontWeight: 500,
+          fontWeight: 600,
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: 9,
+          transition: "background 0.15s",
         }}
       >
-        {open ? "▾" : "▸"} Message dispatch &amp; driver
+        <span style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: 28, height: 28, borderRadius: "50%", background: "#185FA5", color: "white", flexShrink: 0,
+        }}>
+          <ChatIcon size={15} />
+        </span>
+        <span style={{ flex: 1 }}>Message dispatch &amp; driver</span>
+        {messages.length > 0 && (
+          <span style={{
+            background: "#185FA5", color: "white", fontSize: 11, fontWeight: 700,
+            borderRadius: 10, padding: "1px 7px", minWidth: 18, textAlign: "center", flexShrink: 0,
+          }}>
+            {messages.length}
+          </span>
+        )}
+        <ChevronIcon open={open} />
       </button>
 
       {open && (
@@ -222,6 +270,7 @@ export default function MessageThread({ token, jobId }: { token: string; jobId: 
                 borderRadius: 8,
                 padding: "8px 10px",
                 fontSize: 13,
+                color: "#1a1a1a",
                 outline: "none",
               }}
             />
