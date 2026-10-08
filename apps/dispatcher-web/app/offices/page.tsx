@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
+import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,15 +14,6 @@ interface Office {
   phone: string;
   contactName: string;
   trackingToken: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const TRACKING_BASE =
-  process.env.NEXT_PUBLIC_TRACKING_BASE_URL ?? "http://localhost:3001/t";
-
-function trackingUrl(token: string) {
-  return `${TRACKING_BASE}/${token}`;
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -137,9 +129,11 @@ function OfficeCard({ office, onEdit }: { office: Office; onEdit: () => void }) 
   const url = trackingUrl(office.trackingToken);
 
   function copyLink() {
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    copyToClipboard(url).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     });
   }
 

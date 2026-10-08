@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import type { ApiResponse } from "@gepeto/types";
+import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface Job {
   id: string;
   caseId: string;
   office: string;
+  officeTrackingToken: string | null;
   deliveryAddress: string;
   driver: string | null;
   priority: JobPriority;
@@ -656,7 +658,15 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
 
 // ─── Job Detail Row ───────────────────────────────────────────────────────────
 
-function JobDetailRow({ job }: { job: Job }) {
+function JobDetailRow({
+  job,
+  onCopyLink,
+  linkCopied,
+}: {
+  job: Job;
+  onCopyLink: () => void;
+  linkCopied: boolean;
+}) {
   return (
     <div
       style={{
@@ -664,7 +674,7 @@ function JobDetailRow({ job }: { job: Job }) {
         background: "#FAFBFD",
         borderBottom: "1px solid rgba(0,0,0,0.05)",
         display: "grid",
-        gridTemplateColumns: "1fr 1fr 1fr",
+        gridTemplateColumns: "1fr 1fr 1fr 1.4fr",
         gap: 16,
       }}
     >
@@ -695,6 +705,34 @@ function JobDetailRow({ job }: { job: Job }) {
           </div>
         )}
       </div>
+      {job.officeTrackingToken && (
+        <div>
+          <p style={{ margin: "0 0 4px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Office Tracking Link
+          </p>
+          <div style={{ display: "flex", gap: 6 }}>
+            <div style={{
+              flex: 1, background: "#F0F4F8", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 6,
+              padding: "4px 8px", fontSize: 11, color: "#5F5E5A", overflow: "hidden",
+              textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace",
+            }}>
+              {trackingUrl(job.officeTrackingToken)}
+            </div>
+            <button
+              onClick={onCopyLink}
+              title="Copy office tracking link"
+              style={{
+                background: linkCopied ? "#EBF5E9" : "#185FA5",
+                color: linkCopied ? "#3B6D11" : "white",
+                border: "none", borderRadius: 6, padding: "4px 10px",
+                fontSize: 11, fontWeight: 500, cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              {linkCopied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -720,6 +758,8 @@ function JobRow({
   onToggleExpand,
   onUpdateStatus,
   onOpenMessages,
+  onCopyLink,
+  linkCopied,
 }: {
   job: Job;
   bp: "tablet" | "desktop";
@@ -728,6 +768,8 @@ function JobRow({
   onToggleExpand: () => void;
   onUpdateStatus: () => void;
   onOpenMessages: () => void;
+  onCopyLink: () => void;
+  linkCopied: boolean;
 }) {
   const status = STATUS_CONFIG[job.status];
   const cols = bp === "tablet"
@@ -827,14 +869,26 @@ function JobRow({
       </div>
 
       {/* Expanded detail */}
-      {expanded && <JobDetailRow job={job} />}
+      {expanded && <JobDetailRow job={job} onCopyLink={onCopyLink} linkCopied={linkCopied} />}
     </>
   );
 }
 
 // ─── Mobile Job Card ──────────────────────────────────────────────────────────
 
-function JobCard({ job, onUpdateStatus, onOpenMessages }: { job: Job; onUpdateStatus: () => void; onOpenMessages: () => void }) {
+function JobCard({
+  job,
+  onUpdateStatus,
+  onOpenMessages,
+  onCopyLink,
+  linkCopied,
+}: {
+  job: Job;
+  onUpdateStatus: () => void;
+  onOpenMessages: () => void;
+  onCopyLink: () => void;
+  linkCopied: boolean;
+}) {
   const status = STATUS_CONFIG[job.status];
   return (
     <div
@@ -869,8 +923,22 @@ function JobCard({ job, onUpdateStatus, onOpenMessages }: { job: Job; onUpdateSt
         <span style={{ fontSize: 11.5, fontWeight: 500, background: status.bg, color: status.color, borderRadius: 20, padding: "3px 10px" }}>
           {status.label}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <span style={{ fontSize: 11, color: "#9a9a9a" }}>{job.updatedAt}</span>
+          {job.officeTrackingToken && (
+            <ActionButton onClick={onCopyLink} title="Copy office tracking link">
+              {linkCopied ? (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2.5 6.5l2.5 2.5L9.5 3.5" stroke="#3B6D11" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M5 7L7 5M4.5 8.5L3 10a2 2 0 01-2.83-2.83L1.5 5.83M7.5 3.5L9 2a2 2 0 012.83 2.83L10.5 6.17" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+              <span style={{ fontSize: 11.5, color: linkCopied ? "#3B6D11" : undefined }}>{linkCopied ? "Copied" : "Copy Link"}</span>
+            </ActionButton>
+          )}
           <ActionButton onClick={onOpenMessages} title="Messages">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M1 2.5h10v6H4.5L1 11V2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
@@ -893,7 +961,7 @@ function JobCard({ job, onUpdateStatus, onOpenMessages }: { job: Job; onUpdateSt
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type ApiJobFull = {
-  id: string; caseId: string; officeName: string; driverName: string | null;
+  id: string; caseId: string; officeName: string; officeTrackingToken: string | null; driverName: string | null;
   priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
   deliveryAddress: string; createdAt: string; updatedAt: string;
 };
@@ -903,6 +971,7 @@ function mapJob(j: ApiJobFull): Job {
     id: j.id,
     caseId: j.caseId,
     office: j.officeName,
+    officeTrackingToken: j.officeTrackingToken,
     deliveryAddress: j.deliveryAddress,
     driver: j.driverName,
     priority: j.priority,
@@ -925,6 +994,16 @@ export default function JobsPage() {
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
+  const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+
+  const onCopyTrackingLink = async (job: Job) => {
+    if (!job.officeTrackingToken) return;
+    const ok = await copyToClipboard(trackingUrl(job.officeTrackingToken));
+    if (ok) {
+      setCopiedJobId(job.id);
+      setTimeout(() => setCopiedJobId((id) => (id === job.id ? null : id)), 2000);
+    }
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -1110,6 +1189,8 @@ export default function JobsPage() {
                   job={job}
                   onUpdateStatus={() => setStatusJob(job)}
                   onOpenMessages={() => setMessagesJob(job)}
+                  onCopyLink={() => onCopyTrackingLink(job)}
+                  linkCopied={copiedJobId === job.id}
                 />
               ))}
             </div>
@@ -1124,6 +1205,8 @@ export default function JobsPage() {
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}
                 onUpdateStatus={() => setStatusJob(job)}
                 onOpenMessages={() => setMessagesJob(job)}
+                onCopyLink={() => onCopyTrackingLink(job)}
+                linkCopied={copiedJobId === job.id}
               />
             ))
           )}

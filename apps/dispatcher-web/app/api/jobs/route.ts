@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
       .select(
         "jobs.*",
         "offices.name as office_name",
+        "offices.tracking_token as office_tracking_token",
         "drivers.name as driver_name"
       );
 
