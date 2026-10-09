@@ -5,6 +5,7 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import type { ApiResponse } from "@gepeto/types";
 import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
+import { UnreadBadge, useMessageNotifications } from "@/context/message-notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -537,6 +538,7 @@ function MessageRoleLegend() {
 
 function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { apiFetch } = useAuth();
+  const { markRead, setActiveThread } = useMessageNotifications();
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -553,6 +555,17 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
+
+  useEffect(() => {
+    setActiveThread(job.id);
+    return () => setActiveThread(null);
+  }, [job.id, setActiveThread]);
+
+  // Everything rendered here has been seen — mark read up to the newest one.
+  const newestAt = messages.length > 0 ? messages[messages.length - 1].createdAt : null;
+  useEffect(() => {
+    if (newestAt) markRead(job.id, newestAt);
+  }, [job.id, newestAt, markRead]);
 
   const handleSend = async () => {
     const body = draft.trim();
@@ -760,6 +773,7 @@ function JobRow({
   onOpenMessages,
   onCopyLink,
   linkCopied,
+  unread,
 }: {
   job: Job;
   bp: "tablet" | "desktop";
@@ -770,6 +784,7 @@ function JobRow({
   onOpenMessages: () => void;
   onCopyLink: () => void;
   linkCopied: boolean;
+  unread: number;
 }) {
   const status = STATUS_CONFIG[job.status];
   const cols = bp === "tablet"
@@ -852,11 +867,12 @@ function JobRow({
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 5, justifyContent: "flex-end" }}>
-          <ActionButton onClick={onOpenMessages} title="Messages">
+          <ActionButton onClick={onOpenMessages} title={unread > 0 ? `Messages (${unread} unread)` : "Messages"}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M1 2.5h10v6H4.5L1 11V2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
             <span style={{ fontSize: 11.5 }}>Messages</span>
+            <UnreadBadge count={unread} style={{ position: "absolute", top: -7, right: -7 }} />
           </ActionButton>
           <ActionButton onClick={onUpdateStatus} title="Update status">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -882,12 +898,14 @@ function JobCard({
   onOpenMessages,
   onCopyLink,
   linkCopied,
+  unread,
 }: {
   job: Job;
   onUpdateStatus: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
   linkCopied: boolean;
+  unread: number;
 }) {
   const status = STATUS_CONFIG[job.status];
   return (
@@ -939,11 +957,12 @@ function JobCard({
               <span style={{ fontSize: 11.5, color: linkCopied ? "#3B6D11" : undefined }}>{linkCopied ? "Copied" : "Copy Link"}</span>
             </ActionButton>
           )}
-          <ActionButton onClick={onOpenMessages} title="Messages">
+          <ActionButton onClick={onOpenMessages} title={unread > 0 ? `Messages (${unread} unread)` : "Messages"}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M1 2.5h10v6H4.5L1 11V2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
             <span style={{ fontSize: 11.5 }}>Messages</span>
+            <UnreadBadge count={unread} style={{ position: "absolute", top: -7, right: -7 }} />
           </ActionButton>
           <ActionButton onClick={onUpdateStatus} title="Update status">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -995,6 +1014,15 @@ export default function JobsPage() {
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+  const { unreadByJob, pendingOpenJobId, clearPendingOpen } = useMessageNotifications();
+
+  // A message toast was clicked — show that thread once the job list has it.
+  const toastJob = pendingOpenJobId ? jobs.find((j) => j.id === pendingOpenJobId) ?? null : null;
+  const openMessagesJob = toastJob ?? messagesJob;
+  const closeMessages = () => {
+    setMessagesJob(null);
+    clearPendingOpen();
+  };
 
   const onCopyTrackingLink = async (job: Job) => {
     if (!job.officeTrackingToken) return;
@@ -1188,9 +1216,10 @@ export default function JobsPage() {
                   key={job.id}
                   job={job}
                   onUpdateStatus={() => setStatusJob(job)}
-                  onOpenMessages={() => setMessagesJob(job)}
+                  onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                   onCopyLink={() => onCopyTrackingLink(job)}
                   linkCopied={copiedJobId === job.id}
+                  unread={unreadByJob[job.id] ?? 0}
                 />
               ))}
             </div>
@@ -1204,9 +1233,10 @@ export default function JobsPage() {
                 expanded={expandedId === job.id}
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}
                 onUpdateStatus={() => setStatusJob(job)}
-                onOpenMessages={() => setMessagesJob(job)}
+                onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                 onCopyLink={() => onCopyTrackingLink(job)}
                 linkCopied={copiedJobId === job.id}
+                unread={unreadByJob[job.id] ?? 0}
               />
             ))
           )}
@@ -1224,8 +1254,8 @@ export default function JobsPage() {
           onSave={(status) => onUpdateStatus(statusJob.id, status)}
         />
       )}
-      {messagesJob && (
-        <MessagesModal job={messagesJob} onClose={() => setMessagesJob(null)} />
+      {openMessagesJob && (
+        <MessagesModal job={openMessagesJob} onClose={closeMessages} />
       )}
     </div>
   );
@@ -1251,7 +1281,7 @@ function ActionButton({ children, onClick, title }: { children: React.ReactNode;
         background: "none", border: "1px solid rgba(0,0,0,0.10)",
         borderRadius: 6, padding: "4px 8px", cursor: "pointer",
         color: "#5F5E5A", display: "flex", alignItems: "center", gap: 4,
-        fontSize: 11.5, transition: "all 0.1s",
+        fontSize: 11.5, transition: "all 0.1s", position: "relative",
       }}
       onMouseEnter={(e) => { const el = e.currentTarget; el.style.background = "rgba(0,0,0,0.05)"; el.style.borderColor = "rgba(0,0,0,0.18)"; }}
       onMouseLeave={(e) => { const el = e.currentTarget; el.style.background = "none"; el.style.borderColor = "rgba(0,0,0,0.10)"; }}

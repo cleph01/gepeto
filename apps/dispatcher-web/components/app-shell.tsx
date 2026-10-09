@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/context/auth";
+import { MessageNotificationsProvider } from "@/context/message-notifications";
 import Sidebar from "@/components/sidebar";
 
 const isPublicRoute = (pathname: string) =>
@@ -52,10 +53,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {isPublic ? (
           <>{children}</>
         ) : (
-          <>
+          <MessageNotificationsProvider>
             <Sidebar />
             <main className="main-content">{children}</main>
-          </>
+          </MessageNotificationsProvider>
         )}
       </Guard>
     </AuthProvider>

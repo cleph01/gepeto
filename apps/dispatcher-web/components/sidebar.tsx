@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/auth";
+import { UnreadBadge, useMessageNotifications } from "@/context/message-notifications";
 
 const navLinks = [
   {
@@ -70,6 +71,7 @@ function NavContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
+  const { totalUnread } = useMessageNotifications();
   return (
     <>
       {/* Logo */}
@@ -121,6 +123,7 @@ function NavContent({
             >
               <span style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }}>{link.icon}</span>
               {link.label}
+              {link.href === "/jobs" && <UnreadBadge count={totalUnread} style={{ marginLeft: "auto", boxShadow: "none" }} />}
             </Link>
           );
         })}
@@ -171,6 +174,7 @@ function UserArea() {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { totalUnread } = useMessageNotifications();
   const [isMobile, setIsMobile] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -209,8 +213,12 @@ export default function Sidebar() {
               background: "none", border: "none", cursor: "pointer",
               padding: 6, borderRadius: 7, color: "#3a3a3a",
               display: "flex", alignItems: "center", justifyContent: "center",
+              position: "relative",
             }}
           >
+            {totalUnread > 0 && (
+              <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: "50%", background: "#D93025", boxShadow: "0 0 0 2px #fff" }} />
+            )}
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>

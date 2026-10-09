@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
+import { useMessageNotifications } from "@/context/message-notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export default function SettingsPage() {
   const isMobile = bp === "mobile";
   const isDesktop = bp === "desktop";
   const { apiFetch, session } = useAuth();
+  const { soundEnabled, setSoundEnabled } = useMessageNotifications();
 
   const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications">("profile");
 
@@ -595,6 +597,7 @@ export default function SettingsPage() {
 
           {/* ── Notifications ── */}
           {activeSection === "notifications" && (
+            <>
             <div style={{
               background: "#FFFFFF",
               border: "1px solid rgba(0,0,0,0.08)",
@@ -681,6 +684,28 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
+
+            {/* Per-device, saved to localStorage immediately — not part of the lab settings above */}
+            <div style={{
+              background: "#FFFFFF",
+              border: "1px solid rgba(0,0,0,0.08)",
+              borderRadius: 12,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+              overflow: "hidden",
+              marginTop: 16,
+            }}>
+              <SectionHeader title="Message Alerts" subtitle="Applies to this browser only — saved automatically" />
+              <div style={{ padding: isMobile ? "16px" : "20px 24px", display: "flex", flexDirection: "column", gap: 0 }}>
+                <ToggleRow
+                  label="Sound for new messages"
+                  description="Play a chime when an office or driver sends a message"
+                  checked={soundEnabled}
+                  onChange={setSoundEnabled}
+                  last
+                />
+              </div>
+            </div>
+            </>
           )}
 
         </div>
