@@ -124,7 +124,8 @@ npx knex seed:run   # optional seed data
 # Supabase
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+# Transaction pooler (port 6543), not 5432 — see docs/database-connections.md
+DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:6543/postgres
 
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
@@ -145,7 +146,8 @@ CRON_SECRET=
 ### `apps/office-portal/.env.local`
 
 ```env
-DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+# Transaction pooler (port 6543), not 5432 — see docs/database-connections.md
+DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:6543/postgres
 ```
 
 ---
@@ -159,6 +161,8 @@ DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.s
 | `driver-app` | Expo EAS Build → App Store / Play Store | — |
 
 Vercel Cron runs automatically on the `dispatcher-web` deployment — no additional configuration needed beyond setting `CRON_SECRET` in the project environment variables.
+
+**Database connections:** both Vercel apps must use the Supabase *transaction* pooler (port 6543) and `DB_POOL_MAX=1`, or serverless instances will exhaust the connection limit and every API route will 500. Migrations run separately against port 5432 (`packages/db/.env`). Details and troubleshooting: [`docs/database-connections.md`](docs/database-connections.md).
 
 ---
 
