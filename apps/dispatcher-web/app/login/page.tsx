@@ -24,6 +24,7 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: "100vh",
+        width: "100%",
         background: "#F8F9FB",
         display: "flex",
         alignItems: "center",
@@ -54,22 +55,20 @@ export default function LoginPage() {
         >
           <div
             style={{
-              width: 36,
-              height: 36,
-              background: "#185FA5",
-              borderRadius: 9,
+              width: 48,
+              height: 48,
+              background: "#fff",
+              border: "1px solid rgba(0,0,0,0.08)",
+              borderRadius: 11,
+              padding: 5,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
-              <path
-                d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z"
-                fill="white"
-              />
-            </svg>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/gepeto-icon.png" alt="Gepeto" style={{ width: "100%", height: "100%" }} />
           </div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>
