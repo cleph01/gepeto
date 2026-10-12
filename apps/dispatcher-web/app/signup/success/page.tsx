@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function SignupSuccessPage() {
   return (
-    <div style={{ minHeight: "100vh", background: "#F8F9FB", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div style={{ minHeight: "100vh", width: "100%", background: "#F8F9FB", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#fff", borderRadius: 14, border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", width: "100%", maxWidth: 420, padding: "44px 32px 40px", textAlign: "center" }}>
 
         {/* Check icon */}
