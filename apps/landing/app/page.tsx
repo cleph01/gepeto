@@ -47,6 +47,15 @@ function useReveal() {
 // Icons
 // ─────────────────────────────────────────────────────────────
 
+function ClockIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <circle cx="11" cy="11" r="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11 6v5l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function EyeOffIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -207,96 +216,134 @@ function BuildingIcon() {
 // Nav
 // ─────────────────────────────────────────────────────────────
 
-function Nav({ scrolled }: { scrolled: boolean }) {
-  return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? "bg-white/95 backdrop-blur-md shadow-[0_1px_0_rgba(0,0,0,0.08)]"
-          : "bg-transparent"
-      }`}
-    >
-      <div className="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <a href="#" className="flex items-center gap-2.5 shrink-0">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: "#185FA5" }}
-          >
-            <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
-              <path
-                d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z"
-                fill="white"
-              />
-            </svg>
-          </div>
-          <span
-            className={`text-lg font-bold tracking-tight transition-colors duration-300 ${
-              scrolled ? "text-gray-900" : "text-white"
-            }`}
-          >
-            Gepeto
-          </span>
-        </a>
+const NAV_LINKS: [string, string][] = [
+  ["#problem", "Problem"],
+  ["#how-it-works", "How it works"],
+  ["#features", "Features"],
+];
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-1">
-          {(
-            [
-              ["#problem", "Problem"],
-              ["#how-it-works", "How it works"],
-              ["#features", "Features"],
-            ] as [string, string][]
-          ).map(([href, label]) => (
+function Nav({ scrolled }: { scrolled: boolean }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close menu on scroll
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = () => setMenuOpen(false);
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, [menuOpen]);
+
+  const headerBg = scrolled || menuOpen
+    ? "bg-white/95 backdrop-blur-md shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+    : "bg-transparent";
+
+  return (
+    <>
+      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${headerBg}`}>
+        <div className="max-w-5xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+          {/* Logo */}
+          <a href="#" className="flex items-center gap-2.5 shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-white p-1 shrink-0 flex items-center justify-center">
+              <Image src="/gepeto-icon.png" alt="Gepeto" width={36} height={36} className="w-full h-full" />
+            </div>
+            <span
+              className={`text-lg font-bold tracking-tight transition-colors duration-300 ${
+                scrolled || menuOpen ? "text-gray-900" : "text-white"
+              }`}
+            >
+              Gepeto
+            </span>
+          </a>
+
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-1">
+            {NAV_LINKS.map(([href, label]) => (
+              <a
+                key={href}
+                href={href}
+                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  scrolled
+                    ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                    : "text-white/65 hover:text-white hover:bg-white/8"
+                }`}
+              >
+                {label}
+              </a>
+            ))}
             <a
-              key={href}
-              href={href}
-              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+              href={`${APP_URL}/login`}
+              className={`ml-1 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 scrolled
                   ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                   : "text-white/65 hover:text-white hover:bg-white/8"
               }`}
             >
-              {label}
+              Log In
             </a>
-          ))}
-          <a
-            href={`${APP_URL}/login`}
-            className={`ml-1 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-              scrolled
-                ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                : "text-white/65 hover:text-white hover:bg-white/8"
-            }`}
-          >
-            Log In
-          </a>
-          <a
-            href={`${APP_URL}/signup`}
-            className="ml-2 px-4 py-2 bg-blue hover:bg-blue-dark text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            Get Started
-          </a>
-        </nav>
+            <a
+              href={`${APP_URL}/signup`}
+              className="ml-2 px-4 py-2 bg-blue hover:bg-blue-dark text-white text-sm font-semibold rounded-lg transition-colors"
+            >
+              Get Started
+            </a>
+          </nav>
 
-        {/* Mobile CTAs */}
-        <div className="md:hidden flex items-center gap-2">
-          <a
-            href={`${APP_URL}/login`}
-            className={`px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${
-              scrolled ? "text-gray-600" : "text-white/65"
-            }`}
-          >
-            Log In
-          </a>
-          <a
-            href={`${APP_URL}/signup`}
-            className="px-4 py-2 bg-blue text-white text-sm font-semibold rounded-lg"
-          >
-            Get Started
-          </a>
+          {/* Mobile: Get Started + hamburger */}
+          <div className="md:hidden flex items-center gap-2">
+            <a
+              href={`${APP_URL}/signup`}
+              className="px-4 py-2 bg-blue text-white text-sm font-semibold rounded-lg"
+            >
+              Get Started
+            </a>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              className={`p-2 rounded-lg transition-colors ${
+                scrolled || menuOpen
+                  ? "text-gray-700 hover:bg-gray-100"
+                  : "text-white hover:bg-white/10"
+              }`}
+            >
+              {menuOpen ? (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M4 4l12 12M16 4L4 16" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile menu panel */}
+      {menuOpen && (
+        <div className="md:hidden fixed top-16 left-0 right-0 z-40 bg-white border-b border-gray-100 shadow-lg">
+          <nav className="max-w-5xl mx-auto px-5 py-3 flex flex-col">
+            {NAV_LINKS.map(([href, label]) => (
+              <a
+                key={href}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                className="py-3.5 text-base font-medium text-gray-700 border-b border-gray-100 last:border-0 hover:text-blue transition-colors"
+              >
+                {label}
+              </a>
+            ))}
+            <a
+              href={`${APP_URL}/login`}
+              onClick={() => setMenuOpen(false)}
+              className="mt-3 mb-1 py-3 text-center text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              Log In
+            </a>
+          </nav>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -411,8 +458,8 @@ const problems = [
   },
   {
     icon: <ClipboardXIcon />,
-    title: "No paper trail",
-    body: "When a case goes missing or arrives damaged, there's no signature, no photo, no timestamp. Nothing to fall back on.",
+    title: "No proof. No answers. Lost time.",
+    body: "No signature, no photo, no timestamp. When a case goes missing or arrives late, your staff burns time calling drivers and digging through texts just to piece together what happened — instead of finding answers in seconds.",
   },
 ];
 
@@ -473,7 +520,7 @@ const steps = [
     number: "03",
     role: "Dental Office",
     title: "Track in real time",
-    body: "The office gets a magic link. They watch their delivery live on a map — no app, no login, no calls to your lab.",
+    body: "The office gets a magic link. They watch their delivery live on a map — no app, no login, no calls to your lab. Have a question? They can message the dispatcher directly from the same view.",
   },
 ];
 
@@ -568,6 +615,11 @@ const features = [
     title: "Multi-Lab Ready",
     body: "Built multi-tenant from day one. Run multiple lab locations from a single Gepeto account.",
   },
+  {
+    icon: <ChatIcon />,
+    title: "Built-In Messaging",
+    body: "Dispatchers and offices communicate directly inside Gepeto — no side channels, no lost texts. Every message is tied to the job.",
+  },
 ];
 
 function FeaturesSection() {
@@ -589,7 +641,7 @@ function FeaturesSection() {
           {features.map((f, i) => (
             <div
               key={i}
-              className={`reveal reveal-delay-${i + 1} group p-6 rounded-2xl border border-gray-100 hover:border-blue/20 hover:shadow-[0_4px_24px_rgba(24,95,165,0.08)] transition-all duration-200`}
+              className={`reveal reveal-delay-${(i % 6) + 1} group p-6 rounded-2xl border border-gray-100 hover:border-blue/20 hover:shadow-[0_4px_24px_rgba(24,95,165,0.08)] transition-all duration-200${i === features.length - 1 && features.length % 3 === 1 ? " lg:col-start-2" : ""}`}
             >
               <div className="w-10 h-10 rounded-xl bg-blue-light text-blue flex items-center justify-center mb-4 group-hover:bg-blue group-hover:text-white transition-colors duration-200">
                 {f.icon}
@@ -679,14 +731,16 @@ function Footer() {
     >
       <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
-          <Image
-            src="/gepeto-logo.png"
-            alt=""
-            width={1024}
-            height={1024}
-            style={{ width: "auto" }}
-            className="h-8 brightness-0 invert opacity-40"
-          />
+          <div className="h-11 w-11 rounded-xl bg-white p-1 flex items-center justify-center shrink-0">
+            <Image
+              src="/gepeto-icon.png"
+              alt=""
+              width={128}
+              height={128}
+              style={{ width: "auto" }}
+              className="h-full w-full opacity-80"
+            />
+          </div>
           <span className="text-sm font-semibold text-white/40 tracking-tight">
             Gepeto
           </span>
@@ -701,10 +755,10 @@ function Footer() {
           >
             Contact
           </a>
-          <a href="#" className="hover:text-white/50 transition-colors">
+          <a href="/privacy" className="hover:text-white/50 transition-colors">
             Privacy
           </a>
-          <a href="#" className="hover:text-white/50 transition-colors">
+          <a href="/terms" className="hover:text-white/50 transition-colors">
             Terms
           </a>
         </div>

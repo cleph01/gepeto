@@ -1,11 +1,16 @@
 import { ImageResponse } from "next/og";
+import { readFileSync } from "fs";
+import { join } from "path";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const alt = "Gepeto — Dental Lab Delivery, Simplified";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function OGImage() {
+  const iconData = readFileSync(join(process.cwd(), "public/gepeto-icon.png"));
+  const iconSrc = `data:image/png;base64,${iconData.toString("base64")}`;
+
   return new ImageResponse(
     (
       <div
@@ -32,7 +37,7 @@ export default function OGImage() {
           }}
         />
 
-        {/* Logo mark + wordmark */}
+        {/* Orbital icon + wordmark */}
         <div
           style={{
             display: "flex",
@@ -41,24 +46,20 @@ export default function OGImage() {
             marginBottom: 40,
           }}
         >
-          {/* Tooth icon — matches dispatcher-web */}
           <div
             style={{
-              width: 72,
-              height: 72,
-              background: "#185FA5",
-              borderRadius: 18,
+              width: 88,
+              height: 88,
+              background: "white",
+              borderRadius: 20,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              padding: 8,
             }}
           >
-            <svg width="42" height="42" viewBox="0 0 18 18" fill="none">
-              <path
-                d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z"
-                fill="white"
-              />
-            </svg>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={iconSrc} width={72} height={72} alt="" style={{ objectFit: "contain" }} />
           </div>
           <span
             style={{
@@ -84,10 +85,14 @@ export default function OGImage() {
             lineHeight: 1.2,
             maxWidth: 780,
             marginBottom: 20,
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            gap: "0 10px",
           }}
         >
-          Dental lab logistics,{" "}
-          <span style={{ color: "#185FA5" }}>finally solved.</span>
+          <span>Dental lab logistics,</span>
+          <span style={{ color: "#60A5FA" }}>finally solved.</span>
         </div>
 
         {/* Sub-copy */}
@@ -133,7 +138,7 @@ export default function OGImage() {
               letterSpacing: "0.02em",
             }}
           >
-            gepeto.com
+            gepeto.delivery
           </span>
         </div>
       </div>

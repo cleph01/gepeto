@@ -9,6 +9,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "32x32 48x48" },
+    ],
+    apple: "/apple-icon.png",
+  },
   title: "Gepeto — Dental Lab Delivery, Simplified",
   description:
     "Replace the group texts and phone calls with a purpose-built dispatch platform. Real-time driver tracking, proof of delivery, and live status updates for every dental office you serve.",
