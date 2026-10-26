@@ -401,6 +401,26 @@ export default function DriversPage() {
     }
   };
 
+  const [resendState, setResendState] = useState<Record<string, { status: "loading" | "done" | "error"; message?: string }>>({});
+
+  const onResend = async (driver: Driver) => {
+    setResendState((prev) => ({ ...prev, [driver.id]: { status: "loading" } }));
+    const res = await apiFetch<ApiResponse<{ sent: boolean }>>(`/api/drivers/${driver.id}/resend`, { method: "POST" });
+    setResendState((prev) => ({
+      ...prev,
+      [driver.id]: res.data?.sent
+        ? { status: "done" }
+        : { status: "error", message: res.error?.message ?? "Failed to resend." },
+    }));
+    setTimeout(() => {
+      setResendState((prev) => {
+        const next = { ...prev };
+        delete next[driver.id];
+        return next;
+      });
+    }, 4000);
+  };
+
   const filtered = filter === "all" ? drivers : drivers.filter((d) => d.status === filter);
 
   const counts = {
@@ -543,6 +563,8 @@ export default function DriversPage() {
                   onEdit={() => setModalDriver(driver)}
                   onDeactivate={() => setDeactivating(driver)}
                   onReactivate={() => onReactivate(driver)}
+                  onResend={() => onResend(driver)}
+                  resend={resendState[driver.id]}
                 />
               ))}
             </div>
@@ -557,6 +579,8 @@ export default function DriversPage() {
                 onEdit={() => setModalDriver(driver)}
                 onDeactivate={() => setDeactivating(driver)}
                 onReactivate={() => onReactivate(driver)}
+                onResend={() => onResend(driver)}
+                resend={resendState[driver.id]}
               />
             ))
           )}
@@ -604,7 +628,7 @@ function StatCard({ label, value, color = "#1a1a1a" }: { label: string; value: n
 }
 
 function DriverRow({
-  driver, bp, index, isLast, onEdit, onDeactivate, onReactivate,
+  driver, bp, index, isLast, onEdit, onDeactivate, onReactivate, onResend, resend,
 }: {
   driver: Driver;
   bp: "tablet" | "desktop";
@@ -613,6 +637,8 @@ function DriverRow({
   onEdit: () => void;
   onDeactivate: () => void;
   onReactivate: () => void;
+  onResend: () => void;
+  resend?: { status: "loading" | "done" | "error"; message?: string };
 }) {
   const s = STATUS_CONFIG[driver.status];
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
@@ -669,11 +695,30 @@ function DriverRow({
       )}
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
+        {resend?.status === "error" && (
+          <span style={{ fontSize: 10.5, color: "#A32D2D" }}>{resend.message}</span>
+        )}
         <ActionButton onClick={onEdit} title="Edit">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M9 2l2 2-7 7H2v-2L9 2z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
+        </ActionButton>
+        <ActionButton
+          onClick={onResend}
+          title={resend?.status === "done" ? "Invite resent" : "Resend account-setup email"}
+          accent={resend?.status === "done"}
+        >
+          {resend?.status === "done" ? (
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M2.5 6.5l2.8 2.8L10.5 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <rect x="1.5" y="3" width="10" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M1.8 3.5l4.2 3.3 4.2-3.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
         </ActionButton>
         {isOffDuty ? (
           <ActionButton onClick={onReactivate} title="Reactivate" accent>
@@ -698,13 +743,15 @@ function DriverRow({
 // ─── Mobile Driver Card ───────────────────────────────────────────────────────
 
 function DriverCard({
-  driver, index, onEdit, onDeactivate, onReactivate,
+  driver, index, onEdit, onDeactivate, onReactivate, onResend, resend,
 }: {
   driver: Driver;
   index: number;
   onEdit: () => void;
   onDeactivate: () => void;
   onReactivate: () => void;
+  onResend: () => void;
+  resend?: { status: "loading" | "done" | "error"; message?: string };
 }) {
   const s = STATUS_CONFIG[driver.status];
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
@@ -731,11 +778,30 @@ function DriverCard({
         <span style={{ fontSize: 12, color: "#5F5E5A" }}>
           {driver.activeJobs > 0 ? `${driver.activeJobs} active · ` : ""}{driver.location}
         </span>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {resend?.status === "error" && (
+            <span style={{ fontSize: 10.5, color: "#A32D2D" }}>{resend.message}</span>
+          )}
           <ActionButton onClick={onEdit} title="Edit">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
               <path d="M9 2l2 2-7 7H2v-2L9 2z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
+          </ActionButton>
+          <ActionButton
+            onClick={onResend}
+            title={resend?.status === "done" ? "Invite resent" : "Resend account-setup email"}
+            accent={resend?.status === "done"}
+          >
+            {resend?.status === "done" ? (
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M2.5 6.5l2.8 2.8L10.5 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <rect x="1.5" y="3" width="10" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M1.8 3.5l4.2 3.3 4.2-3.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
           </ActionButton>
           {isOffDuty ? (
             <ActionButton onClick={onReactivate} title="Reactivate" accent>

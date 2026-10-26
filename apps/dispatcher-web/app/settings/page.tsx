@@ -136,6 +136,29 @@ export default function SettingsPage() {
     setShowInvite(false);
   }
 
+  const [resendState, setResendState] = useState<Record<string, { status: "loading" | "done" | "error"; message?: string }>>({});
+
+  async function handleResend(member: TeamMember) {
+    setResendState((prev) => ({ ...prev, [member.id]: { status: "loading" } }));
+    const res = await apiFetch<{ data: { sent: boolean } | null; error: { message: string } | null }>(
+      `/api/team/${member.id}/resend`,
+      { method: "POST" }
+    );
+    setResendState((prev) => ({
+      ...prev,
+      [member.id]: res.data?.sent
+        ? { status: "done" }
+        : { status: "error", message: res.error?.message ?? "Failed to resend." },
+    }));
+    setTimeout(() => {
+      setResendState((prev) => {
+        const next = { ...prev };
+        delete next[member.id];
+        return next;
+      });
+    }, 4000);
+  }
+
   // ── Lab handlers ────────────────────────────────────────────────────────────
 
   function handleLabChange(field: keyof LabInfo, value: string) {
@@ -576,6 +599,33 @@ export default function SettingsPage() {
                       </div>
                       <div style={{ fontSize: 12, color: "#5F5E5A", marginTop: 1 }}>{m.email}</div>
                     </div>
+                    {resendState[m.id]?.status === "error" && (
+                      <span style={{ fontSize: 10.5, color: "#A32D2D" }}>{resendState[m.id].message}</span>
+                    )}
+                    {profile.role === "owner" && (
+                      <button
+                        onClick={() => handleResend(m)}
+                        title={resendState[m.id]?.status === "done" ? "Invite resent" : "Resend account-setup email"}
+                        style={{
+                          background: "none",
+                          border: "1px solid rgba(0,0,0,0.10)",
+                          borderRadius: 6, padding: "4px 7px", cursor: "pointer",
+                          color: resendState[m.id]?.status === "done" ? "#3B6D11" : "#5F5E5A",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}
+                      >
+                        {resendState[m.id]?.status === "done" ? (
+                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                            <path d="M2.5 6.5l2.8 2.8L10.5 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        ) : (
+                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                            <rect x="1.5" y="3" width="10" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.2" />
+                            <path d="M1.8 3.5l4.2 3.3 4.2-3.3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
                     <span style={{
                       fontSize: 11, fontWeight: 500, textTransform: "capitalize",
                       color: m.labRole === "owner" ? "#854F0B" : "#185FA5",
