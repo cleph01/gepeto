@@ -6,7 +6,7 @@ function getResend() {
   return _resend;
 }
 
-const FROM = "Gepeto <notifications@gepeto.com>";
+const FROM = "Gepeto <notifications@gepeto.delivery>";
 
 // ── Shared HTML wrapper ───────────────────────────────────────────────────────
 
