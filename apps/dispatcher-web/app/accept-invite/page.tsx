@@ -5,6 +5,30 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+// Hoisted out of AcceptInvitePage: defining this inline gave it a new
+// function identity on every render, so React treated each <Card> as a
+// different component type and remounted the whole subtree on every
+// keystroke — killing input focus after exactly one character typed.
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ minHeight: "100vh", width: "100%", background: "#F8F9FB", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", width: "100%", maxWidth: 420, overflow: "hidden" }}>
+        <div style={{ padding: "28px 28px 22px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 48, height: 48, background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 11, padding: 5, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/gepeto-icon.png" alt="Gepeto" style={{ width: "100%", height: "100%" }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>Gepeto</div>
+            <div style={{ fontSize: 11.5, color: "#5F5E5A" }}>Accept invite</div>
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function AcceptInvitePage() {
   const { session, loading } = useAuth();
   const router = useRouter();
@@ -73,24 +97,6 @@ export default function AcceptInvitePage() {
     }
   };
 
-  const Card = ({ children }: { children: React.ReactNode }) => (
-    <div style={{ minHeight: "100vh", width: "100%", background: "#F8F9FB", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", width: "100%", maxWidth: 420, overflow: "hidden" }}>
-        <div style={{ padding: "28px 28px 22px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 48, height: 48, background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 11, padding: 5, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/gepeto-icon.png" alt="Gepeto" style={{ width: "100%", height: "100%" }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>Gepeto</div>
-            <div style={{ fontSize: 11.5, color: "#5F5E5A" }}>Accept invite</div>
-          </div>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-
   if (loading) {
     return (
       <Card>
@@ -109,7 +115,7 @@ export default function AcceptInvitePage() {
             This invite link is invalid or has expired.
           </p>
           <p style={{ margin: "8px 0 20px", fontSize: 13, color: "#5F5E5A", lineHeight: 1.5 }}>
-            Ask whoever invited you to send a new one, or log in below if you've already set a password.
+            Ask whoever invited you to send a new one, or log in below if you&apos;ve already set a password.
           </p>
           <a
             href="/login"
