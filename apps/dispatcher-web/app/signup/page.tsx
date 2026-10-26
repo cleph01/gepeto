@@ -14,13 +14,28 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
 
-    const res = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ labName: labName.trim(), email: email.trim() }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labName: labName.trim(), email: email.trim() }),
+      });
+    } catch {
+      // Network failure (offline, DNS, etc.) — fetch itself threw, no response at all.
+      setError("Couldn't reach the server. Check your connection and try again.");
+      setLoading(false);
+      return;
+    }
 
-    const data = await res.json();
+    let data: { url?: string; error?: { message?: string } };
+    try {
+      data = await res.json();
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+      return;
+    }
 
     if (!res.ok || !data.url) {
       setError(data.error?.message ?? "Something went wrong. Please try again.");
