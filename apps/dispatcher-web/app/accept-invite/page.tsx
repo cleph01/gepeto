@@ -50,7 +50,7 @@ export default function AcceptInvitePage() {
     }
 
     setSubmitting(true);
-    const { data, error: updateError } = await supabaseBrowser.auth.updateUser({ password });
+    const { error: updateError } = await supabaseBrowser.auth.updateUser({ password });
     setSubmitting(false);
 
     if (updateError) {
@@ -58,7 +58,11 @@ export default function AcceptInvitePage() {
       return;
     }
 
-    const role = data.user?.app_metadata?.role;
+    // Read role from the already-verified invite session, not updateUser()'s
+    // response — that call only touches the password and doesn't reliably
+    // carry app_metadata through, which previously sent drivers to the
+    // dispatcher dashboard instead of the "open the driver app" screen.
+    const role = session.user.app_metadata?.role;
     if (role === "driver") {
       setIsDriver(true);
       setDone(true);
@@ -140,6 +144,7 @@ export default function AcceptInvitePage() {
       <form onSubmit={handleSubmit} style={{ padding: "24px 28px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
         <p style={{ margin: "0 0 4px", fontSize: 13, color: "#5F5E5A", lineHeight: 1.5 }}>
           Welcome, <strong style={{ color: "#1a1a1a" }}>{name}</strong>. Set a password to finish setting up your account.
+          You&apos;ll log in with <strong style={{ color: "#1a1a1a" }}>{session.user.email}</strong>.
         </p>
 
         {error && (
@@ -154,6 +159,7 @@ export default function AcceptInvitePage() {
           </label>
           <input
             type="password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 8 characters"
@@ -170,6 +176,7 @@ export default function AcceptInvitePage() {
           </label>
           <input
             type="password"
+            autoComplete="new-password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="Re-enter your password"

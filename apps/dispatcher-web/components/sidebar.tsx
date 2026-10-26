@@ -140,8 +140,9 @@ function UserArea() {
   const { session, signOut } = useAuth();
   const email = session?.user.email ?? "";
   const meta = session?.user.user_metadata as Record<string, string> | undefined;
+  const appMeta = session?.user.app_metadata as Record<string, string> | undefined;
   const displayName = meta?.name ?? email.split("@")[0];
-  const labRole = meta?.lab_role ?? "dispatcher";
+  const labRole = appMeta?.lab_role ?? "dispatcher";
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
