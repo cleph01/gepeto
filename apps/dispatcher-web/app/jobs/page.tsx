@@ -789,7 +789,7 @@ function JobRow({
   const status = STATUS_CONFIG[job.status];
   const cols = bp === "tablet"
     ? "32px 100px 1fr 120px 100px"
-    : "32px 110px 1fr 130px 80px 120px 90px 110px";
+    : "32px 110px 1fr 130px 80px 120px 90px 170px";
 
   return (
     <>
@@ -1188,7 +1188,7 @@ export default function JobsPage() {
                 display: "grid",
                 gridTemplateColumns: bp === "tablet"
                   ? "32px 100px 1fr 120px 100px"
-                  : "32px 110px 1fr 130px 80px 120px 90px 110px",
+                  : "32px 110px 1fr 130px 80px 120px 90px 170px",
                 padding: "6px 16px",
                 background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
               }}
