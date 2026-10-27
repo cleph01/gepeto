@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const [jobs, setJobs]       = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
   const [labName, setLabName] = useState<string | null>(null);
+  const [jobFilter, setJobFilter] = useState<"all" | "stat" | "in_transit" | "pending">("all");
 
   // Initial load
   useEffect(() => {
@@ -61,6 +62,11 @@ export default function DashboardPage() {
 
   const today = now.toDateString();
   const activeJobs = jobs.filter((j) => !["delivered", "rejected"].includes(j.status));
+  const filteredJobs = activeJobs.filter((j) =>
+    jobFilter === "all"  ? true :
+    jobFilter === "stat" ? j.priority === "stat" :
+    j.status === jobFilter
+  );
   const metrics = {
     active:     activeJobs.length,
     createdToday: jobs.filter((j) => new Date(j.createdAt).toDateString() === today).length,
@@ -196,14 +202,14 @@ export default function DashboardPage() {
                     padding: "1px 7px",
                   }}
                 >
-                  {activeJobs.length}
+                  {filteredJobs.length}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
-                <FilterChip active>All</FilterChip>
-                <FilterChip>STAT</FilterChip>
-                <FilterChip>In Transit</FilterChip>
-                <FilterChip>Pending</FilterChip>
+                <FilterChip active={jobFilter === "all"}        onClick={() => setJobFilter("all")}>All</FilterChip>
+                <FilterChip active={jobFilter === "stat"}       onClick={() => setJobFilter("stat")}>STAT</FilterChip>
+                <FilterChip active={jobFilter === "in_transit"} onClick={() => setJobFilter("in_transit")}>In Transit</FilterChip>
+                <FilterChip active={jobFilter === "pending"}    onClick={() => setJobFilter("pending")}>Pending</FilterChip>
               </div>
             </div>
 
@@ -234,13 +240,13 @@ export default function DashboardPage() {
             </div>
 
             {/* Job rows */}
-            {activeJobs.length === 0 ? (
+            {filteredJobs.length === 0 ? (
               <div style={{ padding: "24px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
-                No active jobs.
+                {jobFilter === "all" ? "No active jobs." : "No matching jobs."}
               </div>
             ) : (
-              activeJobs.map((job, i) => (
-                <JobRow key={job.id} job={job} isLast={i === activeJobs.length - 1} />
+              filteredJobs.map((job, i) => (
+                <JobRow key={job.id} job={job} isLast={i === filteredJobs.length - 1} />
               ))
             )}
           </div>
@@ -438,9 +444,10 @@ function MetricCard({
   );
 }
 
-function FilterChip({ children, active }: { children: React.ReactNode; active?: boolean }) {
+function FilterChip({ children, active, onClick }: { children: React.ReactNode; active?: boolean; onClick?: () => void }) {
   return (
     <button
+      onClick={onClick}
       style={{
         fontSize: 11.5,
         fontWeight: active ? 500 : 400,
