@@ -55,9 +55,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { caseId, officeId, driverId, priority, items, pickupAddress, deliveryAddress, scheduledAt } = body;
 
-    if (!caseId || !officeId || !pickupAddress || !deliveryAddress) {
+    if (!caseId || !officeId || !pickupAddress || !deliveryAddress || !scheduledAt) {
       return Response.json(
         { data: null, error: { code: "BAD_REQUEST", message: "Missing required fields" } },
+        { status: 400 }
+      );
+    }
+
+    if (Number.isNaN(new Date(scheduledAt).getTime())) {
+      return Response.json(
+        { data: null, error: { code: "BAD_REQUEST", message: "Invalid expected delivery time" } },
         { status: 400 }
       );
     }

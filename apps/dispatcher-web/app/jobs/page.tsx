@@ -33,6 +33,8 @@ interface Job {
   flags: ItemFlag[];
   createdAt: string;
   updatedAt: string;
+  /** Expected delivery time (ISO). Older jobs created before it was required may have none. */
+  scheduledAt: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -70,6 +72,32 @@ function timeAgo(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// "Today 3:00 PM", "Tomorrow 9:00 AM", "Tue 10:30 AM" within the week, else "Oct 30, 3:00 PM".
+function formatDue(iso: string) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Tomorrow ${time}`;
+  if (days > 1 && days < 7) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+}
+
+function isOverdue(job: Job) {
+  return !!job.scheduledAt && job.status !== "delivered" && new Date(job.scheduledAt).getTime() < Date.now();
+}
+
+function DueText({ job, fontSize = 12 }: { job: Job; fontSize?: number }) {
+  if (!job.scheduledAt) return <span style={{ fontSize, color: "#9a9a9a" }}>—</span>;
+  const overdue = isOverdue(job);
+  return (
+    <span style={{ fontSize, color: overdue ? "#A32D2D" : "#3a3a3a", fontWeight: overdue ? 500 : 400 }}>
+      {formatDue(job.scheduledAt)}
+    </span>
+  );
+}
+
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
 
@@ -102,6 +130,7 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
     if (!caseId.trim())   e.caseId   = "Case ID is required.";
     if (!officeId)        e.office   = "Please select an office.";
     if (!itemDesc.trim()) e.itemDesc = "Item description is required.";
+    if (!scheduledAt)     e.scheduledAt = "Expected delivery time is required.";
     return e;
   };
 
@@ -118,7 +147,7 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
       priority,
       itemDescription: itemDesc.trim(),
       flags,
-      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      scheduledAt: new Date(scheduledAt).toISOString(),
     });
   };
 
@@ -257,15 +286,16 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
 
           {/* Expected delivery time */}
           <div>
-            <label style={labelStyle}>Expected Delivery Time <span style={{ color: "#9a9a9a", fontWeight: 400 }}>(optional)</span></label>
+            <label style={labelStyle}>Expected Delivery Time <Required /></label>
             <input
               type="datetime-local"
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              style={inputStyle(false)}
+              onChange={(e) => { setScheduledAt(e.target.value); clearError("scheduledAt"); }}
+              style={inputStyle(!!errors.scheduledAt)}
               onFocus={focusStyle}
-              onBlur={(e) => blurStyle(e, false)}
+              onBlur={(e) => blurStyle(e, !!errors.scheduledAt)}
             />
+            {errors.scheduledAt && <FieldError msg={errors.scheduledAt} />}
           </div>
 
           {/* Item description */}
@@ -687,10 +717,25 @@ function JobDetailRow({
         background: "#FAFBFD",
         borderBottom: "1px solid rgba(0,0,0,0.05)",
         display: "grid",
-        gridTemplateColumns: "1fr 1fr 1fr 1.4fr",
+        gridTemplateColumns: "1fr 1fr 1fr 1fr 1.4fr",
         gap: 16,
       }}
     >
+      <div>
+        <p style={{ margin: "0 0 3px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          Expected Delivery
+        </p>
+        <p style={{ margin: 0, lineHeight: 1.4 }}>
+          {job.scheduledAt ? (
+            <span style={{ fontSize: 12.5, color: isOverdue(job) ? "#A32D2D" : "#3a3a3a", fontWeight: isOverdue(job) ? 500 : 400 }}>
+              {new Date(job.scheduledAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              {isOverdue(job) && " · Late"}
+            </span>
+          ) : (
+            <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>Not set</span>
+          )}
+        </p>
+      </div>
       <DetailField label="Delivery Address" value={job.deliveryAddress} />
       <DetailField label="Item" value={job.itemDescription} />
       <div>
@@ -789,7 +834,7 @@ function JobRow({
   const status = STATUS_CONFIG[job.status];
   const cols = bp === "tablet"
     ? "32px 100px 1fr 120px 100px"
-    : "32px 110px 1fr 130px 80px 120px 90px 170px";
+    : "32px 110px 1fr 130px 80px 120px 130px 90px 170px";
 
   return (
     <>
@@ -859,6 +904,9 @@ function JobRow({
             {status.label}
           </span>
         </span>
+
+        {/* Due — desktop only */}
+        {bp === "desktop" && <DueText job={job} />}
 
         {/* Updated — desktop only */}
         {bp === "desktop" && (
@@ -932,8 +980,13 @@ function JobCard({
       <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>{job.office}</div>
 
       {/* Driver */}
-      <div style={{ fontSize: 12, color: job.driver ? "#5F5E5A" : "#9a9a9a", marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: job.driver ? "#5F5E5A" : "#9a9a9a", marginBottom: 2 }}>
         {job.driver ? `Driver: ${job.driver}` : "Unassigned"}
+      </div>
+
+      {/* Expected delivery */}
+      <div style={{ fontSize: 12, color: "#5F5E5A", marginBottom: 10 }}>
+        Due: <DueText job={job} />
       </div>
 
       {/* Bottom row: status + action + timestamp */}
@@ -982,7 +1035,7 @@ function JobCard({
 type ApiJobFull = {
   id: string; caseId: string; officeName: string; officeTrackingToken: string | null; driverName: string | null;
   priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
-  deliveryAddress: string; createdAt: string; updatedAt: string;
+  deliveryAddress: string; createdAt: string; updatedAt: string; scheduledAt: string | null;
 };
 
 function mapJob(j: ApiJobFull): Job {
@@ -999,6 +1052,7 @@ function mapJob(j: ApiJobFull): Job {
     flags: j.items?.[0]?.flags ?? [],
     createdAt: new Date(j.createdAt).toLocaleString(),
     updatedAt: timeAgo(j.updatedAt),
+    scheduledAt: j.scheduledAt,
   };
 }
 
@@ -1188,14 +1242,14 @@ export default function JobsPage() {
                 display: "grid",
                 gridTemplateColumns: bp === "tablet"
                   ? "32px 100px 1fr 120px 100px"
-                  : "32px 110px 1fr 130px 80px 120px 90px 170px",
+                  : "32px 110px 1fr 130px 80px 120px 130px 90px 170px",
                 padding: "6px 16px",
                 background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
               }}
             >
               {(bp === "tablet"
                 ? ["", "Case ID", "Office", "Status", ""]
-                : ["", "Case ID", "Office", "Driver", "Priority", "Status", "Updated", ""]
+                : ["", "Case ID", "Office", "Driver", "Priority", "Status", "Due", "Updated", ""]
               ).map((col, i) => (
                 <span key={i} style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   {col}
