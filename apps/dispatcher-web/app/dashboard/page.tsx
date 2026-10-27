@@ -65,6 +65,7 @@ export default function DashboardPage() {
     active:     activeJobs.length,
     createdToday: jobs.filter((j) => new Date(j.createdAt).toDateString() === today).length,
     inTransit:  jobs.filter((j) => j.status === "in_transit").length,
+    statInTransit: jobs.filter((j) => j.status === "in_transit" && j.priority === "stat").length,
     delivered:  jobs.filter((j) => j.status === "delivered" && new Date(j.updatedAt).toDateString() === today).length,
     pending:    jobs.filter((j) => j.status === "pending").length,
   };
@@ -158,7 +159,7 @@ export default function DashboardPage() {
           {/* Metrics row */}
           <div className="stats-grid">
             <MetricCard value={String(metrics.active)}    label="Active Jobs" sublabel={`${metrics.createdToday} today`} />
-            <MetricCard value={String(metrics.inTransit)} label="In Transit"     color="#185FA5" />
+            <MetricCard value={String(metrics.inTransit)} label="In Transit"     color="#185FA5" sublabel={`${metrics.statInTransit} STAT`} />
             <MetricCard value={String(metrics.delivered)} label="Delivered Today" color="#3B6D11" />
             <MetricCard value={String(metrics.pending)}   label="Pending"        color="#854F0B" />
           </div>
