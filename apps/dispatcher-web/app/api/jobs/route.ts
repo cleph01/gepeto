@@ -65,22 +65,36 @@ export async function POST(request: NextRequest) {
     // Geocode delivery address — fire-and-forget safe (null on failure)
     const coords = await geocodeAddress(deliveryAddress);
 
-    const [job] = await db("jobs")
-      .insert({
-        case_id: caseId,
+    const job = await db.transaction(async (trx: typeof db) => {
+      const [created] = await trx("jobs")
+        .insert({
+          case_id: caseId,
+          lab_id: user.labId,
+          office_id: officeId,
+          driver_id: driverId ?? null,
+          status: driverId ? "assigned" : "pending",
+          priority: priority ?? "standard",
+          items: JSON.stringify(items ?? []),
+          pickup_address: pickupAddress,
+          delivery_address: deliveryAddress,
+          delivery_lat: coords?.lat ?? null,
+          delivery_lng: coords?.lng ?? null,
+          scheduled_at: scheduledAt ?? null,
+        })
+        .returning("*");
+
+      // First entry in the job's status history
+      await trx("job_status_events").insert({
+        job_id: created.id,
         lab_id: user.labId,
-        office_id: officeId,
-        driver_id: driverId ?? null,
-        status: driverId ? "assigned" : "pending",
-        priority: priority ?? "standard",
-        items: JSON.stringify(items ?? []),
-        pickup_address: pickupAddress,
-        delivery_address: deliveryAddress,
-        delivery_lat: coords?.lat ?? null,
-        delivery_lng: coords?.lng ?? null,
-        scheduled_at: scheduledAt ?? null,
-      })
-      .returning("*");
+        from_status: null,
+        to_status: created.status,
+        changed_by_role: user.role,
+        changed_by_user_id: user.id,
+      });
+
+      return created;
+    });
 
     // Send STAT alert (fire-and-forget — don't block the response)
     if ((priority ?? "standard") === "stat" && process.env.RESEND_API_KEY) {

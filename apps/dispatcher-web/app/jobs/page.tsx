@@ -351,10 +351,12 @@ function StatusModal({
   job,
   onClose,
   onSave,
+  error,
 }: {
   job: Job;
   onClose: () => void;
   onSave: (status: JobStatus) => void;
+  error?: string | null;
 }) {
   const [selected, setSelected] = useState<JobStatus>(job.status);
 
@@ -428,6 +430,10 @@ function StatusModal({
             );
           })}
         </div>
+
+        {error && (
+          <p style={{ margin: "0 20px 12px", fontSize: 12, color: "#A32D2D" }}>{error}</p>
+        )}
 
         <div style={{ padding: "0 20px 20px", display: "flex", gap: 8 }}>
           <button
@@ -1010,6 +1016,7 @@ export default function JobsPage() {
   const [drivers, setDrivers]         = useState<DriverOption[]>([]);
   const [showNewJob, setShowNewJob]   = useState(false);
   const [statusJob, setStatusJob]     = useState<Job | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
@@ -1065,12 +1072,21 @@ export default function JobsPage() {
   };
 
   const onUpdateStatus = async (jobId: string, status: JobStatus) => {
-    const res = await apiFetch<ApiResponse<ApiJobFull>>(`/api/jobs/${jobId}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status }),
-    });
-    if (res.data) setJobs((prev) => prev.map((j) => j.id === jobId ? mapJob(res.data!) : j));
-    setStatusJob(null);
+    setStatusError(null);
+    try {
+      const res = await apiFetch<ApiResponse<ApiJobFull>>(`/api/jobs/${jobId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.data) {
+        setStatusError(res.error?.message ?? "Couldn't save the status. Please try again.");
+        return;
+      }
+      setJobs((prev) => prev.map((j) => j.id === jobId ? mapJob(res.data!) : j));
+      setStatusJob(null);
+    } catch {
+      setStatusError("Couldn't save the status. Check your connection and try again.");
+    }
   };
 
   const filtered = filter === "all" ? jobs : jobs.filter((j) => j.status === filter);
@@ -1250,8 +1266,9 @@ export default function JobsPage() {
       {statusJob && (
         <StatusModal
           job={statusJob}
-          onClose={() => setStatusJob(null)}
+          onClose={() => { setStatusJob(null); setStatusError(null); }}
           onSave={(status) => onUpdateStatus(statusJob.id, status)}
+          error={statusError}
         />
       )}
       {openMessagesJob && (

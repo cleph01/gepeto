@@ -6,21 +6,14 @@ const db = require("@gepeto/db");
 const VALID_STATUSES = ["pending", "assigned", "picked_up", "in_transit", "arrived", "delivered", "rejected"];
 
 // PATCH /api/jobs/[id]/status
-// Driver advances the job status through its lifecycle.
+// Driver advances the job status through its lifecycle; dispatchers can set
+// any status on jobs in their lab. Every change is logged to job_status_events.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireAuth(request);
-
-    if (user.role !== "driver") {
-      return Response.json(
-        { data: null, error: { code: "FORBIDDEN", message: "Only drivers can update job status" } },
-        { status: 403 }
-      );
-    }
-
     const { id } = await params;
     const { status, proofOfDelivery } = await request.json();
 
@@ -31,8 +24,11 @@ export async function PATCH(
       );
     }
 
+    // Drivers can only update their own jobs
     const job = await db("jobs")
-      .where({ id, lab_id: user.labId, driver_id: user.driverId })
+      .where(user.role === "driver"
+        ? { id, lab_id: user.labId, driver_id: user.driverId }
+        : { id, lab_id: user.labId })
       .first();
 
     if (!job) {
@@ -51,7 +47,32 @@ export async function PATCH(
       }
     }
 
-    const [updated] = await db("jobs").where({ id }).update(updates).returning("*");
+    await db.transaction(async (trx: typeof db) => {
+      await trx("jobs").where({ id }).update(updates);
+      if (job.status !== status) {
+        await trx("job_status_events").insert({
+          job_id: id,
+          lab_id: user.labId,
+          from_status: job.status,
+          to_status: status,
+          changed_by_role: user.role,
+          changed_by_user_id: user.id,
+        });
+      }
+    });
+
+    // Return the same joined shape as GET /api/jobs so the jobs list can re-render the row
+    const updated = await db("jobs")
+      .leftJoin("offices", "jobs.office_id", "offices.id")
+      .leftJoin("drivers", "jobs.driver_id", "drivers.id")
+      .where("jobs.id", id)
+      .select(
+        "jobs.*",
+        "offices.name as office_name",
+        "offices.tracking_token as office_tracking_token",
+        "drivers.name as driver_name"
+      )
+      .first();
 
     return Response.json({ data: updated, error: null });
   } catch (err) {
