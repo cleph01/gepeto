@@ -797,6 +797,70 @@ function JobDetailRow({
           </div>
         </div>
       )}
+      <StatusHistory jobId={job.id} status={job.status} />
+    </div>
+  );
+}
+
+// ─── Status History ───────────────────────────────────────────────────────────
+
+type StatusEvent = {
+  id: string;
+  fromStatus: string | null;
+  toStatus: string;
+  changedByRole: "dispatcher" | "driver";
+  changedByName: string | null;
+  createdAt: string;
+};
+
+function statusLabel(s: string) {
+  return STATUS_CONFIG[s as JobStatus]?.label ?? (s === "rejected" ? "Rejected" : s);
+}
+
+// Reloads whenever the job's status changes, so a save from the Status modal shows up here.
+function StatusHistory({ jobId, status }: { jobId: string; status: JobStatus }) {
+  const { apiFetch } = useAuth();
+  const [events, setEvents] = useState<StatusEvent[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    apiFetch<ApiResponse<StatusEvent[]>>(`/api/jobs/${jobId}/history`)
+      .then((res) => {
+        if (res.data) { setEvents(res.data); setFailed(false); }
+        else setFailed(true);
+      })
+      .catch(() => setFailed(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, status]);
+
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+      <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        Status History
+      </p>
+      {failed ? (
+        <span style={{ fontSize: 12.5, color: "#A32D2D" }}>Couldn&apos;t load history.</span>
+      ) : events === null ? (
+        <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>Loading…</span>
+      ) : events.length === 0 ? (
+        <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>No changes recorded yet.</span>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {events.map((e) => (
+            <div key={e.id} style={{ display: "flex", gap: 10, fontSize: 12.5, color: "#3a3a3a", lineHeight: 1.4 }}>
+              <span style={{ color: "#9a9a9a", minWidth: 150 }}>{new Date(e.createdAt).toLocaleString()}</span>
+              <span>
+                {e.fromStatus === null
+                  ? <>Created as <strong>{statusLabel(e.toStatus)}</strong></>
+                  : <>{statusLabel(e.fromStatus)} → <strong>{statusLabel(e.toStatus)}</strong></>}
+                <span style={{ color: "#5F5E5A" }}>
+                  {" "}by {e.changedByName ?? "Unknown"} ({e.changedByRole === "driver" ? "Driver" : "Dispatcher"})
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
