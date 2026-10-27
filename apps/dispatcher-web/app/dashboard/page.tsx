@@ -11,7 +11,7 @@ const LiveMap = lazy(() => import("@/components/live-map"));
 type ApiJob = {
   id: string; caseId: string; officeName: string; driverName: string | null;
   priority: "stat" | "standard"; status: "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
-  updatedAt: string; deliveryLat: number | null; deliveryLng: number | null;
+  createdAt: string; updatedAt: string; deliveryLat: number | null; deliveryLng: number | null;
 };
 type ApiDriver = {
   id: string; name: string; status: string; activeJobs: number; currentLocation: { lat: number; lng: number } | null;
@@ -60,13 +60,14 @@ export default function DashboardPage() {
   }, []);
 
   const today = now.toDateString();
+  const activeJobs = jobs.filter((j) => !["delivered", "rejected"].includes(j.status));
   const metrics = {
-    total:      jobs.length,
+    active:     activeJobs.length,
+    createdToday: jobs.filter((j) => new Date(j.createdAt).toDateString() === today).length,
     inTransit:  jobs.filter((j) => j.status === "in_transit").length,
     delivered:  jobs.filter((j) => j.status === "delivered" && new Date(j.updatedAt).toDateString() === today).length,
     pending:    jobs.filter((j) => j.status === "pending").length,
   };
-  const activeJobs = jobs.filter((j) => !["delivered", "rejected"].includes(j.status));
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#F8F9FB" }}>
       {/* Top header bar */}
@@ -156,7 +157,7 @@ export default function DashboardPage() {
         }}>
           {/* Metrics row */}
           <div className="stats-grid">
-            <MetricCard value={String(metrics.total)}     label="Total Jobs" />
+            <MetricCard value={String(metrics.active)}    label="Active Jobs" sublabel={`${metrics.createdToday} today`} />
             <MetricCard value={String(metrics.inTransit)} label="In Transit"     color="#185FA5" />
             <MetricCard value={String(metrics.delivered)} label="Delivered Today" color="#3B6D11" />
             <MetricCard value={String(metrics.pending)}   label="Pending"        color="#854F0B" />
@@ -388,10 +389,12 @@ export default function DashboardPage() {
 function MetricCard({
   value,
   label,
+  sublabel,
   color = "#1a1a1a",
 }: {
   value: string;
   label: string;
+  sublabel?: string;
   color?: string;
 }) {
   return (
@@ -425,6 +428,11 @@ function MetricCard({
       >
         {label}
       </div>
+      {sublabel && (
+        <div style={{ fontSize: 11, color: "#8A8984", marginTop: 2 }}>
+          {sublabel}
+        </div>
+      )}
     </div>
   );
 }

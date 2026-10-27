@@ -13,6 +13,7 @@ interface DashboardJob {
   driverName: string | null;
   priority: "stat" | "standard";
   status: JobStatus;
+  createdAt: string;
   updatedAt: string;
   deliveryLat: number | null;
   deliveryLng: number | null;
