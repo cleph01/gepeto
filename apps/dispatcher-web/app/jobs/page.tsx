@@ -797,7 +797,6 @@ function JobDetailRow({
           </div>
         </div>
       )}
-      <StatusHistory jobId={job.id} status={job.status} />
     </div>
   );
 }
@@ -817,53 +816,126 @@ function statusLabel(s: string) {
   return STATUS_CONFIG[s as JobStatus]?.label ?? (s === "rejected" ? "Rejected" : s);
 }
 
-// Reloads whenever the job's status changes, so a save from the Status modal shows up here.
-function StatusHistory({ jobId, status }: { jobId: string; status: JobStatus }) {
+// Per-job status history, opened from the History button on a job row or card.
+function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { apiFetch } = useAuth();
   const [events, setEvents] = useState<StatusEvent[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    apiFetch<ApiResponse<StatusEvent[]>>(`/api/jobs/${jobId}/history`)
+    apiFetch<ApiResponse<StatusEvent[]>>(`/api/jobs/${job.id}/history`)
       .then((res) => {
         if (res.data) { setEvents(res.data); setFailed(false); }
         else setFailed(true);
       })
       .catch(() => setFailed(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, status]);
+  }, [job.id]);
 
   return (
-    <div style={{ gridColumn: "1 / -1" }}>
-      <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        Status History
-      </p>
-      {failed ? (
-        <span style={{ fontSize: 12.5, color: "#A32D2D" }}>Couldn&apos;t load history.</span>
-      ) : events === null ? (
-        <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>Loading…</span>
-      ) : events.length === 0 ? (
-        <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>No changes recorded yet.</span>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {events.map((e) => (
-            <div key={e.id} style={{ display: "flex", gap: 10, fontSize: 12.5, color: "#3a3a3a", lineHeight: 1.4 }}>
-              <span style={{ color: "#9a9a9a", minWidth: 150 }}>{new Date(e.createdAt).toLocaleString()}</span>
-              <span>
-                {e.fromStatus === null
-                  ? <>Created as <strong>{statusLabel(e.toStatus)}</strong></>
-                  : <>{statusLabel(e.fromStatus)} → <strong>{statusLabel(e.toStatus)}</strong></>}
-                <span style={{ color: "#5F5E5A" }}>
-                  {" "}by {e.changedByName ?? "Unknown"} ({e.changedByRole === "driver" ? "Driver" : "Dispatcher"})
-                </span>
-              </span>
-            </div>
-          ))}
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(2px)",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff", borderRadius: 14, width: "100%", maxWidth: 440,
+          margin: "0 16px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+          overflow: "hidden", maxHeight: "80vh", display: "flex", flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            padding: "18px 20px 14px", borderBottom: "1px solid rgba(0,0,0,0.07)",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>
+              Status History
+            </h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
+              {job.caseId} · {job.office}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#9a9a9a", padding: 4, borderRadius: 6, display: "flex" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-      )}
+
+        <div style={{ padding: "14px 20px 20px", overflowY: "auto" }}>
+          {failed ? (
+            <span style={{ fontSize: 12.5, color: "#A32D2D" }}>Couldn&apos;t load history.</span>
+          ) : events === null ? (
+            <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>Loading…</span>
+          ) : events.length === 0 ? (
+            <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>No changes recorded yet. Jobs created before history tracking started only show changes made since.</span>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {events.map((e) => (
+                <div key={e.id} style={{ fontSize: 12.5, color: "#3a3a3a", lineHeight: 1.4 }}>
+                  <div style={{ fontSize: 11.5, color: "#9a9a9a", marginBottom: 1 }}>
+                    {new Date(e.createdAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </div>
+                  <div>
+                    {e.fromStatus === null
+                      ? <>Created as <strong>{statusLabel(e.toStatus)}</strong></>
+                      : <>{statusLabel(e.fromStatus)} → <strong>{statusLabel(e.toStatus)}</strong></>}
+                    <span style={{ color: "#5F5E5A" }}>
+                      {" "}by {e.changedByName ?? "Unknown"} ({e.changedByRole === "driver" ? "Driver" : "Dispatcher"})
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+// Status pill that opens the Update Status modal. The ▾ and hover tint show it's clickable.
+function StatusBubble({ status, onClick, padding = "2.5px 9px" }: { status: JobStatus; onClick: () => void; padding?: string }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title="Change status"
+      style={{
+        fontSize: 11.5, fontWeight: 500, background: cfg.bg, color: cfg.color,
+        borderRadius: 20, padding, border: "1px solid transparent", cursor: "pointer",
+        display: "inline-flex", alignItems: "center", gap: 4, transition: "border-color 0.1s",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = cfg.color; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "transparent"; }}
+    >
+      {cfg.label}
+      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden>
+        <path d="M1.5 3l2.5 2.5L6.5 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+const HistoryIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <circle cx="6" cy="6" r="4.75" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M6 3.5V6l1.75 1.25" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
@@ -885,6 +957,7 @@ function JobRow({
   expanded,
   onToggleExpand,
   onUpdateStatus,
+  onOpenHistory,
   onOpenMessages,
   onCopyLink,
   linkCopied,
@@ -896,12 +969,12 @@ function JobRow({
   expanded: boolean;
   onToggleExpand: () => void;
   onUpdateStatus: () => void;
+  onOpenHistory: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
   linkCopied: boolean;
   unread: number;
 }) {
-  const status = STATUS_CONFIG[job.status];
   const cols = bp === "tablet"
     ? "32px 100px 1fr 120px 100px"
     : "32px 110px 1fr 130px 80px 120px 130px 90px 170px";
@@ -970,9 +1043,7 @@ function JobRow({
 
         {/* Status */}
         <span>
-          <span style={{ fontSize: 11.5, fontWeight: 500, background: status.bg, color: status.color, borderRadius: 20, padding: "2.5px 9px" }}>
-            {status.label}
-          </span>
+          <StatusBubble status={job.status} onClick={onUpdateStatus} />
         </span>
 
         {/* Due — desktop only */}
@@ -992,12 +1063,9 @@ function JobRow({
             <span style={{ fontSize: 11.5 }}>Messages</span>
             <UnreadBadge count={unread} style={{ position: "absolute", top: -7, right: -7 }} />
           </ActionButton>
-          <ActionButton onClick={onUpdateStatus} title="Update status">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 1.5A4.5 4.5 0 101 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              <path d="M1 2.5V6h3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span style={{ fontSize: 11.5 }}>Status</span>
+          <ActionButton onClick={onOpenHistory} title="Status history">
+            <HistoryIcon />
+            <span style={{ fontSize: 11.5 }}>History</span>
           </ActionButton>
         </div>
       </div>
@@ -1013,6 +1081,7 @@ function JobRow({
 function JobCard({
   job,
   onUpdateStatus,
+  onOpenHistory,
   onOpenMessages,
   onCopyLink,
   linkCopied,
@@ -1020,12 +1089,12 @@ function JobCard({
 }: {
   job: Job;
   onUpdateStatus: () => void;
+  onOpenHistory: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
   linkCopied: boolean;
   unread: number;
 }) {
-  const status = STATUS_CONFIG[job.status];
   return (
     <div
       style={{
@@ -1061,9 +1130,7 @@ function JobCard({
 
       {/* Bottom row: status + action + timestamp */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 500, background: status.bg, color: status.color, borderRadius: 20, padding: "3px 10px" }}>
-          {status.label}
-        </span>
+        <StatusBubble status={job.status} onClick={onUpdateStatus} padding="3px 10px" />
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <span style={{ fontSize: 11, color: "#9a9a9a" }}>{job.updatedAt}</span>
           {job.officeTrackingToken && (
@@ -1087,12 +1154,9 @@ function JobCard({
             <span style={{ fontSize: 11.5 }}>Messages</span>
             <UnreadBadge count={unread} style={{ position: "absolute", top: -7, right: -7 }} />
           </ActionButton>
-          <ActionButton onClick={onUpdateStatus} title="Update status">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 1.5A4.5 4.5 0 101 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              <path d="M1 2.5V6h3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span style={{ fontSize: 11.5 }}>Status</span>
+          <ActionButton onClick={onOpenHistory} title="Status history">
+            <HistoryIcon />
+            <span style={{ fontSize: 11.5 }}>History</span>
           </ActionButton>
         </div>
       </div>
@@ -1135,6 +1199,7 @@ export default function JobsPage() {
   const [showNewJob, setShowNewJob]   = useState(false);
   const [statusJob, setStatusJob]     = useState<Job | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [historyJob, setHistoryJob]   = useState<Job | null>(null);
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
@@ -1350,6 +1415,7 @@ export default function JobsPage() {
                   key={job.id}
                   job={job}
                   onUpdateStatus={() => setStatusJob(job)}
+                  onOpenHistory={() => setHistoryJob(job)}
                   onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                   onCopyLink={() => onCopyTrackingLink(job)}
                   linkCopied={copiedJobId === job.id}
@@ -1367,6 +1433,7 @@ export default function JobsPage() {
                 expanded={expandedId === job.id}
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}
                 onUpdateStatus={() => setStatusJob(job)}
+                onOpenHistory={() => setHistoryJob(job)}
                 onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                 onCopyLink={() => onCopyTrackingLink(job)}
                 linkCopied={copiedJobId === job.id}
@@ -1388,6 +1455,9 @@ export default function JobsPage() {
           onSave={(status) => onUpdateStatus(statusJob.id, status)}
           error={statusError}
         />
+      )}
+      {historyJob && (
+        <HistoryModal job={historyJob} onClose={() => setHistoryJob(null)} />
       )}
       {openMessagesJob && (
         <MessagesModal job={openMessagesJob} onClose={closeMessages} />
