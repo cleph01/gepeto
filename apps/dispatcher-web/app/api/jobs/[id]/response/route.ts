@@ -48,7 +48,20 @@ export async function PATCH(
       updates.driver_id = null as unknown as string;
     }
 
-    const [updated] = await db("jobs").where({ id }).update(updates).returning("*");
+    const updated = await db.transaction(async (trx: typeof db) => {
+      const [row] = await trx("jobs").where({ id }).update(updates).returning("*");
+      if (updates.status && job.status !== updates.status) {
+        await trx("job_status_events").insert({
+          job_id: id,
+          lab_id: user.labId,
+          from_status: job.status,
+          to_status: updates.status,
+          changed_by_role: user.role,
+          changed_by_user_id: user.id,
+        });
+      }
+      return row;
+    });
 
     return Response.json({ data: updated, error: null });
   } catch (err) {
