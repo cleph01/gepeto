@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/auth';
@@ -42,7 +43,11 @@ export default function LoginScreen() {
           {/* Logo / Branding */}
           <View style={styles.header}>
             <View style={styles.logoMark}>
-              <Text style={styles.logoLetter}>G</Text>
+              <Image
+                source={require('@/assets/images/gepeto-icon.png')}
+                style={styles.logoImage}
+                accessibilityLabel="Gepeto"
+              />
             </View>
             <Text style={styles.appName}>Gepeto</Text>
             <Text style={styles.subtitle}>Driver Portal</Text>
@@ -122,19 +127,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  // Orbital Gepeto icon on a white tile, matching the dispatcher and landing badges.
   logoMark: {
     width: 64,
     height: 64,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#fff',
+    padding: 6,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
-  logoLetter: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: '700',
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
   },
   appName: {
     color: Colors.text,
