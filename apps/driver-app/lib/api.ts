@@ -11,6 +11,11 @@ async function getHeaders(): Promise<Record<string, string>> {
   };
 }
 
+export async function apiGet<T>(path: string): Promise<ApiResponse<T>> {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: await getHeaders() });
+  return res.json();
+}
+
 export async function apiPatch<T>(path: string, body: unknown): Promise<ApiResponse<T>> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'PATCH',

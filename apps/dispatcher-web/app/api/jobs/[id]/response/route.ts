@@ -50,7 +50,9 @@ export async function PATCH(
 
     const updated = await db.transaction(async (trx: typeof db) => {
       const [row] = await trx("jobs").where({ id }).update(updates).returning("*");
-      if (updates.status && job.status !== updates.status) {
+      // Rejections are always logged (even if the status didn't change) so the
+      // driver's History tab can show jobs they turned down.
+      if (updates.status && (job.status !== updates.status || driverResponse === "rejected")) {
         await trx("job_status_events").insert({
           job_id: id,
           lab_id: user.labId,

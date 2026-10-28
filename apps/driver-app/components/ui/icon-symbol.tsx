@@ -21,6 +21,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'list.bullet.rectangle.portrait.fill': 'list-alt',
   'gearshape.fill': 'settings',
+  'clock.fill': 'history',
 } as IconMapping;
 
 /**

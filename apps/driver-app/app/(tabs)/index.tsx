@@ -163,10 +163,15 @@ export default function JobQueueScreen() {
   const fetchJobs = useCallback(async () => {
     if (!driverId) return;
     setRefreshing(true);
+    // Only active jobs and today's finished ones; older ones live in the History tab.
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const since = startOfToday.toISOString();
     const { data, error } = await supabase
       .from('jobs')
       .select('*')
       .eq('driver_id', driverId)
+      .or(`status.neq.delivered,delivered_at.gte.${since},updated_at.gte.${since}`)
       .order('created_at', { ascending: false });
 
     if (!error && data) {
