@@ -116,9 +116,17 @@ function NewJobBanner({ onDismiss }: { onDismiss: () => void }) {
 
 // ─── Stats row ────────────────────────────────────────────────────────────────
 
+// Delivered/rejected today, by the driver's local date. deliveredAt is set when
+// the status goes to delivered; updatedAt covers rejections and older rows.
+function finishedToday(job: Job) {
+  if (job.status !== 'delivered' && job.status !== 'rejected') return false;
+  const when = job.deliveredAt ?? job.updatedAt;
+  return !!when && new Date(when).toDateString() === new Date().toDateString();
+}
+
 function StatsRow({ jobs }: { jobs: Job[] }) {
   const active = jobs.filter((j) => ['assigned', 'picked_up', 'in_transit', 'arrived'].includes(j.status)).length;
-  const delivered = jobs.filter((j) => j.status === 'delivered').length;
+  const delivered = jobs.filter((j) => j.status === 'delivered' && finishedToday(j)).length;
   const pending = jobs.filter((j) => j.driverResponse === 'pending').length;
 
   return (
@@ -202,7 +210,7 @@ export default function JobQueueScreen() {
   }, [driverId]);
 
   const activeJobs = jobs.filter((j) => j.status !== 'delivered' && j.status !== 'rejected');
-  const completedJobs = jobs.filter((j) => j.status === 'delivered' || j.status === 'rejected');
+  const completedJobs = jobs.filter(finishedToday);
 
   // Track location whenever the driver has at least one active job
   const hasActiveJob = activeJobs.some((j) =>
