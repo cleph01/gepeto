@@ -4,6 +4,8 @@ import { useEffect, useState, lazy, Suspense, useCallback } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useRealtimeDashboard } from "@/hooks/use-realtime-dashboard";
+import { useMessageNotifications } from "@/context/message-notifications";
+import { useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
 
 const LiveMap = lazy(() => import("@/components/live-map"));
@@ -20,7 +22,10 @@ type ApiDriver = {
 export default function DashboardPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
-  const [jobs, setJobs]       = useState<ApiJob[]>([]);
+  const router = useRouter();
+  const { totalUnread, unreadByJob } = useMessageNotifications();
+  const unreadJobCount = Object.values(unreadByJob).filter((n) => n > 0).length;
+  const [jobs, setJobs]      = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
   const [labName, setLabName] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState<"all" | "stat" | "in_transit" | "pending">("all");
@@ -163,11 +168,21 @@ export default function DashboardPage() {
           gap: 16,
         }}>
           {/* Metrics row */}
-          <div className="stats-grid">
+          {/* 5 across on desktop; on smaller screens the messages card spans the full row */}
+          <div className="stats-grid" style={bp === "desktop" ? { gridTemplateColumns: "repeat(5, 1fr)" } : undefined}>
             <MetricCard value={String(metrics.active)}    label="Active Jobs" sublabel={`${metrics.createdToday} today`} />
             <MetricCard value={String(metrics.inTransit)} label="In Transit"     color="#185FA5" sublabel={`${metrics.statInTransit} STAT`} />
             <MetricCard value={String(metrics.delivered)} label="Delivered Today" color="#3B6D11" />
             <MetricCard value={String(metrics.pending)}   label="Pending"        color="#854F0B" />
+            <MetricCard
+              value={String(totalUnread)}
+              label="Unread Messages"
+              color={totalUnread > 0 ? "#C0392B" : "#1a1a1a"}
+              sublabel={totalUnread > 0 ? `on ${unreadJobCount} job${unreadJobCount !== 1 ? "s" : ""}` : "All caught up"}
+              highlight={totalUnread > 0}
+              onClick={() => router.push("/jobs")}
+              style={bp === "desktop" ? undefined : { gridColumn: "span 2" }}
+            />
           </div>
 
           {/* Active Jobs section */}
@@ -398,20 +413,30 @@ function MetricCard({
   label,
   sublabel,
   color = "#1a1a1a",
+  highlight,
+  onClick,
+  style,
 }: {
   value: string;
   label: string;
   sublabel?: string;
   color?: string;
+  highlight?: boolean;
+  onClick?: () => void;
+  style?: React.CSSProperties;
 }) {
   return (
     <div
+      onClick={onClick}
+      title={onClick ? "Open Jobs" : undefined}
       style={{
-        background: "#FFFFFF",
-        border: "1px solid rgba(0,0,0,0.08)",
+        background: highlight ? "#FDF1F0" : "#FFFFFF",
+        border: `1px solid ${highlight ? "rgba(192,57,43,0.35)" : "rgba(0,0,0,0.08)"}`,
         borderRadius: 12,
         padding: "14px 16px",
         boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+        cursor: onClick ? "pointer" : undefined,
+        ...style,
       }}
     >
       <div
