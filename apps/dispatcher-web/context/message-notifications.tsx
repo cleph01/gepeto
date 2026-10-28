@@ -45,7 +45,11 @@ interface MessageNotificationsContextType {
   markRead: (jobId: string, upTo: string) => void;
   /** Set while a job's messages modal is open — suppresses toasts for it. */
   setActiveThread: (jobId: string | null) => void;
-  /** A thread the jobs page should open (set when a toast is clicked). */
+  /** The job with the most recent unread message, if any. */
+  newestUnreadJobId: string | null;
+  /** Go to the jobs page with this job's messages open. */
+  openThread: (jobId: string) => void;
+  /** A thread the jobs page should open (set by openThread). */
   pendingOpenJobId: string | null;
   clearPendingOpen: () => void;
   soundEnabled: boolean;
@@ -57,6 +61,8 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   unreadByJob: {},
   markRead: () => {},
   setActiveThread: () => {},
+  newestUnreadJobId: null,
+  openThread: () => {},
   pendingOpenJobId: null,
   clearPendingOpen: () => {},
   soundEnabled: true,
@@ -126,6 +132,12 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     () => Object.values(unreadByJob).reduce((sum, n) => sum + n, 0),
     [unreadByJob]
   );
+  // Job ids from the latest poll's unread messages, newest first.
+  const [recentJobIds, setRecentJobIds] = useState<string[]>([]);
+  const newestUnreadJobId = useMemo(
+    () => recentJobIds.find((id) => unreadByJob[id]) ?? Object.keys(unreadByJob)[0] ?? null,
+    [recentJobIds, unreadByJob]
+  );
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pendingOpenJobId, setPendingOpenJobId] = useState<string | null>(null);
   // Safe to read localStorage on first render: AppShell's Guard only mounts this
@@ -182,6 +194,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     const active = activeThread.current;
     if (active) delete byJob[active];
     setUnreadByJob(byJob);
+    setRecentJobIds(recent.map((m) => m.jobId));
 
     const fresh = recent.filter((m) => !seenIds.current.has(m.id));
     for (const m of fresh) seenIds.current.add(m.id);
@@ -248,10 +261,15 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const clearPendingOpen = useCallback(() => setPendingOpenJobId(null), []);
 
+  const openThread = useCallback((jobId: string) => {
+    setPendingOpenJobId(jobId);
+    if (pathname !== "/jobs") router.push("/jobs");
+  }, [pathname, router]);
+
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if (t.jobId) setPendingOpenJobId(t.jobId);
-    if (pathname !== "/jobs") router.push("/jobs");
+    if (t.jobId) openThread(t.jobId);
+    else if (pathname !== "/jobs") router.push("/jobs");
   };
 
   return (
@@ -261,6 +279,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         unreadByJob,
         markRead,
         setActiveThread,
+        newestUnreadJobId,
+        openThread,
         pendingOpenJobId,
         clearPendingOpen,
         soundEnabled,

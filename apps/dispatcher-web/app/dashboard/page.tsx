@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
   const router = useRouter();
-  const { totalUnread, unreadByJob } = useMessageNotifications();
+  const { totalUnread, unreadByJob, newestUnreadJobId, openThread } = useMessageNotifications();
   const unreadJobCount = Object.values(unreadByJob).filter((n) => n > 0).length;
   const [jobs, setJobs]      = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
@@ -180,7 +180,8 @@ export default function DashboardPage() {
               color={totalUnread > 0 ? "#C0392B" : "#1a1a1a"}
               sublabel={totalUnread > 0 ? `on ${unreadJobCount} job${unreadJobCount !== 1 ? "s" : ""}` : "All caught up"}
               highlight={totalUnread > 0}
-              onClick={() => router.push("/jobs")}
+              hint={newestUnreadJobId ? "Open the newest unread thread" : "Open Jobs"}
+              onClick={() => (newestUnreadJobId ? openThread(newestUnreadJobId) : router.push("/jobs"))}
               style={bp === "desktop" ? undefined : { gridColumn: "span 2" }}
             />
           </div>
@@ -415,6 +416,7 @@ function MetricCard({
   color = "#1a1a1a",
   highlight,
   onClick,
+  hint,
   style,
 }: {
   value: string;
@@ -423,12 +425,13 @@ function MetricCard({
   color?: string;
   highlight?: boolean;
   onClick?: () => void;
+  hint?: string;
   style?: React.CSSProperties;
 }) {
   return (
     <div
       onClick={onClick}
-      title={onClick ? "Open Jobs" : undefined}
+      title={hint}
       style={{
         background: highlight ? "#FDF1F0" : "#FFFFFF",
         border: `1px solid ${highlight ? "rgba(192,57,43,0.35)" : "rgba(0,0,0,0.08)"}`,
