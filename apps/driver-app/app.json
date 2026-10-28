@@ -11,7 +11,11 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["waze", "comgooglemaps", "googlemaps"]
+        "LSApplicationQueriesSchemes": [
+          "waze",
+          "comgooglemaps",
+          "googlemaps"
+        ]
       }
     },
     "android": {
@@ -41,7 +45,9 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
