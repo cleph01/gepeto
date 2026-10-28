@@ -124,7 +124,10 @@ exports.seed = async function (knex) {
       .returning('id');
     driver1Id = d1.id;
     // Backfill driver_id into auth user metadata now that we have the DB row UUID
+    // app_metadata is what RLS and requireAuth() read (and what real invites set);
+    // user_metadata is kept for older code paths.
     await supabaseAdmin.auth.admin.updateUserById(driver1UserId, {
+      app_metadata:  { role: 'driver', driver_id: driver1Id, lab_id: labId },
       user_metadata: { role: 'driver', driver_id: driver1Id, lab_id: labId },
     });
     console.log(`  ↳ Created driver: James Carter (${driver1Id})`);
@@ -147,7 +150,10 @@ exports.seed = async function (knex) {
       .returning('id');
     driver2Id = d2.id;
     // Backfill driver_id into auth user metadata now that we have the DB row UUID
+    // app_metadata is what RLS and requireAuth() read (and what real invites set);
+    // user_metadata is kept for older code paths.
     await supabaseAdmin.auth.admin.updateUserById(driver2UserId, {
+      app_metadata:  { role: 'driver', driver_id: driver2Id, lab_id: labId },
       user_metadata: { role: 'driver', driver_id: driver2Id, lab_id: labId },
     });
     console.log(`  ↳ Created driver: Sofia Reyes (${driver2Id})`);

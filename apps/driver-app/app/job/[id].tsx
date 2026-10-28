@@ -31,6 +31,7 @@ import {
   StatusColors,
   StatusLabels,
 } from '@/constants/theme';
+import { getDriverId } from '@/lib/driver';
 
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
@@ -99,7 +100,7 @@ export default function JobDetailScreen() {
   const [submittingPod, setSubmittingPod] = useState(false);
 
   const listRef = useRef<FlatList>(null);
-  const driverId = session?.user.user_metadata?.driver_id as string | undefined;
+  const driverId = getDriverId(session);
 
   // Set nav title to case ID
   useEffect(() => {

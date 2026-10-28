@@ -24,6 +24,7 @@ import {
   StatusColors,
   StatusLabels,
 } from '@/constants/theme';
+import { getDriverId } from '@/lib/driver';
 
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -149,8 +150,7 @@ export default function JobQueueScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
 
-  // driver_id is the drivers table UUID stored in auth metadata
-  const driverId = session?.user.user_metadata?.driver_id as string | undefined;
+  const driverId = getDriverId(session);
 
   const fetchJobs = useCallback(async () => {
     if (!driverId) return;
