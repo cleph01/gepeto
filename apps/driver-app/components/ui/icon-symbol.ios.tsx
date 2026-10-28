@@ -1,5 +1,5 @@
 import { SymbolView, SymbolViewProps, SymbolWeight } from 'expo-symbols';
-import { StyleProp, ViewStyle } from 'react-native';
+import { ColorValue, StyleProp, ViewStyle } from 'react-native';
 
 export function IconSymbol({
   name,
@@ -10,14 +10,15 @@ export function IconSymbol({
 }: {
   name: SymbolViewProps['name'];
   size?: number;
-  color: string;
+  // Tab bar icons get React Native's ColorValue (which can be null) since expo-router 58.
+  color: ColorValue | null | undefined;
   style?: StyleProp<ViewStyle>;
   weight?: SymbolWeight;
 }) {
   return (
     <SymbolView
       weight={weight}
-      tintColor={color}
+      tintColor={typeof color === 'string' ? color : undefined}
       resizeMode="scaleAspectFit"
       name={name}
       style={[
