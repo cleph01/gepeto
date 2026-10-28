@@ -8,6 +8,13 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
+    if (user.role !== "dispatcher") {
+      return Response.json(
+        { data: null, error: { code: "FORBIDDEN", message: "Only dispatchers can view lab settings" } },
+        { status: 403 }
+      );
+    }
+
     const [lab, labUser] = await Promise.all([
       db("labs").where({ id: user.labId }).first(),
       db("lab_users").where({ lab_id: user.labId, user_id: user.id }).first(),

@@ -16,7 +16,12 @@ export async function POST(
     const user = await requireAuth(request);
     const { id } = await params;
 
-    const job = await db("jobs").where({ id, lab_id: user.labId }).first();
+    // Drivers can only reach messages on their own jobs
+    const job = await db("jobs")
+      .where(user.role === "driver"
+        ? { id, lab_id: user.labId, driver_id: user.driverId }
+        : { id, lab_id: user.labId })
+      .first();
     if (!job) {
       return Response.json(
         { data: null, error: { code: "NOT_FOUND", message: "Job not found" } },

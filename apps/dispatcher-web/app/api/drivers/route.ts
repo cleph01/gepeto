@@ -10,6 +10,13 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
 
+    if (user.role !== "dispatcher") {
+      return Response.json(
+        { data: null, error: { code: "FORBIDDEN", message: "Only dispatchers can view drivers" } },
+        { status: 403 }
+      );
+    }
+
     const drivers = await db("drivers")
       .where("lab_id", user.labId)
       .orderBy("name", "asc")

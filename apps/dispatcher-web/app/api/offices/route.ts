@@ -8,6 +8,14 @@ const db = require("@gepeto/db");
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
+
+    if (user.role !== "dispatcher") {
+      return Response.json(
+        { data: null, error: { code: "FORBIDDEN", message: "Only dispatchers can view offices" } },
+        { status: 403 }
+      );
+    }
+
     const offices = await db("offices")
       .where("lab_id", user.labId)
       .orderBy("name", "asc")
