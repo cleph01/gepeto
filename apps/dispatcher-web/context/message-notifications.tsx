@@ -4,9 +4,11 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { usePathname, useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
 import { useAuth } from "@/context/auth";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 // Polling, not Supabase realtime: realtime on `messages` would need RLS
-// policies for dispatchers that don't exist yet.
+// policies for dispatchers that don't exist yet. Driver rejections are polled
+// too, and also re-checked the moment realtime reports a change to `jobs`.
 const POLL_MS = 10_000;
 const TOAST_MS = 7_000;
 const MAX_TOASTS = 3;
@@ -30,8 +32,18 @@ interface UnreadResponse {
   recent: UnreadMessage[];
 }
 
+interface Rejection {
+  // camelCased by @gepeto/db
+  id: string;
+  jobId: string;
+  createdAt: string;
+  caseId: string;
+  driverName: string | null;
+}
+
 interface Toast {
   key: string;
+  kind: "message" | "rejection";
   jobId: string | null; // null = summary toast for a burst of messages
   title: string;
   body: string;
@@ -52,6 +64,11 @@ interface MessageNotificationsContextType {
   /** A thread the jobs page should open (set by openThread). */
   pendingOpenJobId: string | null;
   clearPendingOpen: () => void;
+  /** A job whose history popup the jobs page should open (rejection toast clicked). */
+  pendingHistoryJobId: string | null;
+  clearPendingHistory: () => void;
+  /** Bumped on every realtime change to the lab's jobs, so lists can reload. */
+  jobsChangedAt: number;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
 }
@@ -65,6 +82,9 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   openThread: () => {},
   pendingOpenJobId: null,
   clearPendingOpen: () => {},
+  pendingHistoryJobId: null,
+  clearPendingHistory: () => {},
+  jobsChangedAt: 0,
   soundEnabled: true,
   setSoundEnabled: () => {},
 });
@@ -78,10 +98,22 @@ function toastFor(m: UnreadMessage): Toast {
       : m.driverName ? `${m.driverName} (driver)` : "Driver";
   return {
     key: m.id,
+    kind: "message",
     jobId: m.jobId,
     title: `${who} · ${m.caseId}`,
     body: m.body,
     color: ROLE_COLOR[m.senderRole],
+  };
+}
+
+function toastForRejection(r: Rejection): Toast {
+  return {
+    key: `rejection-${r.id}`,
+    kind: "rejection",
+    jobId: r.jobId,
+    title: `${r.driverName ?? "A driver"} rejected ${r.caseId}`,
+    body: "It's back to Pending and unassigned.",
+    color: "#A32D2D",
   };
 }
 
@@ -140,6 +172,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [pendingOpenJobId, setPendingOpenJobId] = useState<string | null>(null);
+  const [pendingHistoryJobId, setPendingHistoryJobId] = useState<string | null>(null);
+  const [jobsChangedAt, setJobsChangedAt] = useState(0);
   // Safe to read localStorage on first render: AppShell's Guard only mounts this
   // provider client-side, after auth has loaded.
   const [soundEnabled, setSoundEnabledState] = useState(
@@ -148,6 +182,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const seenIds = useRef<Set<string>>(new Set());
   const primed = useRef(false); // first poll only records what's already unread — no toast storm on page load
+  const seenRejections = useRef<Set<string>>(new Set());
+  const rejectionsPrimed = useRef(false);
   const activeThread = useRef<string | null>(null);
   const soundRef = useRef(soundEnabled);
 
@@ -209,6 +245,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (toToast.length > MAX_TOASTS) {
       pushToasts([{
         key: `burst-${toToast[toToast.length - 1].id}`,
+        kind: "message",
         jobId: null,
         title: `${toToast.length} new messages`,
         body: "Open Jobs to read them.",
@@ -220,19 +257,73 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (soundRef.current) playChime();
   }, [session, apiFetch, pushToasts]);
 
+  const isDispatcher = session?.user.app_metadata?.role === "dispatcher" || session?.user.user_metadata?.role === "dispatcher";
+  const labId = (session?.user.app_metadata as Record<string, string> | undefined)?.lab_id;
+
+  const pollRejections = useCallback(async () => {
+    if (!session || !isDispatcher) return;
+    let res: ApiResponse<Rejection[]>;
+    try {
+      res = await apiFetch<ApiResponse<Rejection[]>>("/api/jobs/rejections");
+    } catch {
+      return;
+    }
+    if (!res.data) return;
+
+    const fresh = res.data.filter((r) => !seenRejections.current.has(r.id));
+    for (const r of fresh) seenRejections.current.add(r.id);
+    if (!rejectionsPrimed.current) {
+      rejectionsPrimed.current = true;
+      return;
+    }
+    if (fresh.length === 0) return;
+    setJobsChangedAt(Date.now()); // in case realtime missed it
+    pushToasts(fresh.reverse().slice(-MAX_TOASTS).map(toastForRejection));
+    if (soundRef.current) playChime();
+  }, [session, isDispatcher, apiFetch, pushToasts]);
+
+  const pollAll = useCallback(() => {
+    poll();
+    pollRejections();
+  }, [poll, pollRejections]);
+
+  // Realtime: any change to the lab's jobs re-checks rejections right away and
+  // tells open job lists to reload. Polling above still covers a dropped socket.
+  useEffect(() => {
+    if (!labId) return;
+    const channel = supabaseBrowser
+      .channel(`notifications:${labId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "jobs", filter: `lab_id=eq.${labId}` },
+        () => {
+          setJobsChangedAt(Date.now());
+          pollRejections();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabaseBrowser.removeChannel(channel);
+    };
+  }, [labId, pollRejections]);
+
   useEffect(() => {
     if (!session) return;
-    // poll() only sets state after awaiting the fetch, not synchronously.
+    // pollAll() only sets state after awaiting the fetch, not synchronously.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    poll();
-    const id = setInterval(poll, POLL_MS);
-    const onVisible = () => { if (document.visibilityState === "visible") poll(); };
+    pollAll();
+    const id = setInterval(pollAll, POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      pollAll();
+      setJobsChangedAt(Date.now()); // catch up on anything missed while hidden
+    };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [session, poll]);
+  }, [session, pollAll]);
 
   // Unread count in the tab title so it's visible from other tabs.
   const baseTitle = useRef<string | null>(null);
@@ -260,6 +351,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   }, []);
 
   const clearPendingOpen = useCallback(() => setPendingOpenJobId(null), []);
+  const clearPendingHistory = useCallback(() => setPendingHistoryJobId(null), []);
 
   const openThread = useCallback((jobId: string) => {
     setPendingOpenJobId(jobId);
@@ -268,7 +360,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if (t.jobId) openThread(t.jobId);
+    if (t.kind === "rejection" && t.jobId) {
+      setPendingHistoryJobId(t.jobId);
+      if (pathname !== "/jobs") router.push("/jobs");
+    } else if (t.jobId) openThread(t.jobId);
     else if (pathname !== "/jobs") router.push("/jobs");
   };
 
@@ -283,6 +378,9 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         openThread,
         pendingOpenJobId,
         clearPendingOpen,
+        pendingHistoryJobId,
+        clearPendingHistory,
+        jobsChangedAt,
         soundEnabled,
         setSoundEnabled,
       }}
@@ -332,7 +430,14 @@ function ToastStack({
           }}
         >
           <svg width="16" height="16" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, marginTop: 1, color: t.color }}>
-            <path d="M1 2.5h10v6H4.5L1 11V2.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            {t.kind === "rejection" ? (
+              <>
+                <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M4 4l4 4M8 4L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </>
+            ) : (
+              <path d="M1 2.5h10v6H4.5L1 11V2.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+            )}
           </svg>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: t.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

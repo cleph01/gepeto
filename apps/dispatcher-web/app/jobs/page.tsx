@@ -27,6 +27,7 @@ interface Job {
   officeTrackingToken: string | null;
   deliveryAddress: string;
   driver: string | null;
+  driverId: string | null;
   priority: JobPriority;
   status: JobStatus;
   itemDescription: string;
@@ -389,6 +390,8 @@ function StatusModal({
   error?: string | null;
 }) {
   const [selected, setSelected] = useState<JobStatus>(job.status);
+  // Mirrors PATCH /api/jobs/[id]/status: no driver, no leaving pending.
+  const needsDriver = !job.driverId;
 
   return (
     <div
@@ -432,17 +435,25 @@ function StatusModal({
         </div>
 
         <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {needsDriver && (
+            <p style={{ margin: "0 0 4px", fontSize: 12, color: "#854F0B", lineHeight: 1.4 }}>
+              No driver assigned. Assign one (click &quot;Assign driver&quot; on the job) before moving it out of Pending.
+            </p>
+          )}
           {STATUS_ORDER.map((s) => {
             const cfg = STATUS_CONFIG[s];
             const active = selected === s;
+            const locked = needsDriver && s !== "pending";
             return (
               <button
                 key={s}
                 type="button"
                 onClick={() => setSelected(s)}
+                disabled={locked}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "9px 12px", borderRadius: 8, cursor: "pointer",
+                  padding: "9px 12px", borderRadius: 8, cursor: locked ? "not-allowed" : "pointer",
+                  opacity: locked ? 0.4 : 1,
                   border: `1.5px solid ${active ? cfg.color : "rgba(0,0,0,0.09)"}`,
                   background: active ? cfg.bg : "transparent",
                   transition: "all 0.1s",
@@ -489,6 +500,200 @@ function StatusModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Driver & Priority Modal ──────────────────────────────────────────────────
+
+const PRIORITY_OPTIONS: { value: JobPriority; label: string; color: string; bg: string }[] = [
+  { value: "standard", label: "Standard", color: "#3a3a3a", bg: "rgba(0,0,0,0.04)" },
+  { value: "stat",     label: "STAT",     color: "#854F0B", bg: "rgba(133,79,11,0.10)" },
+];
+
+// Jobs a driver already has in hand can be handed over but not left unassigned
+// (mirrors PATCH /api/jobs/[id]).
+const CAN_UNASSIGN: JobStatus[] = ["pending", "assigned"];
+
+function AssignModal({
+  job,
+  drivers,
+  onClose,
+  onSave,
+  error,
+}: {
+  job: Job;
+  drivers: DriverOption[];
+  onClose: () => void;
+  onSave: (changes: { driverId: string | null; priority: JobPriority }) => Promise<void>;
+  error?: string | null;
+}) {
+  const [driverId, setDriverId] = useState<string>(job.driverId ?? "");
+  const [priority, setPriority] = useState<JobPriority>(job.priority);
+  const [saving, setSaving] = useState(false);
+  const delivered = job.status === "delivered";
+  const canUnassign = CAN_UNASSIGN.includes(job.status);
+
+  const save = async () => {
+    setSaving(true);
+    await onSave({ driverId: driverId || null, priority });
+    setSaving(false);
+  };
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(2px)",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff", borderRadius: 14, width: "100%", maxWidth: 380,
+          margin: "0 16px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "18px 20px 14px", borderBottom: "1px solid rgba(0,0,0,0.07)",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>
+              Driver &amp; Priority
+            </h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
+              {job.caseId} · {job.office}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#9a9a9a", padding: 4, borderRadius: 6, display: "flex" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Driver</label>
+            <select
+              value={driverId}
+              onChange={(e) => setDriverId(e.target.value)}
+              disabled={delivered}
+              style={{ ...inputStyle(false), cursor: delivered ? "not-allowed" : "pointer" }}
+              onFocus={focusStyle}
+              onBlur={(e) => blurStyle(e, false)}
+            >
+              <option value="" disabled={!canUnassign && !!job.driverId}>Unassigned</option>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9a9a9a", lineHeight: 1.4 }}>
+              {delivered
+                ? "This job has been delivered, so its driver can't change."
+                : job.status === "pending"
+                  ? "Assigning a driver moves the job to Assigned. They'll be asked to accept or reject it."
+                  : "The new driver will be asked to accept or reject it."}
+            </p>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Priority</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              {PRIORITY_OPTIONS.map((o) => {
+                const active = priority === o.value;
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setPriority(o.value)}
+                    style={{
+                      flex: 1, padding: "9px 12px", borderRadius: 8, cursor: "pointer",
+                      border: `1.5px solid ${active ? o.color : "rgba(0,0,0,0.09)"}`,
+                      background: active ? o.bg : "transparent",
+                      fontSize: 13, fontWeight: active ? 600 : 400,
+                      color: active ? o.color : "#3a3a3a", transition: "all 0.1s",
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <p style={{ margin: "0 20px 12px", fontSize: 12, color: "#A32D2D" }}>{error}</p>
+        )}
+
+        <div style={{ padding: "0 20px 20px", display: "flex", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: "9px", fontSize: 13.5, fontWeight: 500,
+              border: "1px solid rgba(0,0,0,0.13)", borderRadius: 8,
+              background: "#fff", color: "#3a3a3a", cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{
+              flex: 2, padding: "9px", fontSize: 13.5, fontWeight: 600,
+              border: "none", borderRadius: 8,
+              background: "#185FA5", color: "white", cursor: saving ? "wait" : "pointer",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Driver name / priority shown as a clickable cell that opens the AssignModal,
+// the same way the status pill opens the status modal.
+function DriverButton({ job, onClick, fontSize = 12.5 }: { job: Job; onClick: () => void; fontSize?: number }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Change driver or priority"
+      style={{
+        background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left",
+        fontSize, color: job.driver ? "#3a3a3a" : "#185FA5", fontWeight: job.driver ? 400 : 500,
+        textDecoration: "underline dotted rgba(0,0,0,0.25)", textUnderlineOffset: 3,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
+      }}
+    >
+      {job.driver ?? "Assign driver"}
+    </button>
+  );
+}
+
+function PriorityButton({ priority, onClick, fontSize = 10.5 }: { priority: JobPriority; onClick: () => void; fontSize?: number }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Change driver or priority"
+      style={priority === "stat"
+        ? { fontSize, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.03em", textTransform: "uppercase", border: "none", cursor: "pointer" }
+        : { fontSize: fontSize + 1.5, color: "#9a9a9a", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline dotted rgba(0,0,0,0.25)", textUnderlineOffset: 3 }}
+    >
+      {priority === "stat" ? "STAT" : "Standard"}
+    </button>
   );
 }
 
@@ -711,10 +916,13 @@ function JobDetailRow({
   job,
   onCopyLink,
   linkCopied,
+  onEditAssignment,
 }: {
   job: Job;
   onCopyLink: () => void;
   linkCopied: boolean;
+  /** Set on tablet, where the Driver and Priority columns are hidden. */
+  onEditAssignment?: () => void;
 }) {
   return (
     <div
@@ -723,7 +931,7 @@ function JobDetailRow({
         background: "#FAFBFD",
         borderBottom: "1px solid rgba(0,0,0,0.05)",
         display: "grid",
-        gridTemplateColumns: "1fr 1fr 1fr 1fr 1.4fr",
+        gridTemplateColumns: onEditAssignment ? "1fr 1fr 1fr 1fr 1fr 1.4fr" : "1fr 1fr 1fr 1fr 1.4fr",
         gap: 16,
       }}
     >
@@ -742,6 +950,17 @@ function JobDetailRow({
           )}
         </p>
       </div>
+      {onEditAssignment && (
+        <div>
+          <p style={{ margin: "0 0 3px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Driver · Priority
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <DriverButton job={job} onClick={onEditAssignment} />
+            <PriorityButton priority={job.priority} onClick={onEditAssignment} />
+          </div>
+        </div>
+      )}
       <DetailField label="Delivery Address" value={job.deliveryAddress} />
       <DetailField label="Item" value={job.itemDescription} />
       <div>
@@ -816,6 +1035,12 @@ function statusLabel(s: string) {
   return STATUS_CONFIG[s as JobStatus]?.label ?? (s === "rejected" ? "Rejected" : s);
 }
 
+// A driver can only move a job back to pending by rejecting it
+// (PATCH /api/jobs/[id]/response).
+function isRejection(e: StatusEvent) {
+  return e.changedByRole === "driver" && e.toStatus === "pending";
+}
+
 // Per-job status history, opened from the History button on a job row or card.
 function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { apiFetch } = useAuth();
@@ -888,14 +1113,22 @@ function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
                   <div style={{ fontSize: 11.5, color: "#9a9a9a", marginBottom: 1 }}>
                     {new Date(e.createdAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   </div>
-                  <div>
-                    {e.fromStatus === null
-                      ? <>Created as <strong>{statusLabel(e.toStatus)}</strong></>
-                      : <>{statusLabel(e.fromStatus)} → <strong>{statusLabel(e.toStatus)}</strong></>}
-                    <span style={{ color: "#5F5E5A" }}>
-                      {" "}by {e.changedByName ?? "Unknown"} ({e.changedByRole === "driver" ? "Driver" : "Dispatcher"})
-                    </span>
-                  </div>
+                  {isRejection(e) ? (
+                    <div>
+                      <strong style={{ color: "#A32D2D" }}>Rejected</strong>
+                      <span style={{ color: "#5F5E5A" }}> by {e.changedByName ?? "Unknown"} (Driver)</span>
+                      {" "}· back to <strong>{statusLabel(e.toStatus)}</strong>, unassigned
+                    </div>
+                  ) : (
+                    <div>
+                      {e.fromStatus === null
+                        ? <>Created as <strong>{statusLabel(e.toStatus)}</strong></>
+                        : <>{statusLabel(e.fromStatus)} → <strong>{statusLabel(e.toStatus)}</strong></>}
+                      <span style={{ color: "#5F5E5A" }}>
+                        {" "}by {e.changedByName ?? "Unknown"} ({e.changedByRole === "driver" ? "Driver" : "Dispatcher"})
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -957,6 +1190,7 @@ function JobRow({
   expanded,
   onToggleExpand,
   onUpdateStatus,
+  onEditAssignment,
   onOpenHistory,
   onOpenMessages,
   onCopyLink,
@@ -969,6 +1203,7 @@ function JobRow({
   expanded: boolean;
   onToggleExpand: () => void;
   onUpdateStatus: () => void;
+  onEditAssignment: () => void;
   onOpenHistory: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
@@ -1023,21 +1258,15 @@ function JobRow({
 
         {/* Driver — desktop only */}
         {bp === "desktop" && (
-          <span style={{ fontSize: 12.5, color: job.driver ? "#3a3a3a" : "#9a9a9a" }}>
-            {job.driver ?? "Unassigned"}
+          <span style={{ overflow: "hidden", paddingRight: 8 }}>
+            <DriverButton job={job} onClick={onEditAssignment} />
           </span>
         )}
 
         {/* Priority — desktop only */}
         {bp === "desktop" && (
           <span>
-            {job.priority === "stat" ? (
-              <span style={{ fontSize: 10.5, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.03em", textTransform: "uppercase" }}>
-                STAT
-              </span>
-            ) : (
-              <span style={{ fontSize: 12, color: "#9a9a9a" }}>Standard</span>
-            )}
+            <PriorityButton priority={job.priority} onClick={onEditAssignment} />
           </span>
         )}
 
@@ -1071,7 +1300,14 @@ function JobRow({
       </div>
 
       {/* Expanded detail */}
-      {expanded && <JobDetailRow job={job} onCopyLink={onCopyLink} linkCopied={linkCopied} />}
+      {expanded && (
+        <JobDetailRow
+          job={job}
+          onCopyLink={onCopyLink}
+          linkCopied={linkCopied}
+          onEditAssignment={bp === "tablet" ? onEditAssignment : undefined}
+        />
+      )}
     </>
   );
 }
@@ -1081,6 +1317,7 @@ function JobRow({
 function JobCard({
   job,
   onUpdateStatus,
+  onEditAssignment,
   onOpenHistory,
   onOpenMessages,
   onCopyLink,
@@ -1089,6 +1326,7 @@ function JobCard({
 }: {
   job: Job;
   onUpdateStatus: () => void;
+  onEditAssignment: () => void;
   onOpenHistory: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
@@ -1108,19 +1346,15 @@ function JobCard({
         <span style={{ fontSize: 12.5, fontWeight: 600, color: "#185FA5", fontFamily: "monospace" }}>
           {job.caseId}
         </span>
-        {job.priority === "stat" && (
-          <span style={{ fontSize: 10, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-            STAT
-          </span>
-        )}
+        <PriorityButton priority={job.priority} onClick={onEditAssignment} fontSize={10} />
       </div>
 
       {/* Office */}
       <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>{job.office}</div>
 
       {/* Driver */}
-      <div style={{ fontSize: 12, color: job.driver ? "#5F5E5A" : "#9a9a9a", marginBottom: 2 }}>
-        {job.driver ? `Driver: ${job.driver}` : "Unassigned"}
+      <div style={{ fontSize: 12, color: "#5F5E5A", marginBottom: 2 }}>
+        Driver: <DriverButton job={job} onClick={onEditAssignment} fontSize={12} />
       </div>
 
       {/* Expected delivery */}
@@ -1167,7 +1401,7 @@ function JobCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type ApiJobFull = {
-  id: string; caseId: string; officeName: string; officeTrackingToken: string | null; driverName: string | null;
+  id: string; caseId: string; officeName: string; officeTrackingToken: string | null; driverName: string | null; driverId: string | null;
   priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
   deliveryAddress: string; createdAt: string; updatedAt: string; scheduledAt: string | null;
 };
@@ -1180,6 +1414,7 @@ function mapJob(j: ApiJobFull): Job {
     officeTrackingToken: j.officeTrackingToken,
     deliveryAddress: j.deliveryAddress,
     driver: j.driverName,
+    driverId: j.driverId,
     priority: j.priority,
     status: j.status,
     itemDescription: j.items?.[0]?.description ?? "",
@@ -1200,15 +1435,27 @@ export default function JobsPage() {
   const [statusJob, setStatusJob]     = useState<Job | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [historyJob, setHistoryJob]   = useState<Job | null>(null);
+  const [assignJob, setAssignJob]     = useState<Job | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
-  const { unreadByJob, pendingOpenJobId, clearPendingOpen } = useMessageNotifications();
+  const {
+    unreadByJob, pendingOpenJobId, clearPendingOpen,
+    pendingHistoryJobId, clearPendingHistory, jobsChangedAt,
+  } = useMessageNotifications();
 
   // A message toast was clicked — show that thread once the job list has it.
   const toastJob = pendingOpenJobId ? jobs.find((j) => j.id === pendingOpenJobId) ?? null : null;
   const openMessagesJob = toastJob ?? messagesJob;
+  // Same for a rejection toast: show that job's history.
+  const toastHistoryJob = pendingHistoryJobId ? jobs.find((j) => j.id === pendingHistoryJobId) ?? null : null;
+  const openHistoryJob = toastHistoryJob ?? historyJob;
+  const closeHistory = () => {
+    setHistoryJob(null);
+    clearPendingHistory();
+  };
   const closeMessages = () => {
     setMessagesJob(null);
     clearPendingOpen();
@@ -1235,6 +1482,19 @@ export default function JobsPage() {
       if (driversRes.data) setDrivers(driversRes.data);
     });
   }, [session]);
+
+  // Live updates: reload the list whenever realtime reports a job change
+  // (a driver accepting, rejecting or moving a job along).
+  useEffect(() => {
+    if (!session || !jobsChangedAt) return;
+    const t = setTimeout(() => {
+      apiFetch<ApiResponse<ApiJobFull[]>>("/api/jobs")
+        .then((res) => { if (res.data) setJobs(res.data.map(mapJob)); })
+        .catch(() => {});
+    }, 300); // a burst of changes becomes one reload
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobsChangedAt]);
 
   const onCreateJob = async (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[]; scheduledAt: string | null }) => {
     const res = await apiFetch<ApiResponse<ApiJobFull>>("/api/jobs", {
@@ -1269,6 +1529,29 @@ export default function JobsPage() {
       setStatusJob(null);
     } catch {
       setStatusError("Couldn't save the status. Check your connection and try again.");
+    }
+  };
+
+  const openAssign = (job: Job) => {
+    setAssignError(null);
+    setAssignJob(job);
+  };
+
+  const onSaveAssignment = async (jobId: string, changes: { driverId: string | null; priority: JobPriority }) => {
+    setAssignError(null);
+    try {
+      const res = await apiFetch<ApiResponse<ApiJobFull>>(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        body: JSON.stringify(changes),
+      });
+      if (!res.data) {
+        setAssignError(res.error?.message ?? "Couldn't save. Please try again.");
+        return;
+      }
+      setJobs((prev) => prev.map((j) => j.id === jobId ? mapJob(res.data!) : j));
+      setAssignJob(null);
+    } catch {
+      setAssignError("Couldn't save. Check your connection and try again.");
     }
   };
 
@@ -1415,6 +1698,7 @@ export default function JobsPage() {
                   key={job.id}
                   job={job}
                   onUpdateStatus={() => setStatusJob(job)}
+                  onEditAssignment={() => openAssign(job)}
                   onOpenHistory={() => setHistoryJob(job)}
                   onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                   onCopyLink={() => onCopyTrackingLink(job)}
@@ -1433,6 +1717,7 @@ export default function JobsPage() {
                 expanded={expandedId === job.id}
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}
                 onUpdateStatus={() => setStatusJob(job)}
+                onEditAssignment={() => openAssign(job)}
                 onOpenHistory={() => setHistoryJob(job)}
                 onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                 onCopyLink={() => onCopyTrackingLink(job)}
@@ -1456,8 +1741,17 @@ export default function JobsPage() {
           error={statusError}
         />
       )}
-      {historyJob && (
-        <HistoryModal job={historyJob} onClose={() => setHistoryJob(null)} />
+      {assignJob && (
+        <AssignModal
+          job={assignJob}
+          drivers={drivers}
+          onClose={() => setAssignJob(null)}
+          onSave={(changes) => onSaveAssignment(assignJob.id, changes)}
+          error={assignError}
+        />
+      )}
+      {openHistoryJob && (
+        <HistoryModal job={openHistoryJob} onClose={closeHistory} />
       )}
       {openMessagesJob && (
         <MessagesModal job={openMessagesJob} onClose={closeMessages} />

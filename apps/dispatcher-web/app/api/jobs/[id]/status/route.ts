@@ -38,6 +38,15 @@ export async function PATCH(
       );
     }
 
+    // A job can only leave pending once it has a driver (assign one via
+    // PATCH /api/jobs/[id]). Drivers only ever reach jobs assigned to them.
+    if (status !== "pending" && !job.driverId) {
+      return Response.json(
+        { data: null, error: { code: "BAD_REQUEST", message: "Assign a driver before changing the status." } },
+        { status: 400 }
+      );
+    }
+
     const updates: Record<string, unknown> = { status };
 
     if (status === "delivered") {
