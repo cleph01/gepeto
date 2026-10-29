@@ -282,7 +282,7 @@ type Look = {
   detail: string;
   cta: string;
 };
-const BLUE = { bg: Colors.accentBg, border: Colors.accentBorder, tile: Colors.primary, iconColor: '#FFFFFF', detail: '#C9DDF2', cta: Colors.accent };
+const BLUE = { bg: Colors.accentBg, border: Colors.accentBorder, tile: Colors.primary, iconColor: '#FFFFFF', detail: Colors.accentText, cta: Colors.accent };
 const AMBER = { bg: Colors.warningBg, border: Colors.warning, tile: Colors.stat, iconColor: Colors.statText, detail: Colors.warningText, cta: Colors.warning };
 const NAVY = { bg: Colors.card, border: Colors.accentBorder, tile: Colors.cardElevated, iconColor: Colors.accent, detail: Colors.textSecondary, cta: Colors.accent };
 const GREY = { bg: Colors.card, border: Colors.borderStrong, tile: Colors.cardElevated, iconColor: Colors.textSecondary, detail: Colors.textSecondary, cta: Colors.textSecondary };

@@ -19,11 +19,18 @@ export const Colors = {
   accent: '#7DB4EA',        // brand blue for text and icons on navy (primary is too dark to read)
   accentBg: '#102E4D',
   accentBorder: '#2E6AAA',
+  accentText: '#C9DDF2',    // light blue text on accentBg
 
   // Text
   text: '#FFFFFF',
   textSecondary: '#A3B1C4',
   textMuted: '#7F8FA6',
+  textLabel: '#C3CEDC',     // form field labels
+  textHelp: '#8E9DB2',      // help lines under forms
+
+  // Controls
+  inputBorder: '#2E3F57',
+  track: '#2A3C55',         // progress bar background
 
   // Semantic
   success: '#9CCB6A',

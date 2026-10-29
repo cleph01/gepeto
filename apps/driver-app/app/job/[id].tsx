@@ -743,7 +743,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#2A3C55',
+    backgroundColor: Colors.track,
   },
   progressSegDone: {
     backgroundColor: Colors.primary,
@@ -1115,7 +1115,7 @@ const styles = StyleSheet.create({
   },
   podLabel: {
     fontFamily: Fonts.semibold,
-    color: '#C3CEDC',
+    color: Colors.textLabel,
     fontSize: FontSize.sm,
   },
   podInput: {

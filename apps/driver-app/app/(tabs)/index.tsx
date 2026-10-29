@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   statLabelHighlight: {
-    color: '#C9DDF2',
+    color: Colors.accentText,
   },
   sectionTitle: {
     fontFamily: Fonts.semibold,
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#2A3C55',
+    backgroundColor: Colors.track,
   },
   progressSegDone: {
     backgroundColor: Colors.primary,

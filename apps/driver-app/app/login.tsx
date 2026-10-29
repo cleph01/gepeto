@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: Fonts.semibold,
-    color: '#C3CEDC',
+    color: Colors.textLabel,
     fontSize: FontSize.sm,
   },
   input: {
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: '#2E3F57',
+    borderColor: Colors.inputBorder,
     paddingHorizontal: Spacing.lg,
     color: Colors.text,
     fontSize: 16,
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   },
   help: {
     fontFamily: Fonts.regular,
-    color: '#8E9DB2',
+    color: Colors.textHelp,
     fontSize: FontSize.sm,
     textAlign: 'center',
     lineHeight: 20,
