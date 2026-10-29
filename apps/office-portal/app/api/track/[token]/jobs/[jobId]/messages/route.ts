@@ -32,10 +32,19 @@ export async function GET(
       );
     }
 
-    const messages = await db("messages")
+    // If the job was moved to this office from another one, only show
+    // messages from after the move, so one office never reads another's.
+    const lastMove = await db("job_edit_events")
+      .where({ job_id: jobId, field: "office" })
+      .max("created_at as at")
+      .first();
+
+    const query = db("messages")
       .where("job_id", jobId)
       .orderBy("created_at", "asc")
       .select("id", "sender_role", "body", "created_at");
+    if (lastMove?.at) query.where("created_at", ">=", lastMove.at);
+    const messages = await query;
 
     return Response.json({ data: messages, error: null });
   } catch (err) {

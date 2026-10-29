@@ -29,13 +29,14 @@ export type RejectedJob = {
   rejectedAt: string;
 };
 
-/** "Today", "Yesterday", or e.g. "Mon, Oct 26" in the driver's local time. */
+/** "Today", "Yesterday", "Tomorrow", or e.g. "Mon, Oct 26" in the driver's local time. */
 export function dayLabel(iso: string): string {
   const d = new Date(iso);
   const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((startOf(new Date()) - startOf(d)) / 86400000);
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
+  if (days === -1) return 'Tomorrow';
   return d.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',

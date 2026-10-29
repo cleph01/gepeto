@@ -24,6 +24,7 @@ interface Job {
   id: string;
   caseId: string;
   office: string;
+  officeId: string;
   officeTrackingToken: string | null;
   deliveryAddress: string;
   driver: string | null;
@@ -503,6 +504,204 @@ function StatusModal({
   );
 }
 
+// ─── Field Edit Modals ────────────────────────────────────────────────────────
+// One small popup per field (case number, office, expected delivery), opened by
+// clicking that field on a job, like the status pill. Saves via PATCH /api/jobs/[id].
+
+type EditableField = "caseId" | "officeId" | "scheduledAt";
+
+// datetime-local wants local "YYYY-MM-DDTHH:mm".
+function toLocalInput(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function EditFieldModal({
+  job,
+  field,
+  offices,
+  onClose,
+  onSave,
+  error,
+}: {
+  job: Job;
+  field: EditableField;
+  offices: OfficeOption[];
+  onClose: () => void;
+  onSave: (changes: Partial<Record<EditableField, string>>) => Promise<void>;
+  error?: string | null;
+}) {
+  const initial = field === "caseId" ? job.caseId : field === "officeId" ? job.officeId : toLocalInput(job.scheduledAt);
+  const [value, setValue] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const delivered = job.status === "delivered";
+  const lockedByDelivery = delivered && field !== "caseId";
+  const onTheRoad = ["picked_up", "in_transit", "arrived"].includes(job.status);
+
+  const title = { caseId: "Case Number", officeId: "Office", scheduledAt: "Expected Delivery" }[field];
+  const unchanged = value.trim() === initial;
+  const canSave = !saving && !lockedByDelivery && !unchanged && value.trim() !== "";
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    await onSave({ [field]: field === "scheduledAt" ? new Date(value).toISOString() : value.trim() });
+    setSaving(false);
+  };
+
+  const hint =
+    lockedByDelivery ? "This job has been delivered, so this can't change."
+    : field === "officeId"
+      ? onTheRoad
+        ? "The driver is already on the way. They'll be alerted to the new destination. The delivery address changes to the new office's, and the new office won't see earlier messages."
+        : "The delivery address changes to the new office's. The new office won't see messages from before the change."
+    : field === "scheduledAt" && job.driver ? `${job.driver} will be alerted to the change.` : null;
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(2px)",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff", borderRadius: 14, width: "100%", maxWidth: 380,
+          margin: "0 16px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "18px 20px 14px", borderBottom: "1px solid rgba(0,0,0,0.07)",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>
+              {title}
+            </h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
+              {job.caseId} · {job.office}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#9a9a9a", padding: 4, borderRadius: 6, display: "flex" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ padding: "16px 20px" }}>
+          {field === "officeId" ? (
+            <select
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={lockedByDelivery}
+              style={{ ...inputStyle(false), cursor: lockedByDelivery ? "not-allowed" : "pointer" }}
+              onFocus={focusStyle}
+              onBlur={(e) => blurStyle(e, false)}
+            >
+              {offices.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={field === "scheduledAt" ? "datetime-local" : "text"}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+              disabled={lockedByDelivery}
+              autoFocus
+              style={inputStyle(false)}
+              onFocus={focusStyle}
+              onBlur={(e) => blurStyle(e, false)}
+            />
+          )}
+          {field === "officeId" && (
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#5F5E5A" }}>
+              Delivers to: {offices.find((o) => o.id === value)?.address ?? "—"}
+            </p>
+          )}
+          {hint && (
+            <p style={{ margin: "8px 0 0", fontSize: 11.5, color: onTheRoad && field === "officeId" ? "#854F0B" : "#9a9a9a", lineHeight: 1.4 }}>
+              {hint}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p style={{ margin: "0 20px 12px", fontSize: 12, color: "#A32D2D" }}>{error}</p>
+        )}
+
+        <div style={{ padding: "0 20px 20px", display: "flex", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: "9px", fontSize: 13.5, fontWeight: 500,
+              border: "1px solid rgba(0,0,0,0.13)", borderRadius: 8,
+              background: "#fff", color: "#3a3a3a", cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!canSave}
+            style={{
+              flex: 2, padding: "9px", fontSize: 13.5, fontWeight: 600,
+              border: "none", borderRadius: 8,
+              background: "#185FA5", color: "white",
+              cursor: canSave ? "pointer" : "not-allowed",
+              opacity: canSave ? 1 : 0.5,
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A job field shown as clickable text that opens its edit popup.
+function EditableText({
+  onClick,
+  title,
+  children,
+  style,
+}: {
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left",
+        font: "inherit", color: "inherit",
+        textDecoration: "underline dotted rgba(0,0,0,0.25)", textUnderlineOffset: 3,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ─── Driver & Priority Modal ──────────────────────────────────────────────────
 
 const PRIORITY_OPTIONS: { value: JobPriority; label: string; color: string; bg: string }[] = [
@@ -917,12 +1116,14 @@ function JobDetailRow({
   onCopyLink,
   linkCopied,
   onEditAssignment,
+  onEditDue,
 }: {
   job: Job;
   onCopyLink: () => void;
   linkCopied: boolean;
   /** Set on tablet, where the Driver and Priority columns are hidden. */
   onEditAssignment?: () => void;
+  onEditDue: () => void;
 }) {
   return (
     <div
@@ -940,14 +1141,16 @@ function JobDetailRow({
           Expected Delivery
         </p>
         <p style={{ margin: 0, lineHeight: 1.4 }}>
-          {job.scheduledAt ? (
-            <span style={{ fontSize: 12.5, color: isOverdue(job) ? "#A32D2D" : "#3a3a3a", fontWeight: isOverdue(job) ? 500 : 400 }}>
-              {new Date(job.scheduledAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-              {isOverdue(job) && " · Late"}
-            </span>
-          ) : (
-            <span style={{ fontSize: 12.5, color: "#9a9a9a" }}>Not set</span>
-          )}
+          <EditableText onClick={onEditDue} title="Change expected delivery">
+            {job.scheduledAt ? (
+              <span style={{ fontSize: 12.5, color: isOverdue(job) ? "#A32D2D" : "#3a3a3a", fontWeight: isOverdue(job) ? 500 : 400 }}>
+                {new Date(job.scheduledAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                {isOverdue(job) && " · Late"}
+              </span>
+            ) : (
+              <span style={{ fontSize: 12.5, color: "#185FA5" }}>Set time</span>
+            )}
+          </EditableText>
         </p>
       </div>
       {onEditAssignment && (
@@ -1024,12 +1227,41 @@ function JobDetailRow({
 
 type StatusEvent = {
   id: string;
+  kind: "status";
   fromStatus: string | null;
   toStatus: string;
   changedByRole: "dispatcher" | "driver";
   changedByName: string | null;
   createdAt: string;
 };
+
+type EditEvent = {
+  id: string;
+  kind: "edit";
+  field: "case_id" | "office" | "scheduled_at" | "driver" | "priority";
+  oldValue: string | null;
+  newValue: string | null;
+  changedByRole: "dispatcher";
+  changedByName: string | null;
+  createdAt: string;
+};
+
+type HistoryEvent = StatusEvent | EditEvent;
+
+const FIELD_LABEL: Record<EditEvent["field"], string> = {
+  case_id: "Case number",
+  office: "Office",
+  scheduled_at: "Expected delivery",
+  driver: "Driver",
+  priority: "Priority",
+};
+
+function editValue(field: EditEvent["field"], v: string | null) {
+  if (v === null) return field === "driver" ? "Unassigned" : "None";
+  if (field === "scheduled_at") return new Date(v).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  if (field === "priority") return v === "stat" ? "STAT" : "Standard";
+  return v;
+}
 
 function statusLabel(s: string) {
   return STATUS_CONFIG[s as JobStatus]?.label ?? (s === "rejected" ? "Rejected" : s);
@@ -1044,11 +1276,11 @@ function isRejection(e: StatusEvent) {
 // Per-job status history, opened from the History button on a job row or card.
 function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { apiFetch } = useAuth();
-  const [events, setEvents] = useState<StatusEvent[] | null>(null);
+  const [events, setEvents] = useState<HistoryEvent[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    apiFetch<ApiResponse<StatusEvent[]>>(`/api/jobs/${job.id}/history`)
+    apiFetch<ApiResponse<HistoryEvent[]>>(`/api/jobs/${job.id}/history`)
       .then((res) => {
         if (res.data) { setEvents(res.data); setFailed(false); }
         else setFailed(true);
@@ -1083,7 +1315,7 @@ function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
         >
           <div>
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.01em" }}>
-              Status History
+              Job History
             </h2>
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
               {job.caseId} · {job.office}
@@ -1113,11 +1345,16 @@ function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
                   <div style={{ fontSize: 11.5, color: "#9a9a9a", marginBottom: 1 }}>
                     {new Date(e.createdAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   </div>
-                  {isRejection(e) ? (
+                  {e.kind === "status" && isRejection(e) ? (
                     <div>
                       <strong style={{ color: "#A32D2D" }}>Rejected</strong>
                       <span style={{ color: "#5F5E5A" }}> by {e.changedByName ?? "Unknown"} (Driver)</span>
                       {" "}· back to <strong>{statusLabel(e.toStatus)}</strong>, unassigned
+                    </div>
+                  ) : e.kind === "edit" ? (
+                    <div>
+                      {FIELD_LABEL[e.field]} changed: {editValue(e.field, e.oldValue)} → <strong>{editValue(e.field, e.newValue)}</strong>
+                      <span style={{ color: "#5F5E5A" }}> by {e.changedByName ?? "Unknown"} (Dispatcher)</span>
                     </div>
                   ) : (
                     <div>
@@ -1191,6 +1428,7 @@ function JobRow({
   onToggleExpand,
   onUpdateStatus,
   onEditAssignment,
+  onEditField,
   onOpenHistory,
   onOpenMessages,
   onCopyLink,
@@ -1204,6 +1442,7 @@ function JobRow({
   onToggleExpand: () => void;
   onUpdateStatus: () => void;
   onEditAssignment: () => void;
+  onEditField: (field: EditableField) => void;
   onOpenHistory: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
@@ -1247,13 +1486,13 @@ function JobRow({
         </button>
 
         {/* Case ID */}
-        <span style={{ fontSize: 12.5, fontWeight: 500, color: "#185FA5", fontFamily: "monospace" }}>
-          {job.caseId}
+        <span style={{ fontSize: 12.5, fontWeight: 500, color: "#185FA5", fontFamily: "monospace", overflow: "hidden" }}>
+          <EditableText onClick={() => onEditField("caseId")} title="Change case number">{job.caseId}</EditableText>
         </span>
 
         {/* Office */}
         <span style={{ fontSize: 13, color: "#1a1a1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }}>
-          {job.office}
+          <EditableText onClick={() => onEditField("officeId")} title="Change office">{job.office}</EditableText>
         </span>
 
         {/* Driver — desktop only */}
@@ -1276,7 +1515,13 @@ function JobRow({
         </span>
 
         {/* Due — desktop only */}
-        {bp === "desktop" && <DueText job={job} />}
+        {bp === "desktop" && (
+          <span style={{ overflow: "hidden" }}>
+            <EditableText onClick={() => onEditField("scheduledAt")} title="Change expected delivery">
+              <DueText job={job} />
+            </EditableText>
+          </span>
+        )}
 
         {/* Updated — desktop only */}
         {bp === "desktop" && (
@@ -1306,6 +1551,7 @@ function JobRow({
           onCopyLink={onCopyLink}
           linkCopied={linkCopied}
           onEditAssignment={bp === "tablet" ? onEditAssignment : undefined}
+          onEditDue={() => onEditField("scheduledAt")}
         />
       )}
     </>
@@ -1318,6 +1564,7 @@ function JobCard({
   job,
   onUpdateStatus,
   onEditAssignment,
+  onEditField,
   onOpenHistory,
   onOpenMessages,
   onCopyLink,
@@ -1327,6 +1574,7 @@ function JobCard({
   job: Job;
   onUpdateStatus: () => void;
   onEditAssignment: () => void;
+  onEditField: (field: EditableField) => void;
   onOpenHistory: () => void;
   onOpenMessages: () => void;
   onCopyLink: () => void;
@@ -1344,13 +1592,15 @@ function JobCard({
       {/* Top row: case ID + priority */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <span style={{ fontSize: 12.5, fontWeight: 600, color: "#185FA5", fontFamily: "monospace" }}>
-          {job.caseId}
+          <EditableText onClick={() => onEditField("caseId")} title="Change case number">{job.caseId}</EditableText>
         </span>
         <PriorityButton priority={job.priority} onClick={onEditAssignment} fontSize={10} />
       </div>
 
       {/* Office */}
-      <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>{job.office}</div>
+      <div style={{ fontSize: 13.5, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>
+        <EditableText onClick={() => onEditField("officeId")} title="Change office">{job.office}</EditableText>
+      </div>
 
       {/* Driver */}
       <div style={{ fontSize: 12, color: "#5F5E5A", marginBottom: 2 }}>
@@ -1359,7 +1609,10 @@ function JobCard({
 
       {/* Expected delivery */}
       <div style={{ fontSize: 12, color: "#5F5E5A", marginBottom: 10 }}>
-        Due: <DueText job={job} />
+        Due:{" "}
+        <EditableText onClick={() => onEditField("scheduledAt")} title="Change expected delivery">
+          <DueText job={job} />
+        </EditableText>
       </div>
 
       {/* Bottom row: status + action + timestamp */}
@@ -1401,7 +1654,7 @@ function JobCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type ApiJobFull = {
-  id: string; caseId: string; officeName: string; officeTrackingToken: string | null; driverName: string | null; driverId: string | null;
+  id: string; caseId: string; officeName: string; officeId: string; officeTrackingToken: string | null; driverName: string | null; driverId: string | null;
   priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
   deliveryAddress: string; createdAt: string; updatedAt: string; scheduledAt: string | null;
 };
@@ -1411,6 +1664,7 @@ function mapJob(j: ApiJobFull): Job {
     id: j.id,
     caseId: j.caseId,
     office: j.officeName,
+    officeId: j.officeId,
     officeTrackingToken: j.officeTrackingToken,
     deliveryAddress: j.deliveryAddress,
     driver: j.driverName,
@@ -1437,6 +1691,8 @@ export default function JobsPage() {
   const [historyJob, setHistoryJob]   = useState<Job | null>(null);
   const [assignJob, setAssignJob]     = useState<Job | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [editing, setEditing]         = useState<{ job: Job; field: EditableField } | null>(null);
+  const [editError, setEditError]     = useState<string | null>(null);
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
@@ -1552,6 +1808,29 @@ export default function JobsPage() {
       setAssignJob(null);
     } catch {
       setAssignError("Couldn't save. Check your connection and try again.");
+    }
+  };
+
+  const openEdit = (job: Job, field: EditableField) => {
+    setEditError(null);
+    setEditing({ job, field });
+  };
+
+  const onSaveEdit = async (jobId: string, changes: Partial<Record<EditableField, string>>) => {
+    setEditError(null);
+    try {
+      const res = await apiFetch<ApiResponse<ApiJobFull>>(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        body: JSON.stringify(changes),
+      });
+      if (!res.data) {
+        setEditError(res.error?.message ?? "Couldn't save. Please try again.");
+        return;
+      }
+      setJobs((prev) => prev.map((j) => j.id === jobId ? mapJob(res.data!) : j));
+      setEditing(null);
+    } catch {
+      setEditError("Couldn't save. Check your connection and try again.");
     }
   };
 
@@ -1699,6 +1978,7 @@ export default function JobsPage() {
                   job={job}
                   onUpdateStatus={() => setStatusJob(job)}
                   onEditAssignment={() => openAssign(job)}
+                  onEditField={(field) => openEdit(job, field)}
                   onOpenHistory={() => setHistoryJob(job)}
                   onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                   onCopyLink={() => onCopyTrackingLink(job)}
@@ -1718,6 +1998,7 @@ export default function JobsPage() {
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}
                 onUpdateStatus={() => setStatusJob(job)}
                 onEditAssignment={() => openAssign(job)}
+                onEditField={(field) => openEdit(job, field)}
                 onOpenHistory={() => setHistoryJob(job)}
                 onOpenMessages={() => { clearPendingOpen(); setMessagesJob(job); }}
                 onCopyLink={() => onCopyTrackingLink(job)}
@@ -1739,6 +2020,16 @@ export default function JobsPage() {
           onClose={() => { setStatusJob(null); setStatusError(null); }}
           onSave={(status) => onUpdateStatus(statusJob.id, status)}
           error={statusError}
+        />
+      )}
+      {editing && (
+        <EditFieldModal
+          job={editing.job}
+          field={editing.field}
+          offices={offices}
+          onClose={() => setEditing(null)}
+          onSave={(changes) => onSaveEdit(editing.job.id, changes)}
+          error={editError}
         />
       )}
       {assignJob && (

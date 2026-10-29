@@ -9,6 +9,7 @@ import { rowToCamel } from '@/lib/transform';
 import { useAuth } from '@/context/auth';
 import { getDriverId } from '@/lib/driver';
 import { Colors, FontSize, Radius, Spacing, StatusLabels } from '@/constants/theme';
+import { dayLabel, timeLabel } from '@/lib/history';
 
 // App-wide job alerts. Mounted once in the root layout so they show over
 // whatever screen or tab the driver is on, and stay until tapped or dismissed.
@@ -18,13 +19,19 @@ import { Colors, FontSize, Radius, Spacing, StatusLabels } from '@/constants/the
 //   unstat   a job they have is no longer STAT
 //   removed  dispatch reassigned or unassigned a job they had
 //   status   dispatch changed the status of one of their jobs
+//   office   dispatch changed where a job is delivered (strong alert)
+//   due      dispatch changed a job's expected delivery time
+//   multi    several of office/due/priority changed in one save
 //
-// new/stat/unstat come from postgres_changes on the driver's jobs. The other
+// Case number changes update the job quietly (no alert).
+//
+// new/stat/unstat/office/due/multi come from postgres_changes on the
+// driver's jobs (drivers can't edit those fields, so any change is dispatch's). The other
 // two come as broadcasts from the server (see dispatcher-web lib/realtime.ts):
 // a job taken off the driver is hidden from them by row-level security, and a
 // row change alone can't tell dispatch's status changes from the driver's own.
 
-type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status';
+type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi';
 type JobAlert = {
   kind: AlertKind;
   jobId: string;
@@ -32,8 +39,10 @@ type JobAlert = {
   deliveryAddress: string;
   priority: Job['priority'];
   status?: Job['status'];
+  scheduledAt?: string | null;
+  changed?: string[]; // for 'multi': what changed, in words
 };
-type KnownJob = Pick<JobAlert, 'caseId' | 'deliveryAddress' | 'priority'>;
+type KnownJob = Pick<Job, 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>;
 
 // Jobs this driver already has, by id. null until loaded. Module-level so the
 // reject flow can drop a job (forgetJob) and get alerted if it comes back.
@@ -51,9 +60,18 @@ export function onJobRemoved(listener: (jobId: string) => void): () => void {
   return () => { removedListeners.delete(listener); };
 }
 
-function remember(row: Pick<Job, 'id' | 'caseId' | 'deliveryAddress' | 'priority'>) {
-  known?.set(row.id, { caseId: row.caseId, deliveryAddress: row.deliveryAddress, priority: row.priority });
+function remember(row: Pick<Job, 'id' | 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>) {
+  known?.set(row.id, {
+    caseId: row.caseId,
+    deliveryAddress: row.deliveryAddress,
+    priority: row.priority,
+    officeId: row.officeId,
+    scheduledAt: row.scheduledAt,
+  });
 }
+
+const sameTime = (a: string | null, b: string | null) =>
+  (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null);
 
 export function JobAlerts() {
   const router = useRouter();
@@ -72,7 +90,7 @@ export function JobAlerts() {
     // ignored, so a slow load can't fire alerts for old jobs.
     supabase
       .from('jobs')
-      .select('id, case_id, delivery_address, priority')
+      .select('id, case_id, delivery_address, priority, office_id, scheduled_at')
       .eq('driver_id', driverId)
       .then(({ data }) => {
         known = new Map();
@@ -81,7 +99,7 @@ export function JobAlerts() {
 
     const show = (a: JobAlert) => {
       setAlert(a);
-      if (a.kind === 'stat') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (a.kind === 'stat' || a.kind === 'office') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       else if (a.kind === 'unstat') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     };
@@ -100,8 +118,16 @@ export function JobAlerts() {
           if (!before) {
             // Assigned and made STAT in one go is one alert, with a STAT badge.
             if (row.status === 'assigned') show({ kind: 'new', ...base });
-          } else if (before.priority !== row.priority) {
-            show({ kind: row.priority === 'stat' ? 'stat' : 'unstat', ...base });
+          } else {
+            const changed: { kind: AlertKind; words: string }[] = [];
+            if (before.priority !== row.priority) changed.push({ kind: row.priority === 'stat' ? 'stat' : 'unstat', words: 'priority' });
+            if (before.officeId !== row.officeId) changed.push({ kind: 'office', words: 'delivery' });
+            if (!sameTime(before.scheduledAt, row.scheduledAt)) changed.push({ kind: 'due', words: 'due time' });
+            if (changed.length === 1) {
+              show({ kind: changed[0].kind, ...base, scheduledAt: row.scheduledAt });
+            } else if (changed.length > 1) {
+              show({ kind: 'multi', ...base, changed: changed.map((c) => c.words) });
+            }
           }
         }
       )
@@ -185,6 +211,9 @@ export function JobAlerts() {
     unstat: 'No longer STAT',
     removed: 'Job removed',
     status: `Moved to ${alert.status ? StatusLabels[alert.status] : 'a new status'}`,
+    office: 'Delivery changed',
+    due: 'Due time changed',
+    multi: 'Job updated',
   }[alert.kind];
   const detail = {
     new: `${alert.caseId} → ${alert.deliveryAddress}`,
@@ -192,6 +221,9 @@ export function JobAlerts() {
     unstat: alert.caseId,
     removed: `${alert.caseId} · by dispatch`,
     status: `${alert.caseId} · by dispatch`,
+    office: `${alert.caseId} → ${alert.deliveryAddress}`,
+    due: alert.scheduledAt ? `${alert.caseId} · now ${dayLabel(alert.scheduledAt)} ${timeLabel(alert.scheduledAt)}` : alert.caseId,
+    multi: `${alert.caseId} · ${(alert.changed ?? []).join(', ')}`,
   }[alert.kind];
   // Only when the tap does something the driver needs to know about.
   const cta = alert.kind === 'new'
@@ -241,6 +273,9 @@ const LOOK: Record<AlertKind, { icon: string; bg: string; border: string; cta: s
   unstat:  { icon: '↓',  bg: Colors.card,      border: Colors.border,       cta: Colors.textSecondary },
   removed: { icon: '↩',  bg: Colors.card,      border: Colors.border,       cta: Colors.textSecondary },
   status:  { icon: '📋', bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
+  office:  { icon: '📍', bg: '#3A1300',         border: '#FF6B35',           cta: '#FF6B35' },
+  due:     { icon: '🕒', bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
+  multi:   { icon: '✎',  bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
 };
 
 const styles = StyleSheet.create({
