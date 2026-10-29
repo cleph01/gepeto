@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     return Response.json({
       data: {
         lab: {
+          id:                   lab.id,
           name:                 lab.name,
           address:              lab.address,
           city:                 settings.city                 ?? "",

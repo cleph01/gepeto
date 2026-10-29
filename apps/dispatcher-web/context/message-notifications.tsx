@@ -266,7 +266,19 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   }, [session, apiFetch, pushToasts]);
 
   const isDispatcher = session?.user.app_metadata?.role === "dispatcher" || session?.user.user_metadata?.role === "dispatcher";
-  const labId = (session?.user.app_metadata as Record<string, string> | undefined)?.lab_id;
+  // The lab id lives in app_metadata (Stripe signup) or user_metadata (seeded users);
+  // users added by hand have neither, so ask the server, which also checks lab_users.
+  const metaLabId =
+    (session?.user.app_metadata as Record<string, string> | undefined)?.lab_id ??
+    (session?.user.user_metadata as Record<string, string> | undefined)?.lab_id;
+  const [fetchedLabId, setFetchedLabId] = useState<string | null>(null);
+  const labId = metaLabId ?? fetchedLabId;
+  useEffect(() => {
+    if (!session || !isDispatcher || metaLabId) return;
+    apiFetch<ApiResponse<{ lab: { id: string } }>>("/api/settings")
+      .then((res) => { if (res.data) setFetchedLabId(res.data.lab.id); })
+      .catch(() => {});
+  }, [session, isDispatcher, metaLabId, apiFetch]);
 
   const pollActivity = useCallback(async () => {
     if (!session || !isDispatcher) return;
@@ -299,16 +311,19 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   // tells open job lists to reload. Polling above still covers a dropped socket.
   useEffect(() => {
     if (!labId) return;
+    const onJobChange = () => {
+      setJobsChangedAt(Date.now());
+      pollActivity();
+    };
     const channel = supabaseBrowser
-      .channel(`notifications:${labId}`)
+      .channel(`lab:${labId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "jobs", filter: `lab_id=eq.${labId}` },
-        () => {
-          setJobsChangedAt(Date.now());
-          pollActivity();
-        }
+        onJobChange
       )
+      // Server broadcast when a driver accepts, rejects or moves a job along.
+      .on("broadcast", { event: "job_changed" }, onJobChange)
       .subscribe();
     return () => {
       supabaseBrowser.removeChannel(channel);
