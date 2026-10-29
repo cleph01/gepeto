@@ -57,7 +57,7 @@ export default function RootLayout() {
       <RouteGuard />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: Colors.card },
+          headerStyle: { backgroundColor: Colors.bg },
           headerTintColor: Colors.text,
           headerTitleStyle: { fontFamily: Fonts.semibold },
           headerShadowVisible: false,

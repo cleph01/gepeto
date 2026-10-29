@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { apiGet } from '@/lib/api';
 import { dayLabel, timeLabel, type RejectedJob } from '@/lib/history';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // Read-only summary of a job this driver rejected. The job has been unassigned
 // (and may belong to another driver now), so only what the driver saw when
@@ -39,14 +40,7 @@ export default function RejectedJobScreen() {
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <View style={styles.banner}>
-        <Text style={styles.bannerTitle}>You rejected this job</Text>
-        <Text style={styles.bannerText}>
-          {dayLabel(job.rejectedAt)} at {timeLabel(job.rejectedAt)}. It went back to dispatch to be reassigned.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
+      <View style={styles.summary}>
         <View style={styles.titleRow}>
           <Text style={styles.caseId}>{job.caseId}</Text>
           {job.priority === 'stat' && (
@@ -55,28 +49,54 @@ export default function RejectedJobScreen() {
             </View>
           )}
         </View>
-        {job.officeName && <Text style={styles.office}>{job.officeName}</Text>}
+        <Text style={styles.title} accessibilityRole="header">{job.officeName ?? job.deliveryAddress}</Text>
+      </View>
+
+      <View style={styles.outcome}>
+        <View style={styles.outcomeIcon}>
+          <IconSymbol name="xmark" size={20} color="#FFFFFF" />
+        </View>
+        <View style={styles.outcomeBody}>
+          <Text style={styles.outcomeTitle}>You rejected this job</Text>
+          <Text style={styles.outcomeSub}>
+            {dayLabel(job.rejectedAt)} at {timeLabel(job.rejectedAt)}. It went back to dispatch to be reassigned.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.label}>Pickup</Text>
-        <Text style={styles.value}>{job.pickupAddress}</Text>
-        <Text style={[styles.label, styles.labelSpaced]}>Delivery</Text>
-        <Text style={styles.value}>{job.deliveryAddress}</Text>
+        <Text style={styles.eyebrow}>Route</Text>
+        <View style={styles.metaRow}>
+          <IconSymbol name="tray" size={16} color={Colors.textSecondary} />
+          <View style={styles.metaBody}>
+            <Text style={styles.metaLabel}>Pickup</Text>
+            <Text style={styles.value}>{job.pickupAddress}</Text>
+          </View>
+        </View>
+        <View style={styles.metaRow}>
+          <IconSymbol name="mappin.and.ellipse" size={16} color={Colors.textSecondary} />
+          <View style={styles.metaBody}>
+            <Text style={styles.metaLabel}>Delivery</Text>
+            <Text style={styles.value}>{job.deliveryAddress}</Text>
+          </View>
+        </View>
         {job.scheduledAt && (
-          <>
-            <Text style={[styles.label, styles.labelSpaced]}>Expected delivery</Text>
-            <Text style={styles.value}>
-              {dayLabel(job.scheduledAt)} at {timeLabel(job.scheduledAt)}
-            </Text>
-          </>
+          <View style={styles.metaRow}>
+            <IconSymbol name="clock" size={16} color={Colors.textSecondary} />
+            <View style={styles.metaBody}>
+              <Text style={styles.metaLabel}>Was due</Text>
+              <Text style={styles.value}>
+                {dayLabel(job.scheduledAt)} at {timeLabel(job.scheduledAt)}
+              </Text>
+            </View>
+          </View>
         )}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.label}>Items</Text>
+        <Text style={styles.eyebrow}>Case</Text>
         {(job.items ?? []).map((item, i) => (
-          <Text key={i} style={styles.value}>• {item.description}</Text>
+          <Text key={i} style={styles.value}>{item.description}</Text>
         ))}
       </View>
     </ScrollView>
@@ -85,39 +105,53 @@ export default function RejectedJobScreen() {
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: Colors.bg },
-  content: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.xxl },
+  content: { paddingHorizontal: Spacing.xl - 4, paddingTop: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.xxl },
   center: { flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
   errorText: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.md, textAlign: 'center' },
-  banner: {
+  summary: { gap: Spacing.sm, marginBottom: Spacing.xs },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  caseId: { fontFamily: Fonts.semibold, color: Colors.textSecondary, fontSize: FontSize.sm },
+  statBadge: { backgroundColor: Colors.stat, borderRadius: Radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
+  statBadgeText: { color: Colors.statText, fontSize: FontSize.xs, fontFamily: Fonts.bold, letterSpacing: 0.6 },
+  title: { fontFamily: Fonts.bold, color: Colors.text, fontSize: FontSize.xxl, letterSpacing: -0.5 },
+  outcome: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
     backgroundColor: Colors.dangerBg,
     borderColor: Colors.dangerBorder,
     borderWidth: 1,
     borderRadius: Radius.lg,
     padding: Spacing.lg,
-    gap: Spacing.xs,
   },
-  bannerTitle: { color: Colors.danger, fontSize: FontSize.md, fontFamily: Fonts.bold },
-  bannerText: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 19 },
+  outcomeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.dangerBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outcomeBody: { flex: 1, gap: 2 },
+  outcomeTitle: { fontFamily: Fonts.semibold, color: Colors.danger, fontSize: FontSize.lg },
+  outcomeSub: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 19 },
   section: {
     backgroundColor: Colors.card,
     borderColor: Colors.border,
     borderWidth: 1,
     borderRadius: Radius.lg,
     padding: Spacing.lg,
+    gap: Spacing.md,
   },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  caseId: { color: Colors.text, fontSize: FontSize.xl, fontFamily: Fonts.bold },
-  statBadge: { backgroundColor: Colors.stat, borderRadius: Radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
-  statBadgeText: { color: Colors.statText, fontSize: FontSize.xs, fontFamily: Fonts.bold, letterSpacing: 0.6 },
-  office: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.md, marginTop: Spacing.xs },
-  label: {
+  eyebrow: {
+    fontFamily: Fonts.semibold,
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontFamily: Fonts.bold,
-    letterSpacing: 0.8,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 2,
   },
-  labelSpaced: { marginTop: Spacing.md },
+  metaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm + 2 },
+  metaBody: { flex: 1, gap: 2 },
+  metaLabel: { fontFamily: Fonts.medium, color: Colors.textMuted, fontSize: 12 },
   value: { fontFamily: Fonts.regular, color: Colors.text, fontSize: FontSize.md, lineHeight: 21 },
 });

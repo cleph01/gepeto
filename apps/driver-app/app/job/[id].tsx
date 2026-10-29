@@ -32,19 +32,22 @@ import {
   StatusLabels,
   Fonts,
 } from '@/constants/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { forgetJob } from '@/components/job-alerts';
 import { getDriverId } from '@/lib/driver';
-
+import { STEPS, dueInfo } from '@/lib/jobs';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
   picked_up:  'in_transit',
   in_transit: 'arrived',
 };
 
-const NEXT_ACTION_LABEL: Partial<Record<JobStatus, string>> = {
-  picked_up:  'Mark En Route',
-  in_transit: 'Mark Arrived',
-  arrived:    'Proof of Delivery',
+// The one big button for each step, with a line telling the driver when to tap it.
+const NEXT_ACTION: Partial<Record<JobStatus, { label: string; hint: string }>> = {
+  assigned:   { label: 'Mark picked up',    hint: 'Tap once the case is in your hands.' },
+  picked_up:  { label: 'Mark en route',     hint: 'Tap when you start driving to the office.' },
+  in_transit: { label: 'Mark arrived',      hint: 'Tap when you reach the office.' },
+  arrived:    { label: 'Complete delivery', hint: "You'll enter who received it." },
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -63,16 +66,17 @@ function SectionCard({ children }: { children: React.ReactNode }) {
   return <View style={styles.sectionCard}>{children}</View>;
 }
 
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function Eyebrow({ title }: { title: string }) {
+  return <Text style={styles.eyebrow}>{title}</Text>;
 }
 
 function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean }) {
+  const fromOffice = message.senderRole === 'office';
   return (
     <View style={[styles.bubbleWrapper, isOwn ? styles.bubbleRight : styles.bubbleLeft]}>
       {!isOwn && (
-        <Text style={styles.bubbleSender}>
-          {message.senderRole === 'dispatcher' ? 'Lab' : 'Office'}
+        <Text style={[styles.bubbleSender, fromOffice && styles.bubbleSenderOffice]}>
+          {fromOffice ? 'Office' : 'Lab'}
         </Text>
       )}
       <View style={[styles.bubble, isOwn ? styles.bubbleDriver : styles.bubbleOther]}>
@@ -93,6 +97,7 @@ export default function JobDetailScreen() {
   const { session } = useAuth();
 
   const [job, setJob] = useState<Job | null>(null);
+  const [officeName, setOfficeName] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
@@ -121,6 +126,17 @@ export default function JobDetailScreen() {
         if (!error && data) setJob(rowToCamel<Job>(data));
       });
   }, [id]);
+
+  // Office name, re-read when dispatch moves the job to another office
+  useEffect(() => {
+    if (!job?.officeId) return;
+    supabase
+      .from('offices')
+      .select('name')
+      .eq('id', job.officeId)
+      .maybeSingle()
+      .then(({ data }) => setOfficeName((data?.name as string | undefined) ?? null));
+  }, [job?.officeId]);
 
   // Fetch messages
   useEffect(() => {
@@ -281,7 +297,7 @@ export default function JobDetailScreen() {
 
   if (!job) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={Colors.accent} />
         </View>
@@ -295,7 +311,11 @@ export default function JobDetailScreen() {
   const isRejected = job.status === 'rejected' || job.driverResponse === 'rejected';
   const showPickUpButton = isAccepted && job.status === 'assigned';
   const showAdvanceButton = isAccepted && !!STATUS_PROGRESSION[job.status] || job.status === 'arrived';
+  const nextAction = showPickUpButton || showAdvanceButton ? NEXT_ACTION[job.status] : undefined;
   const statusColor = StatusColors[job.status];
+  const due = dueInfo(job);
+  const step = isRejected ? -1 : STEPS.findIndex((s) => s.status === job.status);
+  const deliveredAt = job.deliveredAt ?? job.updatedAt;
 
   // FlatList data: header + messages
   type ListItem =
@@ -311,7 +331,7 @@ export default function JobDetailScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
       <KeyboardAvoidingView
         style={styles.kav}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -320,7 +340,7 @@ export default function JobDetailScreen() {
         <FlatList
           ref={listRef}
           data={listData}
-          keyExtractor={(_, i) => String(i)}
+          keyExtractor={(item, i) => (item.type === 'message' ? item.message.id : `${item.type}-${i}`)}
           contentContainerStyle={styles.listContent}
           onContentSizeChange={() => {
             if (messages.length > 0) listRef.current?.scrollToEnd({ animated: false });
@@ -329,31 +349,61 @@ export default function JobDetailScreen() {
             if (item.type === 'header') {
               return (
                 <View style={styles.headerContent}>
-                  {/* Status + priority row */}
-                  <View style={styles.topRow}>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
-                      <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>
-                        {StatusLabels[job.status]}
-                      </Text>
+                  {/* Summary: who, when, where it stands */}
+                  <View style={styles.summary}>
+                    <View style={styles.topRow}>
+                      <View style={[styles.statusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
+                        <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>
+                          {StatusLabels[job.status]}
+                        </Text>
+                      </View>
+                      {job.priority === 'stat' && (
+                        <View style={styles.statBadge}>
+                          <Text style={styles.statBadgeText}>STAT</Text>
+                        </View>
+                      )}
                     </View>
-                    {job.priority === 'stat' && (
-                      <View style={styles.statBadge}>
-                        <Text style={styles.statBadgeText}>STAT</Text>
+                    <Text style={styles.title} accessibilityRole="header">{officeName ?? job.deliveryAddress}</Text>
+                    {due && (
+                      <View style={styles.metaRow}>
+                        <IconSymbol
+                          name="clock"
+                          size={16}
+                          color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
+                        />
+                        <Text style={[styles.metaText, due.tone === 'late' && styles.dueLate, due.tone === 'soon' && styles.dueSoon]}>
+                          {due.text}
+                        </Text>
+                      </View>
+                    )}
+                    {step >= 0 && !isDelivered && (
+                      <View accessibilityLabel={`Step ${step + 1} of 4: ${STEPS[step].label}`}>
+                        <View style={styles.progressTrack}>
+                          {STEPS.map((s, i) => (
+                            <View key={s.status} style={[styles.progressSeg, i <= step && styles.progressSegDone]} />
+                          ))}
+                        </View>
+                        <View style={styles.progressLabels}>
+                          {STEPS.map((s, i) => (
+                            <Text key={s.status} style={[styles.progressLabel, i === step && styles.progressLabelCurrent]}>
+                              {s.label}
+                            </Text>
+                          ))}
+                        </View>
                       </View>
                     )}
                   </View>
 
-                  {/* Accept / Reject buttons */}
+                  {/* Accept / Reject */}
                   {isPendingResponse && (
-                    <SectionCard>
-                      <Text style={styles.responsePrompt}>
-                        New job assigned — accept or reject?
-                      </Text>
+                    <View style={[styles.sectionCard, styles.responseCard]}>
+                      <Text style={styles.responsePrompt}>New job for you. Accept or reject?</Text>
                       <View style={styles.responseButtons}>
                         <TouchableOpacity
                           style={[styles.responseBtn, styles.rejectBtn]}
                           onPress={handleReject}
                           activeOpacity={0.8}
+                          accessibilityRole="button"
                         >
                           <Text style={styles.rejectBtnText}>Reject</Text>
                         </TouchableOpacity>
@@ -361,78 +411,87 @@ export default function JobDetailScreen() {
                           style={[styles.responseBtn, styles.acceptBtn]}
                           onPress={handleAccept}
                           activeOpacity={0.8}
+                          accessibilityRole="button"
                         >
                           <Text style={styles.acceptBtnText}>Accept</Text>
                         </TouchableOpacity>
                       </View>
-                    </SectionCard>
+                    </View>
                   )}
 
-                  {/* Status action button */}
-                  {showPickUpButton && (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, updatingStatus && styles.actionBtnDisabled]}
-                      onPress={handleMarkPickedUp}
-                      disabled={updatingStatus}
-                      activeOpacity={0.8}
-                    >
-                      {updatingStatus
-                        ? <ActivityIndicator color="#fff" />
-                        : <Text style={styles.actionBtnText}>Mark Picked Up</Text>
-                      }
-                    </TouchableOpacity>
-                  )}
-
-                  {showAdvanceButton && !showPickUpButton && (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, updatingStatus && styles.actionBtnDisabled]}
-                      onPress={handleStatusAdvance}
-                      disabled={updatingStatus}
-                      activeOpacity={0.8}
-                    >
-                      {updatingStatus
-                        ? <ActivityIndicator color="#fff" />
-                        : <Text style={styles.actionBtnText}>{NEXT_ACTION_LABEL[job.status]}</Text>
-                      }
-                    </TouchableOpacity>
+                  {/* The next step, front and center */}
+                  {nextAction && (
+                    <View style={styles.nextStep}>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, job.status === 'arrived' && styles.actionBtnFinish, updatingStatus && styles.actionBtnDisabled]}
+                        onPress={showPickUpButton ? handleMarkPickedUp : handleStatusAdvance}
+                        disabled={updatingStatus}
+                        activeOpacity={0.85}
+                        accessibilityRole="button"
+                        accessibilityHint={nextAction.hint}
+                      >
+                        {updatingStatus
+                          ? <ActivityIndicator color={job.status === 'arrived' ? Colors.successInk : '#fff'} />
+                          : <Text style={[styles.actionBtnText, job.status === 'arrived' && styles.actionBtnTextFinish]}>{nextAction.label}</Text>
+                        }
+                      </TouchableOpacity>
+                      <Text style={styles.nextHint}>{nextAction.hint}</Text>
+                    </View>
                   )}
 
                   {isDelivered && (
-                    <View style={[styles.actionBtn, { backgroundColor: Colors.successBg, borderColor: Colors.successBorder, borderWidth: 1 }]}>
-                      <Text style={[styles.actionBtnText, { color: Colors.success }]}>Delivered</Text>
+                    <View style={[styles.outcome, styles.outcomeDelivered]}>
+                      <View style={[styles.outcomeIcon, { backgroundColor: Colors.successBorder }]}>
+                        <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+                      </View>
+                      <View style={styles.outcomeBody}>
+                        <Text style={[styles.outcomeTitle, { color: Colors.success }]}>Delivered</Text>
+                        {deliveredAt && <Text style={styles.outcomeSub}>{formatTime(deliveredAt)}</Text>}
+                      </View>
                     </View>
                   )}
 
                   {isRejected && (
-                    <View style={[styles.actionBtn, { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerBorder, borderWidth: 1 }]}>
-                      <Text style={[styles.actionBtnText, { color: Colors.danger }]}>Job Rejected</Text>
+                    <View style={[styles.outcome, styles.outcomeRejected]}>
+                      <View style={[styles.outcomeIcon, { backgroundColor: Colors.dangerBorder }]}>
+                        <IconSymbol name="xmark" size={20} color="#FFFFFF" />
+                      </View>
+                      <View style={styles.outcomeBody}>
+                        <Text style={[styles.outcomeTitle, { color: Colors.danger }]}>You rejected this job</Text>
+                        <Text style={styles.outcomeSub}>It went back to dispatch to be reassigned.</Text>
+                      </View>
                     </View>
                   )}
 
-                  {/* Delivery section */}
+                  {/* Where it's going */}
                   <SectionCard>
-                    <SectionHeader title="Delivery" />
-                    <Text style={styles.addressLabel}>To</Text>
-                    <Text style={styles.addressText}>{job.deliveryAddress}</Text>
+                    <Eyebrow title="Deliver to" />
+                    {officeName && <Text style={styles.cardTitle}>{officeName}</Text>}
+                    <View style={styles.metaRow}>
+                      <IconSymbol name="mappin.and.ellipse" size={16} color={Colors.textSecondary} />
+                      <Text style={styles.addressText}>{job.deliveryAddress}</Text>
+                    </View>
                     {!isDelivered && !isRejected && (
                       <TouchableOpacity
                         style={styles.navigateBtn}
                         onPress={() => navigate({ address: job.deliveryAddress })}
                         activeOpacity={0.8}
+                        accessibilityRole="button"
                       >
+                        <IconSymbol name="mappin.and.ellipse" size={18} color={Colors.accent} />
                         <Text style={styles.navigateBtnText}>Navigate</Text>
                       </TouchableOpacity>
                     )}
                   </SectionCard>
 
-                  {/* Case info */}
+                  {/* What's in the case */}
                   <SectionCard>
-                    <SectionHeader title="Case Info" />
+                    <Eyebrow title={job.items.length === 1 ? 'Case' : `Case · ${job.items.length} items`} />
                     {job.items.map((item, i) => (
                       <View key={i} style={styles.itemRow}>
-                        <View style={styles.itemLeft}>
+                        <View style={styles.itemLine}>
                           <Text style={styles.itemDescription}>{item.description}</Text>
-                          <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
+                          <Text style={styles.itemQty}>× {item.quantity}</Text>
                         </View>
                         {item.flags.length > 0 && (
                           <View style={styles.flagsRow}>
@@ -441,6 +500,7 @@ export default function JobDetailScreen() {
                                 key={flag}
                                 style={[styles.flag, { backgroundColor: FlagColors[flag].bg }]}
                               >
+                                <IconSymbol name="exclamationmark.triangle" size={12} color={FlagColors[flag].text} />
                                 <Text style={[styles.flagText, { color: FlagColors[flag].text }]}>
                                   {FlagLabels[flag]}
                                 </Text>
@@ -453,8 +513,7 @@ export default function JobDetailScreen() {
                     ))}
                   </SectionCard>
 
-                  {/* Messages section header */}
-                  <SectionHeader title="Messages" />
+                  <Eyebrow title="Messages" />
                 </View>
               );
             }
@@ -462,7 +521,7 @@ export default function JobDetailScreen() {
             if (item.type === 'messages_empty') {
               return (
                 <Text style={styles.messagesEmpty}>
-                  No messages yet. Start the conversation.
+                  No messages yet. The lab and office will see anything you send here.
                 </Text>
               );
             }
@@ -489,18 +548,26 @@ export default function JobDetailScreen() {
           >
             <View style={styles.podContainer}>
               <View style={styles.podHeader}>
-                <Text style={styles.podTitle}>Proof of Delivery</Text>
-                <TouchableOpacity onPress={() => setShowPod(false)} activeOpacity={0.7}>
+                <View style={styles.podHeading}>
+                  <Text style={styles.eyebrow}>{job.caseId}</Text>
+                  <Text style={styles.podTitle}>Complete delivery</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.podCancelBtn}
+                  onPress={() => setShowPod(false)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                >
                   <Text style={styles.podCancel}>Cancel</Text>
                 </TouchableOpacity>
               </View>
 
               <Text style={styles.podSubtitle}>
-                Enter the name of the person who received the delivery.
+                Who received it? Their name is saved as proof of delivery.
               </Text>
 
               <View style={styles.podField}>
-                <Text style={styles.podLabel}>Recipient Name</Text>
+                <Text style={styles.podLabel} nativeID="recipientLabel">Recipient name</Text>
                 <TextInput
                   style={styles.podInput}
                   value={recipientName}
@@ -512,6 +579,7 @@ export default function JobDetailScreen() {
                   returnKeyType="done"
                   onSubmitEditing={handleConfirmDelivery}
                   autoFocus
+                  accessibilityLabelledBy="recipientLabel"
                 />
               </View>
 
@@ -522,11 +590,12 @@ export default function JobDetailScreen() {
                 ]}
                 onPress={handleConfirmDelivery}
                 disabled={!recipientName.trim() || submittingPod}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
+                accessibilityRole="button"
               >
                 {submittingPod
-                  ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.podConfirmText}>Confirm Delivery</Text>
+                  ? <ActivityIndicator color={Colors.successInk} />
+                  : <Text style={styles.podConfirmText}>Confirm delivery</Text>
                 }
               </TouchableOpacity>
             </View>
@@ -545,6 +614,7 @@ export default function JobDetailScreen() {
               multiline
               returnKeyType="send"
               onSubmitEditing={handleSendMessage}
+              accessibilityLabel="Message"
             />
             <TouchableOpacity
               style={[
@@ -554,10 +624,12 @@ export default function JobDetailScreen() {
               onPress={handleSendMessage}
               disabled={!messageText.trim() || sendingMessage}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
             >
               {sendingMessage
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.sendBtnText}>Send</Text>
+                : <IconSymbol name="paperplane.fill" size={18} color="#fff" />
               }
             </TouchableOpacity>
           </View>
@@ -583,12 +655,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContent: {
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.xl - 4,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.md,
     gap: Spacing.md,
   },
   headerContent: {
     gap: Spacing.md,
+  },
+  eyebrow: {
+    fontFamily: Fonts.semibold,
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+
+  // ── Summary ────────────────────────────────────────────────────────────────
+  summary: {
+    gap: Spacing.sm + 2,
+    marginBottom: Spacing.xs,
   },
   topRow: {
     flexDirection: 'row',
@@ -598,50 +684,109 @@ const styles = StyleSheet.create({
   statusBadge: {
     borderRadius: Radius.full,
     borderWidth: 1,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md - 2,
+    paddingVertical: 4,
   },
   statusBadgeText: {
-    fontSize: FontSize.sm,
     fontFamily: Fonts.semibold,
+    fontSize: 12,
   },
   statBadge: {
     backgroundColor: Colors.stat,
     borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
+    paddingHorizontal: 7,
     paddingVertical: 2,
   },
   statBadgeText: {
+    fontFamily: Fonts.bold,
     color: Colors.statText,
     fontSize: FontSize.xs,
-    fontFamily: Fonts.extrabold,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
+  title: {
+    fontFamily: Fonts.bold,
+    color: Colors.text,
+    fontSize: FontSize.xxl,
+    letterSpacing: -0.5,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    fontSize: FontSize.md,
+  },
+  dueSoon: {
+    fontFamily: Fonts.medium,
+    color: Colors.warning,
+  },
+  dueLate: {
+    fontFamily: Fonts.semibold,
+    color: Colors.danger,
+  },
+  progressTrack: {
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: Spacing.xs,
+  },
+  progressSeg: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#2A3C55',
+  },
+  progressSegDone: {
+    backgroundColor: Colors.primary,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  progressLabel: {
+    fontFamily: Fonts.regular,
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+  },
+  progressLabelCurrent: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+  },
+
+  // ── Cards ──────────────────────────────────────────────────────────────────
   sectionCard: {
     backgroundColor: Colors.card,
     borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.lg,
+    gap: Spacing.sm + 2,
+  },
+  cardTitle: {
+    fontFamily: Fonts.semibold,
+    color: Colors.text,
+    fontSize: FontSize.lg,
+    letterSpacing: -0.2,
+  },
+
+  // ── Accept / reject ────────────────────────────────────────────────────────
+  responseCard: {
+    borderColor: Colors.accentBorder,
+    backgroundColor: Colors.accentBg,
     gap: Spacing.md,
   },
-  sectionHeader: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    fontFamily: Fonts.bold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: Spacing.xs,
-  },
   responsePrompt: {
+    fontFamily: Fonts.semibold,
     color: Colors.text,
     fontSize: FontSize.md,
-    fontFamily: Fonts.semibold,
     textAlign: 'center',
   },
   responseButtons: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    gap: Spacing.sm + 2,
   },
   responseBtn: {
     flex: 1,
@@ -651,22 +796,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rejectBtn: {
-    backgroundColor: Colors.dangerBg,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.dangerBorder,
+    borderColor: Colors.borderStrong,
   },
   rejectBtnText: {
+    fontFamily: Fonts.semibold,
     color: Colors.danger,
     fontSize: FontSize.md,
-    fontFamily: Fonts.bold,
   },
   acceptBtn: {
     backgroundColor: Colors.primary,
   },
   acceptBtnText: {
+    fontFamily: Fonts.semibold,
     color: '#fff',
     fontSize: FontSize.md,
-    fontFamily: Fonts.bold,
+  },
+
+  // ── Next step ──────────────────────────────────────────────────────────────
+  nextStep: {
+    gap: Spacing.sm,
   },
   actionBtn: {
     height: 56,
@@ -674,85 +824,152 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  actionBtnFinish: {
+    backgroundColor: Colors.success,
+    shadowColor: Colors.success,
   },
   actionBtnDisabled: {
     opacity: 0.6,
   },
   actionBtnText: {
+    fontFamily: Fonts.semibold,
     color: '#fff',
     fontSize: FontSize.lg,
-    fontFamily: Fonts.bold,
   },
-  addressLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
+  actionBtnTextFinish: {
+    color: Colors.successInk,
+  },
+  nextHint: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+  },
+
+  // ── Outcome (delivered / rejected) ─────────────────────────────────────────
+  outcome: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.lg,
+  },
+  outcomeDelivered: {
+    backgroundColor: Colors.successBg,
+    borderColor: Colors.successBorder,
+  },
+  outcomeRejected: {
+    backgroundColor: Colors.dangerBg,
+    borderColor: Colors.dangerBorder,
+  },
+  outcomeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outcomeBody: {
+    flex: 1,
+    gap: 2,
+  },
+  outcomeTitle: {
     fontFamily: Fonts.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: FontSize.lg,
   },
+  outcomeSub: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+  },
+
+  // ── Delivery + case ────────────────────────────────────────────────────────
   addressText: {
     fontFamily: Fonts.regular,
-    color: Colors.text,
+    color: Colors.textSecondary,
     fontSize: FontSize.md,
+    flexShrink: 1,
   },
   navigateBtn: {
-    backgroundColor: Colors.primaryDark,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    height: 48,
+    backgroundColor: Colors.accentBg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
     borderRadius: Radius.md,
-    paddingVertical: Spacing.md,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: Spacing.xs,
   },
   navigateBtnText: {
+    fontFamily: Fonts.semibold,
     color: Colors.accent,
     fontSize: FontSize.md,
-    fontFamily: Fonts.bold,
   },
   itemRow: {
     gap: Spacing.sm,
   },
-  itemLeft: {
-    gap: 2,
+  itemLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
   },
   itemDescription: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: FontSize.md,
-    fontFamily: Fonts.medium,
+    flexShrink: 1,
   },
   itemQty: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.medium,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
   },
   flagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.xs,
+    gap: Spacing.xs + 2,
   },
   flag: {
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 4,
   },
   flagText: {
-    fontSize: FontSize.xs,
     fontFamily: Fonts.semibold,
+    fontSize: 12,
   },
   itemDivider: {
     height: 1,
     backgroundColor: Colors.border,
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
   },
+
+  // ── Messages ───────────────────────────────────────────────────────────────
   messagesEmpty: {
     fontFamily: Fonts.regular,
     color: Colors.textMuted,
     fontSize: FontSize.sm,
     textAlign: 'center',
     paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+    lineHeight: 19,
   },
   bubbleWrapper: {
-    maxWidth: '78%',
+    maxWidth: '80%',
     gap: 4,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   bubbleRight: {
     alignSelf: 'flex-end',
@@ -763,22 +980,25 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   bubbleSender: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
     fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: FontSize.xs,
     paddingHorizontal: Spacing.sm,
   },
+  bubbleSenderOffice: {
+    color: Colors.warning,
+  },
   bubble: {
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    borderRadius: 18,
+    paddingHorizontal: Spacing.md + 2,
+    paddingVertical: Spacing.sm + 2,
   },
   bubbleDriver: {
     backgroundColor: Colors.primary,
     borderBottomRightRadius: Radius.sm,
   },
   bubbleOther: {
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.cardElevated,
     borderWidth: 1,
     borderColor: Colors.border,
     borderBottomLeftRadius: Radius.sm,
@@ -786,7 +1006,7 @@ const styles = StyleSheet.create({
   bubbleText: {
     fontFamily: Fonts.regular,
     fontSize: FontSize.md,
-    lineHeight: 22,
+    lineHeight: 21,
   },
   bubbleTextOwn: {
     color: '#fff',
@@ -805,24 +1025,25 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    paddingBottom: Platform.OS === 'ios' ? Spacing.lg : Spacing.md,
+    paddingTop: Spacing.sm + 2,
+    paddingBottom: Spacing.sm + 2,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.bg,
+    borderTopColor: Colors.tabBarBorder,
+    backgroundColor: Colors.tabBar,
   },
   input: {
     fontFamily: Fonts.regular,
     flex: 1,
     backgroundColor: Colors.card,
-    borderRadius: Radius.xl,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: Colors.border,
     color: Colors.text,
     fontSize: FontSize.md,
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.md,
+    paddingTop: 11,
+    paddingBottom: 11,
+    minHeight: 44,
     maxHeight: 120,
   },
   sendBtn: {
@@ -835,11 +1056,6 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.4,
-  },
-  sendBtnText: {
-    color: '#fff',
-    fontSize: FontSize.sm,
-    fontFamily: Fonts.bold,
   },
 
   // ── Proof of delivery modal ───────────────────────────────────────────────
@@ -854,19 +1070,28 @@ const styles = StyleSheet.create({
   },
   podHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingTop: Spacing.md,
   },
+  podHeading: {
+    gap: 4,
+  },
   podTitle: {
-    color: Colors.text,
-    fontSize: FontSize.xl,
     fontFamily: Fonts.bold,
+    color: Colors.text,
+    fontSize: FontSize.xxl,
+    letterSpacing: -0.5,
+  },
+  podCancelBtn: {
+    minHeight: 44,
+    paddingHorizontal: Spacing.sm,
+    justifyContent: 'center',
   },
   podCancel: {
+    fontFamily: Fonts.medium,
     color: Colors.accent,
     fontSize: FontSize.md,
-    fontFamily: Fonts.medium,
   },
   podSubtitle: {
     fontFamily: Fonts.regular,
@@ -876,25 +1101,22 @@ const styles = StyleSheet.create({
     marginTop: -Spacing.md,
   },
   podField: {
-    gap: Spacing.xs,
+    gap: 6,
   },
   podLabel: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
     fontFamily: Fonts.semibold,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
+    color: '#C3CEDC',
+    fontSize: FontSize.sm,
   },
   podInput: {
     fontFamily: Fonts.regular,
     backgroundColor: Colors.card,
     color: Colors.text,
-    fontSize: FontSize.md,
+    fontSize: 16,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.accentBorder,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
     height: 52,
   },
   podConfirmBtn: {
@@ -909,8 +1131,8 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   podConfirmText: {
-    color: '#fff',
+    fontFamily: Fonts.semibold,
+    color: Colors.successInk,
     fontSize: FontSize.lg,
-    fontFamily: Fonts.bold,
   },
 });

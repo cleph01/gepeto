@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Job, JobStatus } from '@gepeto/types';
+import { Job } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
 import { useAuth } from '@/context/auth';
 import {
@@ -28,6 +28,7 @@ import {
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { onJobRemoved } from '@/components/job-alerts';
+import { ON_THE_WAY, STEPS, dueInfo, needsReply } from '@/lib/jobs';
 
 // The queue reads office names alongside each job (drivers can read their lab's offices).
 type QueueJob = Job & { officeName: string | null };
@@ -38,33 +39,6 @@ function toQueueJob(row: Record<string, unknown>): QueueJob {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const ON_THE_WAY: JobStatus[] = ['assigned', 'picked_up', 'in_transit', 'arrived'];
-const STEPS: { status: JobStatus; label: string }[] = [
-  { status: 'assigned', label: 'Assigned' },
-  { status: 'picked_up', label: 'Picked up' },
-  { status: 'in_transit', label: 'In transit' },
-  { status: 'arrived', label: 'Arrived' },
-];
-
-/** "Due today 2:30 PM", "Due tomorrow 9:00 AM", "Due Thu 3:00 PM", or "Late · due 2:30 PM". */
-function dueInfo(job: Job): { text: string; tone: 'late' | 'soon' | 'normal' } | null {
-  if (!job.scheduledAt || job.status === 'delivered') return null;
-  const due = new Date(job.scheduledAt);
-  const time = due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((startOf(due) - startOf(new Date())) / 86400000);
-  const day =
-    days === 0 ? 'today' :
-    days === 1 ? 'tomorrow' :
-    days > 1 && days < 7 ? due.toLocaleDateString('en-US', { weekday: 'short' }) :
-    due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const minsLeft = (due.getTime() - Date.now()) / 60000;
-  if (minsLeft < 0) return { text: `Late · due ${days === 0 ? '' : `${day} `}${time}`, tone: 'late' };
-  return { text: `Due ${day} ${time}`, tone: minsLeft <= 60 ? 'soon' : 'normal' };
-}
-
-const needsReply = (j: Job) => j.driverResponse === 'pending' && j.status === 'assigned';
 
 // ─── Job card ─────────────────────────────────────────────────────────────────
 

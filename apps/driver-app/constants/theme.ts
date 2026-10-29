@@ -29,6 +29,7 @@ export const Colors = {
   success: '#9CCB6A',
   successBg: '#182A0B',
   successBorder: '#3B6D11',
+  successInk: '#132108',     // text on a solid success fill
   warning: '#E8B04F',
   warningBg: '#3A2606',
   warningBorder: '#7A4F10',

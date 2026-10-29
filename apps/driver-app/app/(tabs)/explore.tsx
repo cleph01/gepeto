@@ -6,7 +6,9 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/auth';
@@ -17,6 +19,7 @@ import {
   navigate,
 } from '@/lib/navigation';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 const NAV_APP_LABELS: Record<NavApp, string> = {
   apple_maps:     'Apple Maps',
@@ -75,14 +78,19 @@ export default function SettingsScreen() {
   const email = session?.user.email ?? '—';
   const initials = email.slice(0, 2).toUpperCase();
 
+  const version = Constants.expoConfig?.version ?? '—';
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.screenTitle}>Settings</Text>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>Your account</Text>
+          <Text style={styles.screenTitle} accessibilityRole="header">Settings</Text>
+        </View>
 
         {/* Account */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Account</Text>
+          <Text style={styles.sectionLabel}>Signed in as</Text>
           <View style={styles.card}>
             <View style={styles.profileRow}>
               <View style={styles.avatar}>
@@ -90,7 +98,7 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>Driver</Text>
-                <Text style={styles.profileEmail}>{email}</Text>
+                <Text style={styles.profileEmail} numberOfLines={1}>{email}</Text>
               </View>
             </View>
           </View>
@@ -101,8 +109,11 @@ export default function SettingsScreen() {
           <Text style={styles.sectionLabel}>Navigation</Text>
           <View style={styles.card}>
             <View style={styles.prefRow}>
+              <View style={styles.prefIcon}>
+                <IconSymbol name="mappin.and.ellipse" size={20} color={Colors.accent} />
+              </View>
               <View style={styles.prefInfo}>
-                <Text style={styles.prefTitle}>Preferred App</Text>
+                <Text style={styles.prefTitle}>Maps app</Text>
                 <Text style={styles.prefValue}>
                   {navPref ? NAV_APP_LABELS[navPref] : 'Ask each time'}
                 </Text>
@@ -111,6 +122,8 @@ export default function SettingsScreen() {
                 style={styles.changeBtn}
                 onPress={handleChangeNav}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Change maps app"
               >
                 <Text style={styles.changeBtnText}>Change</Text>
               </TouchableOpacity>
@@ -122,23 +135,14 @@ export default function SettingsScreen() {
                   style={styles.rowButton}
                   onPress={handleClearNav}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
                 >
-                  <Text style={styles.rowButtonDanger}>Reset to ask each time</Text>
+                  <Text style={styles.rowButtonText}>Ask me each time instead</Text>
                 </TouchableOpacity>
               </>
             )}
           </View>
-        </View>
-
-        {/* App info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>App</Text>
-          <View style={styles.card}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Version</Text>
-              <Text style={styles.infoValue}>1.0.0</Text>
-            </View>
-          </View>
+          <Text style={styles.sectionHint}>Used when you tap Navigate on a job.</Text>
         </View>
 
         {/* Sign out */}
@@ -146,9 +150,18 @@ export default function SettingsScreen() {
           style={styles.signOutBtn}
           onPress={handleSignOut}
           activeOpacity={0.8}
+          accessibilityRole="button"
         >
-          <Text style={styles.signOutText}>Sign Out</Text>
+          <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
+
+        {/* About */}
+        <View style={styles.about}>
+          <View style={styles.logoTile}>
+            <Image source={require('@/assets/images/gepeto-icon.png')} style={styles.logo} accessibilityLabel="Gepeto" />
+          </View>
+          <Text style={styles.aboutText}>Gepeto Driver · Version {version}</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -160,25 +173,41 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   content: {
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.xl - 4,
+    paddingTop: Spacing.lg,
     gap: Spacing.xl,
     paddingBottom: Spacing.xxl,
   },
+  header: {
+    gap: 4,
+  },
+  eyebrow: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: FontSize.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
   screenTitle: {
-    color: Colors.text,
-    fontSize: FontSize.xxl,
     fontFamily: Fonts.bold,
+    color: Colors.text,
+    fontSize: FontSize.xxxl,
+    letterSpacing: -0.75,
   },
   section: {
     gap: Spacing.sm,
   },
   sectionLabel: {
+    fontFamily: Fonts.semibold,
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontFamily: Fonts.bold,
-    letterSpacing: 0.8,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    paddingHorizontal: Spacing.xs,
+  },
+  sectionHint: {
+    fontFamily: Fonts.regular,
+    color: Colors.textMuted,
+    fontSize: 12,
   },
   card: {
     backgroundColor: Colors.card,
@@ -197,22 +226,25 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.accentBg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: '#fff',
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
     fontSize: FontSize.lg,
-    fontFamily: Fonts.bold,
   },
   profileInfo: {
     gap: 2,
+    flex: 1,
   },
   profileName: {
+    fontFamily: Fonts.semibold,
     color: Colors.text,
     fontSize: FontSize.md,
-    fontFamily: Fonts.semibold,
   },
   profileEmail: {
     fontFamily: Fonts.regular,
@@ -222,16 +254,25 @@ const styles = StyleSheet.create({
   prefRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  prefIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   prefInfo: {
     gap: 2,
+    flex: 1,
   },
   prefTitle: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: FontSize.md,
-    fontFamily: Fonts.medium,
   },
   prefValue: {
     fontFamily: Fonts.regular,
@@ -239,15 +280,18 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
   },
   changeBtn: {
-    backgroundColor: Colors.primaryDark,
+    minHeight: 44,
+    justifyContent: 'center',
+    backgroundColor: Colors.accentBg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
     borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
   },
   changeBtnText: {
+    fontFamily: Fonts.semibold,
     color: Colors.accent,
     fontSize: FontSize.sm,
-    fontFamily: Fonts.semibold,
   },
   divider: {
     height: 1,
@@ -255,41 +299,49 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.lg,
   },
   rowButton: {
-    padding: Spacing.lg,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
   },
-  rowButtonDanger: {
-    color: Colors.danger,
+  rowButtonText: {
+    fontFamily: Fonts.medium,
+    color: Colors.accent,
     fontSize: FontSize.sm,
-    fontFamily: Fonts.medium,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: Spacing.lg,
-  },
-  infoLabel: {
-    color: Colors.text,
-    fontSize: FontSize.md,
-    fontFamily: Fonts.medium,
-  },
-  infoValue: {
-    fontFamily: Fonts.regular,
-    color: Colors.textSecondary,
-    fontSize: FontSize.md,
   },
   signOutBtn: {
-    backgroundColor: Colors.dangerBg,
-    borderRadius: Radius.lg,
+    height: 52,
+    borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.dangerBorder,
-    paddingVertical: Spacing.lg,
+    borderColor: Colors.borderStrong,
     alignItems: 'center',
-    marginTop: Spacing.sm,
+    justifyContent: 'center',
   },
   signOutText: {
+    fontFamily: Fonts.semibold,
     color: Colors.danger,
     fontSize: FontSize.md,
-    fontFamily: Fonts.bold,
+  },
+  about: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  logoTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 28,
+    height: 28,
+  },
+  aboutText: {
+    fontFamily: Fonts.regular,
+    color: Colors.textMuted,
+    fontSize: 12,
   },
 });
