@@ -612,8 +612,8 @@ export default function JobDetailScreen() {
               placeholder="Message the lab or office…"
               placeholderTextColor={Colors.textMuted}
               multiline
-              returnKeyType="send"
-              onSubmitEditing={handleSendMessage}
+              // Return adds a new line; the button beside the field sends.
+              submitBehavior="newline"
               accessibilityLabel="Message"
             />
             <TouchableOpacity
@@ -629,7 +629,7 @@ export default function JobDetailScreen() {
             >
               {sendingMessage
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <IconSymbol name="paperplane.fill" size={18} color="#fff" />
+                : <IconSymbol name="paperplane.fill" size={20} color={messageText.trim() ? '#fff' : Colors.textMuted} />
               }
             </TouchableOpacity>
           </View>
@@ -1054,8 +1054,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Stays clearly visible while empty, so drivers know where Send is.
   sendBtnDisabled: {
-    opacity: 0.4,
+    backgroundColor: Colors.cardElevated,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
   },
 
   // ── Proof of delivery modal ───────────────────────────────────────────────

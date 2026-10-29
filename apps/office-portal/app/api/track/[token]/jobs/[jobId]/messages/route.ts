@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { notifyLab } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -10,7 +11,7 @@ async function resolveJobForToken(token: string, jobId: string) {
 
   const job = await db("jobs")
     .where({ id: jobId, office_id: office.id })
-    .select("id")
+    .select("id", "lab_id")
     .first();
   return job ?? null;
 }
@@ -96,6 +97,8 @@ export async function POST(
         body: trimmed,
       })
       .returning(["id", "sender_role", "body", "created_at"]);
+
+    await notifyLab(job.labId, "message", { jobId });
 
     return Response.json({ data: message, error: null }, { status: 201 });
   } catch (err) {

@@ -70,6 +70,8 @@ interface MessageNotificationsContextType {
   clearPendingHistory: () => void;
   /** Bumped on every realtime change to the lab's jobs, so lists can reload. */
   jobsChangedAt: number;
+  /** Bumped when a message lands on a job, so an open thread can reload at once. */
+  messageArrived: { jobId: string; at: number } | null;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
 }
@@ -86,6 +88,7 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   pendingHistoryJobId: null,
   clearPendingHistory: () => {},
   jobsChangedAt: 0,
+  messageArrived: null,
   soundEnabled: true,
   setSoundEnabled: () => {},
 });
@@ -182,6 +185,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const [pendingOpenJobId, setPendingOpenJobId] = useState<string | null>(null);
   const [pendingHistoryJobId, setPendingHistoryJobId] = useState<string | null>(null);
   const [jobsChangedAt, setJobsChangedAt] = useState(0);
+  const [messageArrived, setMessageArrived] = useState<{ jobId: string; at: number } | null>(null);
   // Safe to read localStorage on first render: AppShell's Guard only mounts this
   // provider client-side, after auth has loaded.
   const [soundEnabled, setSoundEnabledState] = useState(
@@ -324,11 +328,18 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       )
       // Server broadcast when a driver accepts, rejects or moves a job along.
       .on("broadcast", { event: "job_changed" }, onJobChange)
+      // Server broadcast when anyone sends a message: badge, chime and toast now,
+      // not on the next poll.
+      .on("broadcast", { event: "message" }, ({ payload }) => {
+        const jobId = (payload as { jobId?: string } | undefined)?.jobId;
+        if (jobId) setMessageArrived({ jobId, at: Date.now() });
+        poll();
+      })
       .subscribe();
     return () => {
       supabaseBrowser.removeChannel(channel);
     };
-  }, [labId, pollActivity]);
+  }, [labId, pollActivity, poll]);
 
   useEffect(() => {
     if (!session) return;
@@ -404,6 +415,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         pendingHistoryJobId,
         clearPendingHistory,
         jobsChangedAt,
+        messageArrived,
         soundEnabled,
         setSoundEnabled,
       }}

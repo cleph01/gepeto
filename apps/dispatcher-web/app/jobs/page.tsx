@@ -978,7 +978,7 @@ function MessageRoleLegend() {
 
 function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const { apiFetch } = useAuth();
-  const { markRead, setActiveThread } = useMessageNotifications();
+  const { markRead, setActiveThread, messageArrived } = useMessageNotifications();
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -995,6 +995,12 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
+
+  // A new message on this job: show it now instead of on the next 8s check.
+  useEffect(() => {
+    if (messageArrived?.jobId === job.id) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageArrived]);
 
   useEffect(() => {
     setActiveThread(job.id);
