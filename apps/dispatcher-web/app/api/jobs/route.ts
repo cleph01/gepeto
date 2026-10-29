@@ -121,7 +121,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return Response.json({ data: job, error: null }, { status: 201 });
+    // Return the same joined shape as GET /api/jobs so the jobs list shows the driver and office right away
+    const created = await db("jobs")
+      .leftJoin("offices", "jobs.office_id", "offices.id")
+      .leftJoin("drivers", "jobs.driver_id", "drivers.id")
+      .where("jobs.id", job.id)
+      .select(
+        "jobs.*",
+        "offices.name as office_name",
+        "offices.tracking_token as office_tracking_token",
+        "drivers.name as driver_name"
+      )
+      .first();
+
+    return Response.json({ data: created, error: null }, { status: 201 });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[POST /api/jobs]", err);
