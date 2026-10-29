@@ -1,14 +1,14 @@
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.primary,
+        tabBarActiveTintColor: Colors.accent,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarStyle: {
           backgroundColor: Colors.tabBar,
@@ -19,7 +19,7 @@ export default function TabLayout() {
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '500',
+          fontFamily: Fonts.medium,
           marginBottom: Platform.OS === 'ios' ? 0 : 4,
         },
       }}
@@ -29,7 +29,7 @@ export default function TabLayout() {
         options={{
           title: 'Jobs',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="list.bullet.rectangle.portrait.fill" size={size} color={color} />
+            <IconSymbol name="list.bullet.rectangle.portrait" size={size} color={color} />
           ),
         }}
       />
@@ -38,7 +38,7 @@ export default function TabLayout() {
         options={{
           title: 'History',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="clock.fill" size={size} color={color} />
+            <IconSymbol name="clock" size={size} color={color} />
           ),
         }}
       />
@@ -47,7 +47,7 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="gearshape.fill" size={size} color={color} />
+            <IconSymbol name="gearshape" size={size} color={color} />
           ),
         }}
       />

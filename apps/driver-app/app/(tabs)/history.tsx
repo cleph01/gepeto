@@ -13,7 +13,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { apiGet } from '@/lib/api';
 import { dayLabel, timeLabel, type HistoryEntry, type HistoryPage } from '@/lib/history';
-import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
+import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // ─── History row ─────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => vo
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.caseId}>{entry.caseId}</Text>
+          <Text style={styles.caseId} numberOfLines={1}>{entry.caseId}</Text>
           {entry.priority === 'stat' && (
             <View style={styles.statBadge}>
               <Text style={styles.statBadgeText}>STAT</Text>
@@ -33,20 +34,34 @@ function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => vo
           )}
         </View>
         <View style={[styles.kindBadge, rejected ? styles.kindRejected : styles.kindDelivered]}>
+          <IconSymbol name={rejected ? 'xmark' : 'checkmark'} size={12} color={rejected ? Colors.danger : Colors.success} />
           <Text style={[styles.kindText, { color: rejected ? Colors.danger : Colors.success }]}>
-            {rejected ? 'Rejected' : 'Delivered'} {timeLabel(entry.at)}
+            {rejected ? 'Rejected' : 'Delivered'}
           </Text>
         </View>
       </View>
 
-      {entry.officeName && <Text style={styles.office} numberOfLines={1}>{entry.officeName}</Text>}
-      <Text style={styles.address} numberOfLines={1}>→ {entry.deliveryAddress}</Text>
+      <Text style={styles.office} numberOfLines={1}>{entry.officeName ?? entry.deliveryAddress}</Text>
+      {entry.officeName && (
+        <View style={styles.metaRow}>
+          <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
+          <Text style={styles.address} numberOfLines={1}>{entry.deliveryAddress}</Text>
+        </View>
+      )}
 
       <View style={styles.cardFooter}>
         <Text style={styles.itemsSummary} numberOfLines={1}>
           {items.length === 1 ? items[0].description : `${items.length} items`}
         </Text>
-        {entry.hasProof && <Text style={styles.proof}>📷 Proof</Text>}
+        <View style={styles.footerRight}>
+          {entry.hasProof && (
+            <View style={styles.proofRow}>
+              <IconSymbol name="camera" size={14} color={Colors.textSecondary} />
+              <Text style={styles.proof}>Proof</Text>
+            </View>
+          )}
+          <Text style={styles.time}>{timeLabel(entry.at)}</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -125,8 +140,8 @@ export default function HistoryScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>History</Text>
-        <Text style={styles.headerSub}>Deliveries & rejections</Text>
+        <Text style={styles.eyebrow}>Last 30 days</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">History</Text>
       </View>
 
       <FlatList
@@ -134,7 +149,7 @@ export default function HistoryScreen() {
         keyExtractor={(item) => (item.type === 'day' ? `day-${item.label}` : item.entry.key)}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={loadFirstPage} tintColor={Colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={loadFirstPage} tintColor={Colors.accent} />
         }
         renderItem={({ item }) =>
           item.type === 'day' ? (
@@ -146,7 +161,9 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           loaded ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>{error ? '⚠️' : '🗂️'}</Text>
+              <View style={styles.emptyIcon}>
+                <IconSymbol name={error ? 'exclamationmark.triangle' : 'tray'} size={28} color={error ? Colors.danger : Colors.accent} />
+              </View>
               <Text style={styles.emptyTitle}>{error ?? 'Nothing in the last 30 days'}</Text>
               {!error && (
                 <Text style={styles.emptySubtitle}>
@@ -160,7 +177,7 @@ export default function HistoryScreen() {
           nextBefore ? (
             <TouchableOpacity style={styles.loadMore} onPress={loadMore} disabled={loadingMore} activeOpacity={0.75}>
               {loadingMore ? (
-                <ActivityIndicator color={Colors.primary} />
+                <ActivityIndicator color={Colors.accent} />
               ) : (
                 <Text style={styles.loadMoreText}>Load older jobs</Text>
               )}
@@ -177,21 +194,25 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.bg },
   header: {
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: Spacing.xl - 4,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
+    gap: 4,
   },
-  headerTitle: { color: Colors.text, fontSize: FontSize.xxl, fontWeight: '700' },
-  headerSub: { color: Colors.textSecondary, fontSize: FontSize.sm },
-  listContent: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.sm },
+  eyebrow: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: FontSize.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  headerTitle: { color: Colors.text, fontSize: FontSize.xxxl, fontFamily: Fonts.bold, letterSpacing: -0.75 },
+  listContent: { paddingHorizontal: Spacing.xl - 4, paddingBottom: Spacing.xxl, gap: Spacing.sm + 2 },
   dayTitle: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+    fontFamily: Fonts.semibold,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
     marginTop: Spacing.sm,
     marginBottom: Spacing.xs,
@@ -202,26 +223,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.lg,
-    gap: Spacing.xs,
+    gap: 6,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexShrink: 1 },
-  caseId: { color: Colors.text, fontSize: FontSize.lg, fontWeight: '700' },
-  statBadge: { backgroundColor: '#7A2500', borderRadius: Radius.sm, paddingHorizontal: Spacing.sm, paddingVertical: 2 },
-  statBadgeText: { color: '#FF6B35', fontSize: FontSize.xs, fontWeight: '800', letterSpacing: 0.5 },
-  kindBadge: { borderRadius: Radius.full, borderWidth: 1, paddingHorizontal: Spacing.md, paddingVertical: 3 },
+  caseId: { color: Colors.textSecondary, fontSize: FontSize.sm, fontFamily: Fonts.semibold, flexShrink: 1 },
+  statBadge: { backgroundColor: Colors.stat, borderRadius: Radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
+  statBadgeText: { color: Colors.statText, fontSize: FontSize.xs, fontFamily: Fonts.bold, letterSpacing: 0.6 },
+  kindBadge: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, borderWidth: 1, paddingHorizontal: Spacing.md - 2, paddingVertical: 4 },
   kindDelivered: { backgroundColor: Colors.successBg, borderColor: Colors.successBorder },
   kindRejected: { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerBorder },
-  kindText: { fontSize: FontSize.xs, fontWeight: '600' },
-  office: { color: Colors.text, fontSize: FontSize.sm, fontWeight: '500' },
-  address: { color: Colors.textSecondary, fontSize: FontSize.sm },
+  kindText: { fontSize: FontSize.xs, fontFamily: Fonts.semibold },
+  office: { color: Colors.text, fontSize: FontSize.lg, fontFamily: Fonts.semibold, letterSpacing: -0.2 },
+  address: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: 14, flexShrink: 1 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
-  itemsSummary: { color: Colors.textMuted, fontSize: FontSize.xs, flexShrink: 1 },
-  proof: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: '500' },
+  itemsSummary: { fontFamily: Fonts.regular, color: Colors.textMuted, fontSize: FontSize.xs, flexShrink: 1 },
+  proof: { color: Colors.textSecondary, fontSize: FontSize.xs, fontFamily: Fonts.medium },
   empty: { alignItems: 'center', paddingTop: 80, gap: Spacing.sm, paddingHorizontal: Spacing.xl },
-  emptyIcon: { fontSize: 40 },
-  emptyTitle: { color: Colors.text, fontSize: FontSize.lg, fontWeight: '600', textAlign: 'center' },
-  emptySubtitle: { color: Colors.textSecondary, fontSize: FontSize.sm, textAlign: 'center' },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: Colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  footerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flexShrink: 0 },
+  time: { fontFamily: Fonts.medium, color: Colors.textSecondary, fontSize: FontSize.xs },
+  emptyTitle: { color: Colors.text, fontSize: FontSize.lg, fontFamily: Fonts.semibold, textAlign: 'center' },
+  emptySubtitle: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm, textAlign: 'center' },
   loadMore: {
     marginTop: Spacing.md,
     paddingVertical: Spacing.md,
@@ -230,5 +263,5 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
   },
-  loadMoreText: { color: Colors.primaryLight, fontSize: FontSize.sm, fontWeight: '600' },
+  loadMoreText: { color: Colors.accent, fontSize: FontSize.sm, fontFamily: Fonts.semibold },
 });

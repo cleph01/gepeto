@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { rowToCamel } from '@/lib/transform';
 import { useLocationTracking } from '@/hooks/use-location-tracking';
 import {
   View,
   Text,
+  Image,
   FlatList,
   TouchableOpacity,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Job } from '@gepeto/types';
+import { Job, JobStatus } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
 import { useAuth } from '@/context/auth';
 import {
@@ -22,41 +23,70 @@ import {
   Spacing,
   StatusColors,
   StatusLabels,
+  Fonts,
 } from '@/constants/theme';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { onJobRemoved } from '@/components/job-alerts';
 
+// The queue reads office names alongside each job (drivers can read their lab's offices).
+type QueueJob = Job & { officeName: string | null };
+
+function toQueueJob(row: Record<string, unknown>): QueueJob {
+  const { offices, ...rest } = row as Record<string, unknown> & { offices?: { name: string } | null };
+  return { ...rowToCamel<Job>(rest), officeName: offices?.name ?? null };
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+const ON_THE_WAY: JobStatus[] = ['assigned', 'picked_up', 'in_transit', 'arrived'];
+const STEPS: { status: JobStatus; label: string }[] = [
+  { status: 'assigned', label: 'Assigned' },
+  { status: 'picked_up', label: 'Picked up' },
+  { status: 'in_transit', label: 'In transit' },
+  { status: 'arrived', label: 'Arrived' },
+];
+
+/** "Due today 2:30 PM", "Due tomorrow 9:00 AM", "Due Thu 3:00 PM", or "Late · due 2:30 PM". */
+function dueInfo(job: Job): { text: string; tone: 'late' | 'soon' | 'normal' } | null {
+  if (!job.scheduledAt || job.status === 'delivered') return null;
+  const due = new Date(job.scheduledAt);
+  const time = due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(due) - startOf(new Date())) / 86400000);
+  const day =
+    days === 0 ? 'today' :
+    days === 1 ? 'tomorrow' :
+    days > 1 && days < 7 ? due.toLocaleDateString('en-US', { weekday: 'short' }) :
+    due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const minsLeft = (due.getTime() - Date.now()) / 60000;
+  if (minsLeft < 0) return { text: `Late · due ${days === 0 ? '' : `${day} `}${time}`, tone: 'late' };
+  return { text: `Due ${day} ${time}`, tone: minsLeft <= 60 ? 'soon' : 'normal' };
 }
+
+const needsReply = (j: Job) => j.driverResponse === 'pending' && j.status === 'assigned';
 
 // ─── Job card ─────────────────────────────────────────────────────────────────
 
-function JobCard({ job, onPress }: { job: Job; onPress: () => void }) {
+function JobCard({ job, onPress }: { job: QueueJob; onPress: () => void }) {
   const statusColor = StatusColors[job.status];
-  const isPendingResponse = job.driverResponse === 'pending' && job.status === 'assigned';
-  const isStat = job.priority === 'stat';
+  const pendingReply = needsReply(job);
+  const due = dueInfo(job);
+  const step = STEPS.findIndex((s) => s.status === job.status);
+  const showProgress = step > 0; // once picked up
 
   return (
     <TouchableOpacity
-      style={[styles.card, isPendingResponse && styles.cardHighlighted]}
+      style={[styles.card, pendingReply && styles.cardNeedsReply]}
       onPress={onPress}
       activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={`${job.officeName ?? job.caseId}, ${StatusLabels[job.status]}${pendingReply ? ', needs your reply' : ''}`}
     >
-      {/* Card header row */}
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.caseId}>{job.caseId}</Text>
-          {isStat && (
+          <Text style={styles.caseId} numberOfLines={1}>{job.caseId}</Text>
+          {job.priority === 'stat' && (
             <View style={styles.statBadge}>
               <Text style={styles.statBadgeText}>STAT</Text>
             </View>
@@ -69,32 +99,62 @@ function JobCard({ job, onPress }: { job: Job; onPress: () => void }) {
         </View>
       </View>
 
-      {/* Delivery address */}
-      <Text style={styles.address} numberOfLines={1}>
-        → {job.deliveryAddress}
-      </Text>
-
-      {/* Items summary */}
-      <Text style={styles.itemsSummary}>
-        {job.items.length === 1
-          ? job.items[0].description
-          : `${job.items.length} items`}
-      </Text>
-
-      {/* Footer */}
-      <View style={styles.cardFooter}>
-        <Text style={styles.timeAgo}>{timeAgo(job.updatedAt)}</Text>
-        {isPendingResponse && (
-          <View style={styles.actionRequiredPill}>
-            <Text style={styles.actionRequiredText}>Tap to accept or reject</Text>
+      <View style={styles.cardBody}>
+        <Text style={styles.officeName} numberOfLines={1}>{job.officeName ?? job.deliveryAddress}</Text>
+        {job.officeName && (
+          <View style={styles.metaRow}>
+            <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
+            <Text style={styles.metaText} numberOfLines={1}>{job.deliveryAddress}</Text>
+          </View>
+        )}
+        {due && (
+          <View style={styles.metaRow}>
+            <IconSymbol
+              name="clock"
+              size={15}
+              color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.metaText,
+                due.tone === 'late' && styles.dueLate,
+                due.tone === 'soon' && styles.dueSoon,
+              ]}
+            >
+              {due.text}
+            </Text>
           </View>
         )}
       </View>
+
+      {showProgress && (
+        <View accessibilityLabel={`Step ${step + 1} of 4: ${STEPS[step].label}`}>
+          <View style={styles.progressTrack}>
+            {STEPS.map((s, i) => (
+              <View key={s.status} style={[styles.progressSeg, i <= step && styles.progressSegDone]} />
+            ))}
+          </View>
+          <View style={styles.progressLabels}>
+            {STEPS.map((s, i) => (
+              <Text key={s.status} style={[styles.progressLabel, i === step && styles.progressLabelCurrent]}>
+                {s.label}
+              </Text>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {pendingReply && (
+        <View style={styles.replyPrompt}>
+          <Text style={styles.replyPromptText}>Tap to accept or reject</Text>
+          <IconSymbol name="chevron.right" size={16} color={Colors.accent} />
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
 
-// ─── Stats row ────────────────────────────────────────────────────────────────
+// ─── Stats ────────────────────────────────────────────────────────────────────
 
 // Delivered/rejected today, by the driver's local date. deliveredAt is set when
 // the status goes to delivered; updatedAt covers rejections and older rows.
@@ -105,58 +165,62 @@ function finishedToday(job: Job) {
 }
 
 function StatsRow({ jobs }: { jobs: Job[] }) {
-  const active = jobs.filter((j) => ['assigned', 'picked_up', 'in_transit', 'arrived'].includes(j.status)).length;
+  const active = jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
   const delivered = jobs.filter((j) => j.status === 'delivered' && finishedToday(j)).length;
-  const pending = jobs.filter((j) => j.driverResponse === 'pending').length;
+  const pending = jobs.filter(needsReply).length;
 
   return (
     <View style={styles.statsRow}>
-      <StatCell label="Active" value={active} color={Colors.primary} />
-      <View style={styles.statsDivider} />
-      <StatCell label="Need Response" value={pending} color={Colors.warning} />
-      <View style={styles.statsDivider} />
-      <StatCell label="Delivered Today" value={delivered} color={Colors.success} />
+      <StatTile label="Active" value={active} />
+      <StatTile label="Needs reply" value={pending} highlight={pending > 0} />
+      <StatTile label="Delivered" value={delivered} valueColor={Colors.success} />
     </View>
   );
 }
 
-function StatCell({ label, value, color }: { label: string; value: number; color: string }) {
+function StatTile({ label, value, highlight, valueColor }: { label: string; value: number; highlight?: boolean; valueColor?: string }) {
   return (
-    <View style={styles.statCell}>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={[styles.statTile, highlight && styles.statTileHighlight]}>
+      <Text style={[styles.statValue, { color: highlight ? Colors.accent : valueColor ?? Colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, highlight && styles.statLabelHighlight]}>{label}</Text>
     </View>
   );
 }
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
+type Row =
+  | { type: 'stats' }
+  | { type: 'section'; title: string }
+  | { type: 'job'; job: QueueJob };
+
 export default function JobQueueScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const driverId = getDriverId(session);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (showSpinner = true) => {
     if (!driverId) return;
-    setRefreshing(true);
+    if (showSpinner) setRefreshing(true);
     // Only active jobs and today's finished ones; older ones live in the History tab.
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const since = startOfToday.toISOString();
     const { data, error } = await supabase
       .from('jobs')
-      .select('*')
+      .select('*, offices(name)')
       .eq('driver_id', driverId)
       .or(`status.neq.delivered,delivered_at.gte.${since},updated_at.gte.${since}`)
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      setJobs(data.map((row) => rowToCamel<Job>(row)));
+      setJobs(data.map((row) => toQueueJob(row)));
     }
-    setRefreshing(false);
+    if (showSpinner) setRefreshing(false);
   }, [driverId]);
 
   // Initial fetch
@@ -177,25 +241,28 @@ export default function JobQueueScreen() {
           filter: `driver_id=eq.${driverId}`,
         },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newJob = rowToCamel<Job>(payload.new as Record<string, unknown>);
-            setJobs((prev) => [newJob, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            const updated = rowToCamel<Job>(payload.new as Record<string, unknown>);
+          if (payload.eventType === 'DELETE') return;
+          // Apply the row right away (keeping the office name we have), then
+          // refetch quietly so a new job or office change gets its name.
+          const row = rowToCamel<Job>(payload.new as Record<string, unknown>);
+          setJobs((prev) => {
+            const existing = prev.find((j) => j.id === row.id);
+            const next: QueueJob = { ...row, officeName: existing && existing.officeId === row.officeId ? existing.officeName : null };
             // A dispatcher assigning an existing job to this driver arrives as an
             // UPDATE for a job not in the list yet; treat it like a new job.
-            setJobs((prev) =>
-              prev.some((j) => j.id === updated.id)
-                ? prev.map((j) => (j.id === updated.id ? updated : j))
-                : [updated, ...prev]
-            );
-          }
+            return existing ? prev.map((j) => (j.id === row.id ? next : j)) : [next, ...prev];
+          });
+          if (refetchTimer.current) clearTimeout(refetchTimer.current);
+          refetchTimer.current = setTimeout(() => fetchJobs(false), 400);
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [driverId]);
+    return () => {
+      supabase.removeChannel(channel);
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    };
+  }, [driverId, fetchJobs]);
 
   // Dispatch took a job off this driver (no realtime row event reaches them).
   useEffect(() => onJobRemoved((jobId) => {
@@ -203,20 +270,21 @@ export default function JobQueueScreen() {
   }), []);
 
   const activeJobs = jobs.filter((j) => j.status !== 'delivered' && j.status !== 'rejected');
+  const replyJobs = activeJobs.filter(needsReply);
+  const inProgressJobs = activeJobs.filter((j) => !needsReply(j));
   const completedJobs = jobs.filter(finishedToday);
 
   // Track location whenever the driver has at least one active job
-  const hasActiveJob = activeJobs.some((j) =>
-    ['assigned', 'picked_up', 'in_transit', 'arrived'].includes(j.status)
-  );
+  const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
   useLocationTracking(hasActiveJob);
 
   const sections = [
-    { title: 'Active', data: activeJobs },
-    { title: 'Completed Today', data: completedJobs },
+    { title: `Needs your reply · ${replyJobs.length}`, data: replyJobs },
+    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs },
+    { title: `Completed today · ${completedJobs.length}`, data: completedJobs },
   ].filter((s) => s.data.length > 0);
 
-  const flatData: Array<{ type: 'stats' } | { type: 'section'; title: string } | { type: 'job'; job: Job }> = [
+  const flatData: Row[] = [
     { type: 'stats' },
     ...sections.flatMap((s) => [
       { type: 'section' as const, title: s.title },
@@ -225,35 +293,50 @@ export default function JobQueueScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Jobs</Text>
-        <Text style={styles.headerDate}>
-          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-        </Text>
-      </View>
-
+    <View style={styles.screen}>
+      {/* Landing-page dot grid and blue glow, behind the safe area so it reaches the top edge */}
+      <Image
+        source={require('@/assets/images/header-glow.png')}
+        style={styles.glow}
+        resizeMode="cover"
+        accessible={false}
+      />
+      <SafeAreaView style={styles.safe} edges={['top']}>
 
       <FlatList
         data={flatData}
-        keyExtractor={(_, i) => String(i)}
+        keyExtractor={(item, i) => (item.type === 'job' ? item.job.id : `${item.type}-${i}`)}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={fetchJobs}
-            tintColor={Colors.primary}
+            tintColor={Colors.accent}
           />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <View style={styles.brandRow}>
+              <View style={styles.brand}>
+                <View style={styles.logoTile}>
+                  <Image source={require('@/assets/images/gepeto-icon.png')} style={styles.logo} accessibilityLabel="Gepeto" />
+                </View>
+                <Text style={styles.wordmark}>Gepeto</Text>
+              </View>
+              <Text style={styles.headerDate}>
+                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </Text>
+            </View>
+            <Text style={styles.eyebrow}>Today</Text>
+            <Text style={styles.headerTitle} accessibilityRole="header">My Jobs</Text>
+          </View>
         }
         renderItem={({ item }) => {
           if (item.type === 'stats') {
             return <StatsRow jobs={jobs} />;
           }
           if (item.type === 'section') {
-            return (
-              <Text style={styles.sectionTitle}>{item.title}</Text>
-            );
+            return <Text style={styles.sectionTitle}>{item.title}</Text>;
           }
           return (
             <JobCard
@@ -265,83 +348,137 @@ export default function JobQueueScreen() {
             />
           );
         }}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📭</Text>
-            <Text style={styles.emptyTitle}>No jobs assigned</Text>
-            <Text style={styles.emptySubtitle}>You'll be notified when a new job comes in.</Text>
-          </View>
+        ListFooterComponent={
+          sections.length === 0 ? (
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <IconSymbol name="tray" size={28} color={Colors.accent} />
+              </View>
+              <Text style={styles.emptyTitle}>No jobs yet</Text>
+              <Text style={styles.emptySubtitle}>{"You'll get an alert as soon as dispatch assigns you one."}</Text>
+            </View>
+          ) : undefined
         }
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: {
+  screen: {
     flex: 1,
     backgroundColor: Colors.bg,
   },
-  header: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
+  safe: {
+    flex: 1,
   },
-  headerTitle: {
+  glow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 320,
+  },
+  listContent: {
+    paddingHorizontal: Spacing.xl - 4,
+    paddingBottom: Spacing.xxl,
+    gap: Spacing.sm + 2,
+  },
+  header: {
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    gap: 4,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+  },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm + 2,
+  },
+  logoTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 28,
+    height: 28,
+  },
+  wordmark: {
+    fontFamily: Fonts.bold,
     color: Colors.text,
-    fontSize: FontSize.xxl,
-    fontWeight: '700',
+    fontSize: 18,
+    letterSpacing: -0.4,
   },
   headerDate: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
   },
-  listContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.sm,
+  eyebrow: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: FontSize.xs,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    fontFamily: Fonts.bold,
+    color: Colors.text,
+    fontSize: FontSize.xxxl,
+    letterSpacing: -0.75,
   },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.card,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.lg,
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  statCell: {
+  statTile: {
     flex: 1,
-    alignItems: 'center',
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md + 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
     gap: 2,
   },
-  statsDivider: {
-    width: 1,
-    backgroundColor: Colors.border,
+  statTileHighlight: {
+    backgroundColor: Colors.accentBg,
+    borderColor: Colors.accentBorder,
   },
   statValue: {
-    fontSize: FontSize.xxl,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
+    fontSize: 26,
+    letterSpacing: -0.5,
   },
   statLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.textSecondary,
-    fontSize: FontSize.xs,
-    fontWeight: '500',
-    textAlign: 'center',
+    fontSize: 12,
+  },
+  statLabelHighlight: {
+    color: '#C9DDF2',
   },
   sectionTitle: {
+    fontFamily: Fonts.semibold,
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.xs,
+    marginTop: Spacing.md,
   },
   card: {
     backgroundColor: Colors.card,
@@ -349,79 +486,120 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     padding: Spacing.lg,
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
-  cardHighlighted: {
-    borderColor: Colors.warningBorder,
-    backgroundColor: '#1E2A1A',
+  cardNeedsReply: {
+    borderColor: Colors.accentBorder,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.sm,
   },
   cardHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flexShrink: 1,
   },
   caseId: {
-    color: Colors.text,
-    fontSize: FontSize.lg,
-    fontWeight: '700',
+    fontFamily: Fonts.semibold,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    flexShrink: 1,
   },
   statBadge: {
-    backgroundColor: '#7A2500',
+    backgroundColor: Colors.stat,
     borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
+    paddingHorizontal: 7,
     paddingVertical: 2,
   },
   statBadgeText: {
-    color: '#FF6B35',
+    fontFamily: Fonts.bold,
+    color: Colors.statText,
     fontSize: FontSize.xs,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   statusBadge: {
+    flexShrink: 0,
     borderRadius: Radius.full,
     borderWidth: 1,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 3,
+    paddingHorizontal: Spacing.md - 2,
+    paddingVertical: 4,
   },
   statusBadgeText: {
-    fontSize: FontSize.xs,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
   },
-  address: {
+  cardBody: {
+    gap: 6,
+  },
+  officeName: {
+    fontFamily: Fonts.semibold,
+    color: Colors.text,
+    fontSize: FontSize.lg,
+    letterSpacing: -0.2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
-    fontSize: FontSize.sm,
+    fontSize: 14,
+    flexShrink: 1,
   },
-  itemsSummary: {
+  dueSoon: {
+    fontFamily: Fonts.medium,
+    color: Colors.warning,
+  },
+  dueLate: {
+    fontFamily: Fonts.semibold,
+    color: Colors.danger,
+  },
+  progressTrack: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  progressSeg: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#2A3C55',
+  },
+  progressSegDone: {
+    backgroundColor: Colors.primary,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  progressLabel: {
+    fontFamily: Fonts.regular,
     color: Colors.textMuted,
-    fontSize: FontSize.sm,
+    fontSize: FontSize.xs,
   },
-  cardFooter: {
+  progressLabelCurrent: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+  },
+  replyPrompt: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: Spacing.xs,
-  },
-  timeAgo: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-  },
-  actionRequiredPill: {
-    backgroundColor: Colors.warningBg,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.warningBorder,
+    backgroundColor: Colors.accentBg,
+    borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: 3,
+    minHeight: 44,
   },
-  actionRequiredText: {
-    color: Colors.warning,
-    fontSize: FontSize.xs,
-    fontWeight: '600',
+  replyPromptText: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: 14,
   },
   empty: {
     alignItems: 'center',
@@ -429,17 +607,25 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   emptyIcon: {
-    fontSize: 48,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: Colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
   },
   emptyTitle: {
+    fontFamily: Fonts.semibold,
     color: Colors.text,
     fontSize: FontSize.lg,
-    fontWeight: '600',
   },
   emptySubtitle: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
     textAlign: 'center',
     maxWidth: 260,
+    lineHeight: 19,
   },
 });

@@ -8,8 +8,9 @@ import { supabase, channelName } from '@/lib/supabase';
 import { rowToCamel } from '@/lib/transform';
 import { useAuth } from '@/context/auth';
 import { getDriverId } from '@/lib/driver';
-import { Colors, FontSize, Radius, Spacing, StatusLabels } from '@/constants/theme';
+import { Colors, FontSize, Radius, Spacing, StatusLabels, Fonts } from '@/constants/theme';
 import { dayLabel, timeLabel } from '@/lib/history';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // App-wide job alerts. Mounted once in the root layout so they show over
 // whatever screen or tab the driver is on, and stay until tapped or dismissed.
@@ -242,7 +243,9 @@ export function JobAlerts() {
         onPress={tap}
         activeOpacity={0.85}
       >
-        <Text style={styles.icon}>{look.icon}</Text>
+        <View style={[styles.iconTile, { backgroundColor: look.tile }]}>
+          <IconSymbol name={look.icon} size={20} color={look.iconColor} />
+        </View>
         <View style={styles.body}>
           <View style={styles.titleRow}>
             <Text style={styles.title} numberOfLines={1}>{title}</Text>
@@ -252,30 +255,47 @@ export function JobAlerts() {
               </View>
             )}
           </View>
-          <Text style={styles.detail} numberOfLines={1}>{detail}</Text>
+          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={1}>{detail}</Text>
           {cta && <Text style={[styles.cta, { color: look.cta }]}>{cta}</Text>}
         </View>
         <TouchableOpacity
+          style={styles.close}
           onPress={() => setAlert(null)}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
           accessibilityLabel="Dismiss"
         >
-          <Text style={styles.close}>✕</Text>
+          <IconSymbol name="xmark" size={18} color={look.detail} />
         </TouchableOpacity>
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
-const LOOK: Record<AlertKind, { icon: string; bg: string; border: string; cta: string }> = {
-  new:     { icon: '🔔', bg: Colors.warningBg, border: Colors.warningBorder, cta: Colors.warning },
-  stat:    { icon: '⚡', bg: '#3A1300',         border: '#FF6B35',           cta: '#FF6B35' },
-  unstat:  { icon: '↓',  bg: Colors.card,      border: Colors.border,       cta: Colors.textSecondary },
-  removed: { icon: '↩',  bg: Colors.card,      border: Colors.border,       cta: Colors.textSecondary },
-  status:  { icon: '📋', bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
-  office:  { icon: '📍', bg: '#3A1300',         border: '#FF6B35',           cta: '#FF6B35' },
-  due:     { icon: '🕒', bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
-  multi:   { icon: '✎',  bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
+// Blue: new work. Amber (the STAT color): urgent changes to the route or
+// priority, with a strong buzz. Navy: routine updates. Grey: low priority.
+type Look = {
+  icon: Parameters<typeof IconSymbol>[0]['name'];
+  bg: string;
+  border: string;
+  tile: string;
+  iconColor: string;
+  detail: string;
+  cta: string;
+};
+const BLUE = { bg: Colors.accentBg, border: Colors.accentBorder, tile: Colors.primary, iconColor: '#FFFFFF', detail: '#C9DDF2', cta: Colors.accent };
+const AMBER = { bg: Colors.warningBg, border: Colors.warning, tile: Colors.stat, iconColor: Colors.statText, detail: Colors.warningText, cta: Colors.warning };
+const NAVY = { bg: Colors.card, border: Colors.accentBorder, tile: Colors.cardElevated, iconColor: Colors.accent, detail: Colors.textSecondary, cta: Colors.accent };
+const GREY = { bg: Colors.card, border: Colors.borderStrong, tile: Colors.cardElevated, iconColor: Colors.textSecondary, detail: Colors.textSecondary, cta: Colors.textSecondary };
+
+const LOOK: Record<AlertKind, Look> = {
+  new:     { icon: 'bell.fill', ...BLUE },
+  stat:    { icon: 'bolt.fill', ...AMBER },
+  office:  { icon: 'mappin.and.ellipse', ...AMBER },
+  status:  { icon: 'list.bullet.rectangle.portrait', ...NAVY },
+  due:     { icon: 'clock', ...NAVY },
+  multi:   { icon: 'square.and.pencil', ...NAVY },
+  removed: { icon: 'arrow.uturn.left', ...GREY },
+  unstat:  { icon: 'arrow.down', ...GREY },
 };
 
 const styles = StyleSheet.create({
@@ -296,17 +316,17 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     padding: Spacing.md,
     shadowColor: '#000',
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.5,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
-  icon: { fontSize: 22, color: Colors.text, width: 26, textAlign: 'center' },
+  iconTile: { width: 40, height: 40, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  title: { color: Colors.text, fontSize: FontSize.md, fontWeight: '700', flexShrink: 1 },
-  statBadge: { backgroundColor: '#7A2500', borderRadius: Radius.sm, paddingHorizontal: Spacing.sm, paddingVertical: 2 },
-  statBadgeText: { color: '#FF6B35', fontSize: FontSize.xs, fontWeight: '800', letterSpacing: 0.5 },
-  detail: { color: Colors.textSecondary, fontSize: FontSize.sm },
-  cta: { fontSize: FontSize.sm, fontWeight: '600' },
-  close: { color: Colors.textMuted, fontSize: FontSize.lg, paddingHorizontal: Spacing.xs },
+  title: { color: Colors.text, fontSize: FontSize.md, fontFamily: Fonts.bold, flexShrink: 1 },
+  statBadge: { backgroundColor: Colors.stat, borderRadius: Radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
+  statBadgeText: { color: Colors.statText, fontSize: FontSize.xs, fontFamily: Fonts.bold, letterSpacing: 0.6 },
+  detail: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm },
+  cta: { fontSize: FontSize.sm, fontFamily: Fonts.semibold },
+  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -Spacing.sm },
 });

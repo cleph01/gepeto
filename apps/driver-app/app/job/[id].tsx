@@ -30,6 +30,7 @@ import {
   Spacing,
   StatusColors,
   StatusLabels,
+  Fonts,
 } from '@/constants/theme';
 import { forgetJob } from '@/components/job-alerts';
 import { getDriverId } from '@/lib/driver';
@@ -282,7 +283,7 @@ export default function JobDetailScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color={Colors.primary} />
+          <ActivityIndicator color={Colors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -398,7 +399,7 @@ export default function JobDetailScreen() {
 
                   {isDelivered && (
                     <View style={[styles.actionBtn, { backgroundColor: Colors.successBg, borderColor: Colors.successBorder, borderWidth: 1 }]}>
-                      <Text style={[styles.actionBtnText, { color: Colors.success }]}>Delivered ✓</Text>
+                      <Text style={[styles.actionBtnText, { color: Colors.success }]}>Delivered</Text>
                     </View>
                   )}
 
@@ -602,18 +603,18 @@ const styles = StyleSheet.create({
   },
   statusBadgeText: {
     fontSize: FontSize.sm,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
   },
   statBadge: {
-    backgroundColor: '#7A2500',
+    backgroundColor: Colors.stat,
     borderRadius: Radius.sm,
     paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
   },
   statBadgeText: {
-    color: '#FF6B35',
+    color: Colors.statText,
     fontSize: FontSize.xs,
-    fontWeight: '800',
+    fontFamily: Fonts.extrabold,
     letterSpacing: 0.5,
   },
   sectionCard: {
@@ -627,7 +628,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: Spacing.xs,
@@ -635,7 +636,7 @@ const styles = StyleSheet.create({
   responsePrompt: {
     color: Colors.text,
     fontSize: FontSize.md,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
     textAlign: 'center',
   },
   responseButtons: {
@@ -657,7 +658,7 @@ const styles = StyleSheet.create({
   rejectBtnText: {
     color: Colors.danger,
     fontSize: FontSize.md,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   acceptBtn: {
     backgroundColor: Colors.primary,
@@ -665,7 +666,7 @@ const styles = StyleSheet.create({
   acceptBtnText: {
     color: '#fff',
     fontSize: FontSize.md,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   actionBtn: {
     height: 56,
@@ -680,16 +681,17 @@ const styles = StyleSheet.create({
   actionBtnText: {
     color: '#fff',
     fontSize: FontSize.lg,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   addressLabel: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   addressText: {
+    fontFamily: Fonts.regular,
     color: Colors.text,
     fontSize: FontSize.md,
   },
@@ -701,9 +703,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   navigateBtnText: {
-    color: Colors.primaryLight,
+    color: Colors.accent,
     fontSize: FontSize.md,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   itemRow: {
     gap: Spacing.sm,
@@ -714,9 +716,10 @@ const styles = StyleSheet.create({
   itemDescription: {
     color: Colors.text,
     fontSize: FontSize.md,
-    fontWeight: '500',
+    fontFamily: Fonts.medium,
   },
   itemQty: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
   },
@@ -732,7 +735,7 @@ const styles = StyleSheet.create({
   },
   flagText: {
     fontSize: FontSize.xs,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
   },
   itemDivider: {
     height: 1,
@@ -740,6 +743,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   messagesEmpty: {
+    fontFamily: Fonts.regular,
     color: Colors.textMuted,
     fontSize: FontSize.sm,
     textAlign: 'center',
@@ -761,7 +765,7 @@ const styles = StyleSheet.create({
   bubbleSender: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
     paddingHorizontal: Spacing.sm,
   },
   bubble: {
@@ -780,6 +784,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: Radius.sm,
   },
   bubbleText: {
+    fontFamily: Fonts.regular,
     fontSize: FontSize.md,
     lineHeight: 22,
   },
@@ -790,6 +795,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   bubbleTime: {
+    fontFamily: Fonts.regular,
     color: Colors.textMuted,
     fontSize: FontSize.xs,
     paddingHorizontal: Spacing.sm,
@@ -806,6 +812,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   input: {
+    fontFamily: Fonts.regular,
     flex: 1,
     backgroundColor: Colors.card,
     borderRadius: Radius.xl,
@@ -832,7 +839,7 @@ const styles = StyleSheet.create({
   sendBtnText: {
     color: '#fff',
     fontSize: FontSize.sm,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
 
   // ── Proof of delivery modal ───────────────────────────────────────────────
@@ -854,14 +861,15 @@ const styles = StyleSheet.create({
   podTitle: {
     color: Colors.text,
     fontSize: FontSize.xl,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   podCancel: {
-    color: Colors.primary,
+    color: Colors.accent,
     fontSize: FontSize.md,
-    fontWeight: '500',
+    fontFamily: Fonts.medium,
   },
   podSubtitle: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.md,
     lineHeight: 22,
@@ -873,11 +881,12 @@ const styles = StyleSheet.create({
   podLabel: {
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
   podInput: {
+    fontFamily: Fonts.regular,
     backgroundColor: Colors.card,
     color: Colors.text,
     fontSize: FontSize.md,
@@ -902,6 +911,6 @@ const styles = StyleSheet.create({
   podConfirmText: {
     color: '#fff',
     fontSize: FontSize.lg,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
 });

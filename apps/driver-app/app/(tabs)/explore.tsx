@@ -16,7 +16,7 @@ import {
   NavApp,
   navigate,
 } from '@/lib/navigation';
-import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
+import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 
 const NAV_APP_LABELS: Record<NavApp, string> = {
   apple_maps:     'Apple Maps',
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   screenTitle: {
     color: Colors.text,
     fontSize: FontSize.xxl,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   section: {
     gap: Spacing.sm,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     paddingHorizontal: Spacing.xs,
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   avatarText: {
     color: '#fff',
     fontSize: FontSize.lg,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   profileInfo: {
     gap: 2,
@@ -212,9 +212,10 @@ const styles = StyleSheet.create({
   profileName: {
     color: Colors.text,
     fontSize: FontSize.md,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
   },
   profileEmail: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
   },
@@ -230,9 +231,10 @@ const styles = StyleSheet.create({
   prefTitle: {
     color: Colors.text,
     fontSize: FontSize.md,
-    fontWeight: '500',
+    fontFamily: Fonts.medium,
   },
   prefValue: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
   },
@@ -243,9 +245,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   changeBtnText: {
-    color: Colors.primaryLight,
+    color: Colors.accent,
     fontSize: FontSize.sm,
-    fontWeight: '600',
+    fontFamily: Fonts.semibold,
   },
   divider: {
     height: 1,
@@ -258,7 +260,7 @@ const styles = StyleSheet.create({
   rowButtonDanger: {
     color: Colors.danger,
     fontSize: FontSize.sm,
-    fontWeight: '500',
+    fontFamily: Fonts.medium,
   },
   infoRow: {
     flexDirection: 'row',
@@ -269,9 +271,10 @@ const styles = StyleSheet.create({
   infoLabel: {
     color: Colors.text,
     fontSize: FontSize.md,
-    fontWeight: '500',
+    fontFamily: Fonts.medium,
   },
   infoValue: {
+    fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.md,
   },
@@ -287,6 +290,6 @@ const styles = StyleSheet.create({
   signOutText: {
     color: Colors.danger,
     fontSize: FontSize.md,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
 });

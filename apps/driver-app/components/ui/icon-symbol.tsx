@@ -22,6 +22,23 @@ const MAPPING = {
   'list.bullet.rectangle.portrait.fill': 'list-alt',
   'gearshape.fill': 'settings',
   'clock.fill': 'history',
+  // Line icons for the brand restyle (outline, like the landing page)
+  'list.bullet.rectangle.portrait': 'list-alt',
+  'clock': 'schedule',
+  'gearshape': 'settings',
+  'mappin.and.ellipse': 'place',
+  'tray': 'inbox',
+  'checkmark': 'check',
+  'xmark': 'close',
+  'bell.fill': 'notifications',
+  'bolt.fill': 'bolt',
+  'arrow.uturn.left': 'undo',
+  'camera': 'photo-camera',
+  'exclamationmark.triangle': 'warning-amber',
+  'eye': 'visibility',
+  'eye.slash': 'visibility-off',
+  'arrow.down': 'south',
+  'square.and.pencil': 'edit',
 } as IconMapping;
 
 /**

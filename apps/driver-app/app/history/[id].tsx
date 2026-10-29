@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-nat
 import { useLocalSearchParams } from 'expo-router';
 import { apiGet } from '@/lib/api';
 import { dayLabel, timeLabel, type RejectedJob } from '@/lib/history';
-import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
+import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 
 // Read-only summary of a job this driver rejected. The job has been unassigned
 // (and may belong to another driver now), so only what the driver saw when
@@ -32,7 +32,7 @@ export default function RejectedJobScreen() {
   if (!job) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={Colors.primary} />
+        <ActivityIndicator color={Colors.accent} />
       </View>
     );
   }
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: Colors.bg },
   content: { padding: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.xxl },
   center: { flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
-  errorText: { color: Colors.textSecondary, fontSize: FontSize.md, textAlign: 'center' },
+  errorText: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.md, textAlign: 'center' },
   banner: {
     backgroundColor: Colors.dangerBg,
     borderColor: Colors.dangerBorder,
@@ -96,8 +96,8 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     gap: Spacing.xs,
   },
-  bannerTitle: { color: Colors.danger, fontSize: FontSize.md, fontWeight: '700' },
-  bannerText: { color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 19 },
+  bannerTitle: { color: Colors.danger, fontSize: FontSize.md, fontFamily: Fonts.bold },
+  bannerText: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm, lineHeight: 19 },
   section: {
     backgroundColor: Colors.card,
     borderColor: Colors.border,
@@ -106,18 +106,18 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  caseId: { color: Colors.text, fontSize: FontSize.xl, fontWeight: '700' },
-  statBadge: { backgroundColor: '#7A2500', borderRadius: Radius.sm, paddingHorizontal: Spacing.sm, paddingVertical: 2 },
-  statBadgeText: { color: '#FF6B35', fontSize: FontSize.xs, fontWeight: '800', letterSpacing: 0.5 },
-  office: { color: Colors.textSecondary, fontSize: FontSize.md, marginTop: Spacing.xs },
+  caseId: { color: Colors.text, fontSize: FontSize.xl, fontFamily: Fonts.bold },
+  statBadge: { backgroundColor: Colors.stat, borderRadius: Radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
+  statBadgeText: { color: Colors.statText, fontSize: FontSize.xs, fontFamily: Fonts.bold, letterSpacing: 0.6 },
+  office: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.md, marginTop: Spacing.xs },
   label: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   labelSpaced: { marginTop: Spacing.md },
-  value: { color: Colors.text, fontSize: FontSize.md, lineHeight: 21 },
+  value: { fontFamily: Fonts.regular, color: Colors.text, fontSize: FontSize.md, lineHeight: 21 },
 });

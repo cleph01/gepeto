@@ -1,50 +1,74 @@
 import { ItemFlag, JobStatus } from '@gepeto/types';
 
 // ─── Base palette ────────────────────────────────────────────────────────────
+// Matches the landing page: deep navy ground, brand blue, and the dispatcher's
+// muted amber/olive/red family, lightened just enough to read in sunlight.
 
 export const Colors = {
   // Backgrounds
-  bg: '#0F1923',
-  card: '#1A2535',
-  cardElevated: '#1F2D40',
-  border: '#243044',
+  bg: '#0F1B2D',            // landing hero navy
+  card: '#16263B',
+  cardElevated: '#1C2F48',
+  border: '#26384F',
+  borderStrong: '#3A4C66',
 
   // Brand
-  primary: '#185FA5',
+  primary: '#185FA5',       // fills: buttons, solid chips, progress
   primaryLight: '#2478C5',
   primaryDark: '#124A80',
+  accent: '#7DB4EA',        // brand blue for text and icons on navy (primary is too dark to read)
+  accentBg: '#102E4D',
+  accentBorder: '#2E6AAA',
 
   // Text
   text: '#FFFFFF',
-  textSecondary: '#8B9AB0',
-  textMuted: '#4A5568',
+  textSecondary: '#A3B1C4',
+  textMuted: '#7F8FA6',
 
   // Semantic
-  success: '#22C55E',
-  successBg: '#052E16',
-  successBorder: '#166534',
-  warning: '#F59E0B',
-  warningBg: '#3D2A05',
-  warningBorder: '#78490A',
-  danger: '#EF4444',
-  dangerBg: '#2D1515',
-  dangerBorder: '#7F1D1D',
+  success: '#9CCB6A',
+  successBg: '#182A0B',
+  successBorder: '#3B6D11',
+  warning: '#E8B04F',
+  warningBg: '#3A2606',
+  warningBorder: '#7A4F10',
+  warningText: '#E9D3AA',
+  danger: '#F1958B',
+  dangerBg: '#361616',
+  dangerBorder: '#7A2A2A',
+
+  // STAT: solid amber, so it never reads as a status
+  stat: '#E8B04F',
+  statText: '#241500',
 
   // Tab bar
-  tabBar: '#111D2A',
-  tabBarBorder: '#1E3048',
+  tabBar: '#0B1524',
+  tabBarBorder: '#1E2F45',
+} as const;
+
+// ─── Fonts ───────────────────────────────────────────────────────────────────
+// Inter (the landing page's typeface), one family per weight; loaded in app/_layout.tsx.
+
+export const Fonts = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+  extrabold: 'Inter_800ExtraBold',
 } as const;
 
 // ─── Job status colors ───────────────────────────────────────────────────────
+// Same family as the dispatcher site: grey pending, blue while the driver has
+// it (solid once picked up), amber arrived, olive delivered, red rejected.
 
 export const StatusColors: Record<JobStatus, { bg: string; text: string; border: string }> = {
-  pending:         { bg: '#3D2A05', text: '#F59E0B', border: '#78490A' },
-  assigned:        { bg: '#0D2B4A', text: '#60A5FA', border: '#1E4D8C' },
-  picked_up:       { bg: '#2D1B69', text: '#A78BFA', border: '#4C1D95' },
-  in_transit:      { bg: '#0C2D4A', text: '#38BDF8', border: '#0369A1' },
-  arrived:         { bg: '#052E16', text: '#4ADE80', border: '#166534' },
-  delivered:       { bg: '#052E16', text: '#4ADE80', border: '#166534' },
-  rejected:        { bg: '#2D1515', text: '#F87171', border: '#7F1D1D' },
+  pending:    { bg: '#232F3F', text: '#C5CCD6', border: '#3A4658' },
+  assigned:   { bg: '#102E4D', text: '#7DB4EA', border: '#1F4F80' },
+  picked_up:  { bg: '#185FA5', text: '#FFFFFF', border: '#185FA5' },
+  in_transit: { bg: '#185FA5', text: '#FFFFFF', border: '#185FA5' },
+  arrived:    { bg: '#3A2606', text: '#E8B04F', border: '#7A4F10' },
+  delivered:  { bg: '#182A0B', text: '#9CCB6A', border: '#3B6D11' },
+  rejected:   { bg: '#361616', text: '#F1958B', border: '#7A2A2A' },
 };
 
 export const StatusLabels: Record<JobStatus, string> = {
@@ -60,17 +84,17 @@ export const StatusLabels: Record<JobStatus, string> = {
 // ─── Item flag colors ────────────────────────────────────────────────────────
 
 export const FlagColors: Record<ItemFlag, { bg: string; text: string }> = {
-  fragile:              { bg: '#3D2A05', text: '#F59E0B' },
-  temperature_sensitive: { bg: '#0C2D4A', text: '#38BDF8' },
-  rush:                 { bg: '#2D1515', text: '#F87171' },
-  biohazard:            { bg: '#2D1515', text: '#F87171' },
+  fragile:               { bg: '#3A2606', text: '#E8B04F' },
+  temperature_sensitive: { bg: '#102E4D', text: '#7DB4EA' },
+  rush:                  { bg: '#361616', text: '#F1958B' },
+  biohazard:             { bg: '#361616', text: '#F1958B' },
 };
 
 export const FlagLabels: Record<ItemFlag, string> = {
-  fragile:               '⚠ Fragile',
-  temperature_sensitive: '❄ Temp Sensitive',
-  rush:                  '🔴 Rush',
-  biohazard:             '☣ Biohazard',
+  fragile:               'Fragile',
+  temperature_sensitive: 'Temp sensitive',
+  rush:                  'Rush',
+  biohazard:             'Biohazard',
 };
 
 // ─── Spacing ─────────────────────────────────────────────────────────────────
@@ -88,8 +112,8 @@ export const Spacing = {
 
 export const Radius = {
   sm:   6,
-  md:  10,
-  lg:  14,
+  md:  12,
+  lg:  16,
   xl:  20,
   full: 9999,
 } as const;
