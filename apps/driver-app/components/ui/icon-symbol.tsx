@@ -39,6 +39,7 @@ const MAPPING = {
   'eye.slash': 'visibility-off',
   'arrow.down': 'south',
   'square.and.pencil': 'edit',
+  'bubble.left.and.bubble.right.fill': 'forum',
 } as IconMapping;
 
 /**

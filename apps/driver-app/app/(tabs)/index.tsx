@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { Job } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
 import { useAuth } from '@/context/auth';
+import { useMessages } from '@/context/messages';
 import {
   Colors,
   FontSize,
@@ -42,7 +43,7 @@ function toQueueJob(row: Record<string, unknown>): QueueJob {
 
 // ─── Job card ─────────────────────────────────────────────────────────────────
 
-function JobCard({ job, onPress }: { job: QueueJob; onPress: () => void }) {
+function JobCard({ job, unread, onPress }: { job: QueueJob; unread: number; onPress: () => void }) {
   const statusColor = StatusColors[job.status];
   const pendingReply = needsReply(job);
   const due = dueInfo(job);
@@ -55,7 +56,7 @@ function JobCard({ job, onPress }: { job: QueueJob; onPress: () => void }) {
       onPress={onPress}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel={`${job.officeName ?? job.caseId}, ${StatusLabels[job.status]}${pendingReply ? ', needs your reply' : ''}`}
+      accessibilityLabel={`${job.officeName ?? job.caseId}, ${StatusLabels[job.status]}${pendingReply ? ', needs your reply' : ''}${unread > 0 ? `, ${unread} unread messages` : ''}`}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
@@ -66,10 +67,18 @@ function JobCard({ job, onPress }: { job: QueueJob; onPress: () => void }) {
             </View>
           )}
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
-          <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>
-            {StatusLabels[job.status]}
-          </Text>
+        <View style={styles.cardHeaderRight}>
+          {unread > 0 && (
+            <View style={styles.unreadBadge}>
+              <IconSymbol name="bubble.left.and.bubble.right.fill" size={12} color={Colors.dangerBg} />
+              <Text style={styles.unreadBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          )}
+          <View style={[styles.statusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
+            <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>
+              {StatusLabels[job.status]}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -171,6 +180,7 @@ type Row =
 export default function JobQueueScreen() {
   const router = useRouter();
   const { session } = useAuth();
+  const { unreadByJob } = useMessages();
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -317,6 +327,7 @@ export default function JobQueueScreen() {
           return (
             <JobCard
               job={item.job}
+              unread={unreadByJob[item.job.id] ?? 0}
               onPress={() => {
                 Haptics.selectionAsync();
                 router.push(`/job/${item.job.id}`);
@@ -478,6 +489,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     flexShrink: 1,
+  },
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs + 2,
+    flexShrink: 0,
+  },
+  unreadBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.danger,
+  },
+  unreadBadgeText: {
+    fontFamily: Fonts.bold,
+    color: Colors.dangerBg,
+    fontSize: 12,
   },
   caseId: {
     fontFamily: Fonts.semibold,

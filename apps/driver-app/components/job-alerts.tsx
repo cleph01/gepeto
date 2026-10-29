@@ -7,6 +7,7 @@ import { Job } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
 import { rowToCamel } from '@/lib/transform';
 import { useAuth } from '@/context/auth';
+import { useMessages } from '@/context/messages';
 import { getDriverId } from '@/lib/driver';
 import { Colors, FontSize, Radius, Spacing, StatusLabels, Fonts } from '@/constants/theme';
 import { dayLabel, timeLabel } from '@/lib/history';
@@ -23,6 +24,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 //   office   dispatch changed where a job is delivered (strong alert)
 //   due      dispatch changed a job's expected delivery time
 //   multi    several of office/due/priority changed in one save
+//   message  the lab or office sent a message (tap opens the chat)
 //
 // Case number changes update the job quietly (no alert).
 //
@@ -31,8 +33,9 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 // two come as broadcasts from the server (see dispatcher-web lib/realtime.ts):
 // a job taken off the driver is hidden from them by row-level security, and a
 // row change alone can't tell dispatch's status changes from the driver's own.
+// Messages come from MessagesProvider, which skips the chat that's open.
 
-type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi';
+type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi' | 'message';
 type JobAlert = {
   kind: AlertKind;
   jobId: string;
@@ -42,6 +45,8 @@ type JobAlert = {
   status?: Job['status'];
   scheduledAt?: string | null;
   changed?: string[]; // for 'multi': what changed, in words
+  from?: 'Lab' | 'Office'; // for 'message'
+  body?: string;           // for 'message'
 };
 type KnownJob = Pick<Job, 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>;
 
@@ -79,6 +84,7 @@ export function JobAlerts() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { onIncoming } = useMessages();
   const driverId = getDriverId(session);
   const [alert, setAlert] = useState<JobAlert | null>(null);
   const [slide] = useState(() => new Animated.Value(-160));
@@ -181,6 +187,26 @@ export function JobAlerts() {
     };
   }, [driverId]);
 
+  // New lab/office messages, on any screen except that job's open chat.
+  useEffect(
+    () =>
+      onIncoming((msg) => {
+        const info = known?.get(msg.jobId);
+        if (!info) return;
+        setAlert({
+          kind: 'message',
+          jobId: msg.jobId,
+          caseId: info.caseId,
+          deliveryAddress: info.deliveryAddress,
+          priority: info.priority,
+          from: msg.senderRole === 'office' ? 'Office' : 'Lab',
+          body: msg.body,
+        });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }),
+    [onIncoming]
+  );
+
   useEffect(() => {
     Animated.timing(slide, {
       toValue: alert ? 0 : -160,
@@ -194,7 +220,9 @@ export function JobAlerts() {
   const onJobScreen = pathname === `/job/${alert.jobId}`;
   const tap = () => {
     setAlert(null);
-    if (alert.kind === 'removed') {
+    if (alert.kind === 'message') {
+      router.push(`/chat/${alert.jobId}`);
+    } else if (alert.kind === 'removed') {
       // Don't leave the driver on a job that's no longer theirs.
       if (onJobScreen) router.replace('/(tabs)');
     } else if (!onJobScreen) {
@@ -215,6 +243,7 @@ export function JobAlerts() {
     office: 'Delivery changed',
     due: 'Due time changed',
     multi: 'Job updated',
+    message: `Message from ${alert.from ?? 'Lab'}`,
   }[alert.kind];
   const detail = {
     new: `${alert.caseId} → ${alert.deliveryAddress}`,
@@ -225,6 +254,7 @@ export function JobAlerts() {
     office: `${alert.caseId} → ${alert.deliveryAddress}`,
     due: alert.scheduledAt ? `${alert.caseId} · now ${dayLabel(alert.scheduledAt)} ${timeLabel(alert.scheduledAt)}` : alert.caseId,
     multi: `${alert.caseId} · ${(alert.changed ?? []).join(', ')}`,
+    message: `${alert.caseId} · ${alert.body ?? ''}`,
   }[alert.kind];
   // Only when the tap does something the driver needs to know about.
   const cta = alert.kind === 'new'
@@ -255,7 +285,7 @@ export function JobAlerts() {
               </View>
             )}
           </View>
-          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={1}>{detail}</Text>
+          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={alert.kind === 'message' ? 2 : 1}>{detail}</Text>
           {cta && <Text style={[styles.cta, { color: look.cta }]}>{cta}</Text>}
         </View>
         <TouchableOpacity
@@ -296,6 +326,7 @@ const LOOK: Record<AlertKind, Look> = {
   multi:   { icon: 'square.and.pencil', ...NAVY },
   removed: { icon: 'arrow.uturn.left', ...GREY },
   unstat:  { icon: 'arrow.down', ...GREY },
+  message: { icon: 'bubble.left.and.bubble.right.fill', ...NAVY },
 };
 
 const styles = StyleSheet.create({

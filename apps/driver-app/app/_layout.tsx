@@ -12,6 +12,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/context/auth';
+import { MessagesProvider } from '@/context/messages';
 import { JobAlerts } from '@/components/job-alerts';
 import { Colors, Fonts } from '@/constants/theme';
 
@@ -54,35 +55,44 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <RouteGuard />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: Colors.bg },
-          headerTintColor: Colors.text,
-          headerTitleStyle: { fontFamily: Fonts.semibold },
-          headerShadowVisible: false,
-          contentStyle: { backgroundColor: Colors.bg },
-        }}
-      >
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="history/[id]"
-          options={{
-            title: 'Rejected Job',
-            headerBackTitle: 'History',
+      <MessagesProvider>
+        <RouteGuard />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: Colors.bg },
+            headerTintColor: Colors.text,
+            headerTitleStyle: { fontFamily: Fonts.semibold },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: Colors.bg },
           }}
-        />
-        <Stack.Screen
-          name="job/[id]"
-          options={{
-            title: 'Job Detail',
-            headerBackTitle: 'Jobs',
-          }}
-        />
-      </Stack>
-      <JobAlerts />
-      <StatusBar style="light" />
+        >
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="history/[id]"
+            options={{
+              title: 'Rejected Job',
+              headerBackTitle: 'History',
+            }}
+          />
+          <Stack.Screen
+            name="job/[id]"
+            options={{
+              title: 'Job Detail',
+              headerBackTitle: 'Jobs',
+            }}
+          />
+          <Stack.Screen
+            name="chat/[id]"
+            options={{
+              title: 'Messages',
+              headerBackTitle: 'Job',
+            }}
+          />
+        </Stack>
+        <JobAlerts />
+        <StatusBar style="light" />
+      </MessagesProvider>
     </AuthProvider>
   );
 }

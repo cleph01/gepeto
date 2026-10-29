@@ -1062,7 +1062,10 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
 
         <MessageRoleLegend />
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "10px 20px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* column-reverse anchors the scroll to the bottom: the thread opens on the
+            newest message and stays there as new ones arrive (unless scrolled up). */}
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column-reverse" }}>
+        <div style={{ padding: "10px 20px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
           {messages.length === 0 && (
             <div style={{ fontSize: 12.5, color: "#9a9a9a", textAlign: "center", padding: "20px 0" }}>No messages yet.</div>
           )}
@@ -1086,6 +1089,7 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
               </div>
             </div>
           ))}
+        </div>
         </div>
 
         <div style={{ padding: "12px 20px 18px", display: "flex", gap: 8, borderTop: "1px solid rgba(0,0,0,0.06)" }}>

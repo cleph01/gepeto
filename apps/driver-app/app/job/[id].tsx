@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { rowToCamel } from '@/lib/transform';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TextInput,
   KeyboardAvoidingView,
   Modal,
@@ -14,12 +14,12 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Job, JobStatus, Message } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
-import { apiPatch, apiPost } from '@/lib/api';
-import { useAuth } from '@/context/auth';
+import { apiPatch } from '@/lib/api';
+import { useMessages } from '@/context/messages';
 import { navigate } from '@/lib/navigation';
 import {
   Colors,
@@ -34,7 +34,6 @@ import {
 } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { forgetJob } from '@/components/job-alerts';
-import { getDriverId } from '@/lib/driver';
 import { STEPS, dueInfo } from '@/lib/jobs';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
@@ -70,44 +69,21 @@ function Eyebrow({ title }: { title: string }) {
   return <Text style={styles.eyebrow}>{title}</Text>;
 }
 
-function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean }) {
-  const fromOffice = message.senderRole === 'office';
-  return (
-    <View style={[styles.bubbleWrapper, isOwn ? styles.bubbleRight : styles.bubbleLeft]}>
-      {!isOwn && (
-        <Text style={[styles.bubbleSender, fromOffice && styles.bubbleSenderOffice]}>
-          {fromOffice ? 'Office' : 'Lab'}
-        </Text>
-      )}
-      <View style={[styles.bubble, isOwn ? styles.bubbleDriver : styles.bubbleOther]}>
-        <Text style={[styles.bubbleText, isOwn ? styles.bubbleTextOwn : styles.bubbleTextOther]}>
-          {message.body}
-        </Text>
-      </View>
-      <Text style={styles.bubbleTime}>{formatTime(message.createdAt)}</Text>
-    </View>
-  );
-}
-
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const { session } = useAuth();
+  const router = useRouter();
+  const { unreadByJob } = useMessages();
 
   const [job, setJob] = useState<Job | null>(null);
   const [officeName, setOfficeName] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [messageText, setMessageText] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [latestMessage, setLatestMessage] = useState<Message | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showPod, setShowPod] = useState(false);
   const [recipientName, setRecipientName] = useState('');
   const [submittingPod, setSubmittingPod] = useState(false);
-
-  const listRef = useRef<FlatList>(null);
-  const driverId = getDriverId(session);
 
   // Set nav title to case ID
   const caseId = job?.caseId;
@@ -139,23 +115,22 @@ export default function JobDetailScreen() {
       .then(({ data }) => setOfficeName((data?.name as string | undefined) ?? null));
   }, [job?.officeId]);
 
-  // Fetch messages
+  // Newest message, for the preview on the Messages card
   useEffect(() => {
     if (!id) return;
     supabase
       .from('messages')
       .select('*')
       .eq('job_id', id)
-      .order('created_at', { ascending: true })
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setMessages(data.map((row) => rowToCamel<Message>(row)));
-          setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 100);
-        }
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setLatestMessage(rowToCamel<Message>(data));
       });
   }, [id]);
 
-  // Realtime — job updates + new messages
+  // Realtime — job updates + new messages (preview only; the chat screen has the thread)
   useEffect(() => {
     if (!id) return;
     const channel = supabase
@@ -174,13 +149,7 @@ export default function JobDetailScreen() {
         table: 'messages',
         filter: `job_id=eq.${id}`,
       }, (payload) => {
-        const msg = rowToCamel<Message>(payload.new as Record<string, unknown>);
-        setMessages((prev) => {
-          // Avoid duplicating optimistic messages by checking id
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
-        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+        setLatestMessage(rowToCamel<Message>(payload.new as Record<string, unknown>));
       })
       .subscribe();
 
@@ -264,45 +233,6 @@ export default function JobDetailScreen() {
     setUpdatingStatus(false);
   };
 
-  const handleSendMessage = async () => {
-    if (!messageText.trim() || !job) return;
-    setSendingMessage(true);
-    const body = messageText.trim();
-    setMessageText('');
-
-    // Optimistic update while the request lands
-    const optimisticId = `optimistic-${Date.now()}`;
-    const optimistic: Message = {
-      id: optimisticId,
-      jobId: job.id,
-      senderRole: 'driver',
-      senderId: driverId ?? null,
-      officeToken: null,
-      body,
-      createdAt: new Date().toISOString(),
-      readAt: null,
-    };
-    setMessages((prev) => [...prev, optimistic]);
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-
-    const res = await apiPost<Message>(`/api/jobs/${job.id}/messages`, { body });
-
-    if (res.data) {
-      // Replace the optimistic entry with the real server message so the
-      // incoming Realtime event (which carries the same UUID) gets deduped.
-      // If Realtime beat the response here, the real message is already in
-      // the list: just drop the optimistic one (two copies = duplicate keys).
-      const real = res.data;
-      setMessages((prev) =>
-        prev.some((m) => m.id === real.id)
-          ? prev.filter((m) => m.id !== optimisticId)
-          : prev.map((m) => (m.id === optimisticId ? real : m))
-      );
-    }
-
-    setSendingMessage(false);
-  };
-
   if (!job) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -325,324 +255,272 @@ export default function JobDetailScreen() {
   const step = isRejected ? -1 : STEPS.findIndex((s) => s.status === job.status);
   const deliveredAt = job.deliveredAt ?? job.updatedAt;
 
-  // FlatList data: header + messages
-  type ListItem =
-    | { type: 'header' }
-    | { type: 'message'; message: Message }
-    | { type: 'messages_empty' };
-
-  const listData: ListItem[] = [
-    { type: 'header' },
-    ...(messages.length === 0
-      ? [{ type: 'messages_empty' as const }]
-      : messages.map((m) => ({ type: 'message' as const, message: m }))),
-  ];
+  const unread = unreadByJob[job.id] ?? 0;
+  const preview = latestMessage
+    ? `${latestMessage.senderRole === 'driver' ? 'You' : latestMessage.senderRole === 'office' ? 'Office' : 'Lab'}: ${latestMessage.body}`
+    : isDelivered || isRejected ? 'No messages on this job.' : 'Message the lab or office about this job.';
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.kav}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <FlatList
-          ref={listRef}
-          data={listData}
-          keyExtractor={(item, i) => (item.type === 'message' ? item.message.id : `${item.type}-${i}`)}
-          contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => {
-            if (messages.length > 0) listRef.current?.scrollToEnd({ animated: false });
-          }}
-          renderItem={({ item }) => {
-            if (item.type === 'header') {
-              return (
-                <View style={styles.headerContent}>
-                  {/* Summary: who, when, where it stands */}
-                  <View style={styles.summary}>
-                    <View style={styles.topRow}>
-                      <View style={[styles.statusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
-                        <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>
-                          {StatusLabels[job.status]}
-                        </Text>
-                      </View>
-                      {job.priority === 'stat' && (
-                        <View style={styles.statBadge}>
-                          <Text style={styles.statBadgeText}>STAT</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.title} accessibilityRole="header">{officeName ?? job.deliveryAddress}</Text>
-                    {due && (
-                      <View style={styles.metaRow}>
-                        <IconSymbol
-                          name="clock"
-                          size={16}
-                          color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
-                        />
-                        <Text style={[styles.metaText, due.tone === 'late' && styles.dueLate, due.tone === 'soon' && styles.dueSoon]}>
-                          {due.text}
-                        </Text>
-                      </View>
-                    )}
-                    {step >= 0 && !isDelivered && (
-                      <View accessibilityLabel={`Step ${step + 1} of 4: ${STEPS[step].label}`}>
-                        <View style={styles.progressTrack}>
-                          {STEPS.map((s, i) => (
-                            <View key={s.status} style={[styles.progressSeg, i <= step && styles.progressSegDone]} />
-                          ))}
-                        </View>
-                        <View style={styles.progressLabels}>
-                          {STEPS.map((s, i) => (
-                            <Text key={s.status} style={[styles.progressLabel, i === step && styles.progressLabelCurrent]}>
-                              {s.label}
-                            </Text>
-                          ))}
-                        </View>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Accept / Reject */}
-                  {isPendingResponse && (
-                    <View style={[styles.sectionCard, styles.responseCard]}>
-                      <Text style={styles.responsePrompt}>New job for you. Accept or reject?</Text>
-                      <View style={styles.responseButtons}>
-                        <TouchableOpacity
-                          style={[styles.responseBtn, styles.rejectBtn]}
-                          onPress={handleReject}
-                          activeOpacity={0.8}
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.rejectBtnText}>Reject</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.responseBtn, styles.acceptBtn]}
-                          onPress={handleAccept}
-                          activeOpacity={0.8}
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.acceptBtnText}>Accept</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* The next step, front and center */}
-                  {nextAction && (
-                    <View style={styles.nextStep}>
-                      <TouchableOpacity
-                        style={[styles.actionBtn, job.status === 'arrived' && styles.actionBtnFinish, updatingStatus && styles.actionBtnDisabled]}
-                        onPress={showPickUpButton ? handleMarkPickedUp : handleStatusAdvance}
-                        disabled={updatingStatus}
-                        activeOpacity={0.85}
-                        accessibilityRole="button"
-                        accessibilityHint={nextAction.hint}
-                      >
-                        {updatingStatus
-                          ? <ActivityIndicator color={job.status === 'arrived' ? Colors.successInk : '#fff'} />
-                          : <Text style={[styles.actionBtnText, job.status === 'arrived' && styles.actionBtnTextFinish]}>{nextAction.label}</Text>
-                        }
-                      </TouchableOpacity>
-                      <Text style={styles.nextHint}>{nextAction.hint}</Text>
-                    </View>
-                  )}
-
-                  {isDelivered && (
-                    <View style={[styles.outcome, styles.outcomeDelivered]}>
-                      <View style={[styles.outcomeIcon, { backgroundColor: Colors.successBorder }]}>
-                        <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
-                      </View>
-                      <View style={styles.outcomeBody}>
-                        <Text style={[styles.outcomeTitle, { color: Colors.success }]}>Delivered</Text>
-                        {deliveredAt && <Text style={styles.outcomeSub}>{formatTime(deliveredAt)}</Text>}
-                      </View>
-                    </View>
-                  )}
-
-                  {isRejected && (
-                    <View style={[styles.outcome, styles.outcomeRejected]}>
-                      <View style={[styles.outcomeIcon, { backgroundColor: Colors.dangerBorder }]}>
-                        <IconSymbol name="xmark" size={20} color="#FFFFFF" />
-                      </View>
-                      <View style={styles.outcomeBody}>
-                        <Text style={[styles.outcomeTitle, { color: Colors.danger }]}>You rejected this job</Text>
-                        <Text style={styles.outcomeSub}>It went back to dispatch to be reassigned.</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Where it's going */}
-                  <SectionCard>
-                    <Eyebrow title="Deliver to" />
-                    {officeName && <Text style={styles.cardTitle}>{officeName}</Text>}
-                    <View style={styles.metaRow}>
-                      <IconSymbol name="mappin.and.ellipse" size={16} color={Colors.textSecondary} />
-                      <Text style={styles.addressText}>{job.deliveryAddress}</Text>
-                    </View>
-                    {!isDelivered && !isRejected && (
-                      <TouchableOpacity
-                        style={styles.navigateBtn}
-                        onPress={() => navigate({ address: job.deliveryAddress })}
-                        activeOpacity={0.8}
-                        accessibilityRole="button"
-                      >
-                        <IconSymbol name="mappin.and.ellipse" size={18} color={Colors.accent} />
-                        <Text style={styles.navigateBtnText}>Navigate</Text>
-                      </TouchableOpacity>
-                    )}
-                  </SectionCard>
-
-                  {/* What's in the case */}
-                  <SectionCard>
-                    <Eyebrow title={job.items.length === 1 ? 'Case' : `Case · ${job.items.length} items`} />
-                    {job.items.map((item, i) => (
-                      <View key={i} style={styles.itemRow}>
-                        <View style={styles.itemLine}>
-                          <Text style={styles.itemDescription}>{item.description}</Text>
-                          <Text style={styles.itemQty}>× {item.quantity}</Text>
-                        </View>
-                        {item.flags.length > 0 && (
-                          <View style={styles.flagsRow}>
-                            {item.flags.map((flag) => (
-                              <View
-                                key={flag}
-                                style={[styles.flag, { backgroundColor: FlagColors[flag].bg }]}
-                              >
-                                <IconSymbol name="exclamationmark.triangle" size={12} color={FlagColors[flag].text} />
-                                <Text style={[styles.flagText, { color: FlagColors[flag].text }]}>
-                                  {FlagLabels[flag]}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                        {i < job.items.length - 1 && <View style={styles.itemDivider} />}
-                      </View>
-                    ))}
-                  </SectionCard>
-
-                  <Eyebrow title="Messages" />
-                </View>
-              );
-            }
-
-            if (item.type === 'messages_empty') {
-              return (
-                <Text style={styles.messagesEmpty}>
-                  No messages yet. The lab and office will see anything you send here.
+      <ScrollView contentContainerStyle={styles.listContent}>
+        <View style={styles.headerContent}>
+          {/* Summary: who, when, where it stands */}
+          <View style={styles.summary}>
+            <View style={styles.topRow}>
+              <View style={[styles.statusBadge, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
+                <Text style={[styles.statusBadgeText, { color: statusColor.text }]}>
+                  {StatusLabels[job.status]}
                 </Text>
-              );
-            }
-
-            return (
-              <MessageBubble
-                message={item.message}
-                isOwn={item.message.senderRole === 'driver'}
-              />
-            );
-          }}
-        />
-
-        {/* Proof of delivery modal */}
-        <Modal
-          visible={showPod}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setShowPod(false)}
-        >
-          <KeyboardAvoidingView
-            style={styles.podKav}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          >
-            <View style={styles.podContainer}>
-              <View style={styles.podHeader}>
-                <View style={styles.podHeading}>
-                  <Text style={styles.eyebrow}>{job.caseId}</Text>
-                  <Text style={styles.podTitle}>Complete delivery</Text>
+              </View>
+              {job.priority === 'stat' && (
+                <View style={styles.statBadge}>
+                  <Text style={styles.statBadgeText}>STAT</Text>
                 </View>
+              )}
+            </View>
+            <Text style={styles.title} accessibilityRole="header">{officeName ?? job.deliveryAddress}</Text>
+            {due && (
+              <View style={styles.metaRow}>
+                <IconSymbol
+                  name="clock"
+                  size={16}
+                  color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
+                />
+                <Text style={[styles.metaText, due.tone === 'late' && styles.dueLate, due.tone === 'soon' && styles.dueSoon]}>
+                  {due.text}
+                </Text>
+              </View>
+            )}
+            {step >= 0 && !isDelivered && (
+              <View accessibilityLabel={`Step ${step + 1} of 4: ${STEPS[step].label}`}>
+                <View style={styles.progressTrack}>
+                  {STEPS.map((s, i) => (
+                    <View key={s.status} style={[styles.progressSeg, i <= step && styles.progressSegDone]} />
+                  ))}
+                </View>
+                <View style={styles.progressLabels}>
+                  {STEPS.map((s, i) => (
+                    <Text key={s.status} style={[styles.progressLabel, i === step && styles.progressLabelCurrent]}>
+                      {s.label}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Accept / Reject */}
+          {isPendingResponse && (
+            <View style={[styles.sectionCard, styles.responseCard]}>
+              <Text style={styles.responsePrompt}>New job for you. Accept or reject?</Text>
+              <View style={styles.responseButtons}>
                 <TouchableOpacity
-                  style={styles.podCancelBtn}
-                  onPress={() => setShowPod(false)}
-                  activeOpacity={0.7}
+                  style={[styles.responseBtn, styles.rejectBtn]}
+                  onPress={handleReject}
+                  activeOpacity={0.8}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.podCancel}>Cancel</Text>
+                  <Text style={styles.rejectBtnText}>Reject</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.responseBtn, styles.acceptBtn]}
+                  onPress={handleAccept}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.acceptBtnText}>Accept</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          )}
 
-              <Text style={styles.podSubtitle}>
-                Who received it? Their name is saved as proof of delivery.
-              </Text>
-
-              <View style={styles.podField}>
-                <Text style={styles.podLabel} nativeID="recipientLabel">Recipient name</Text>
-                <TextInput
-                  style={styles.podInput}
-                  value={recipientName}
-                  onChangeText={setRecipientName}
-                  placeholder="e.g. Jane Smith"
-                  placeholderTextColor={Colors.textMuted}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  onSubmitEditing={handleConfirmDelivery}
-                  autoFocus
-                  accessibilityLabelledBy="recipientLabel"
-                />
-              </View>
-
+          {/* The next step, front and center */}
+          {nextAction && (
+            <View style={styles.nextStep}>
               <TouchableOpacity
-                style={[
-                  styles.podConfirmBtn,
-                  (!recipientName.trim() || submittingPod) && styles.podConfirmBtnDisabled,
-                ]}
-                onPress={handleConfirmDelivery}
-                disabled={!recipientName.trim() || submittingPod}
+                style={[styles.actionBtn, job.status === 'arrived' && styles.actionBtnFinish, updatingStatus && styles.actionBtnDisabled]}
+                onPress={showPickUpButton ? handleMarkPickedUp : handleStatusAdvance}
+                disabled={updatingStatus}
                 activeOpacity={0.85}
                 accessibilityRole="button"
+                accessibilityHint={nextAction.hint}
               >
-                {submittingPod
-                  ? <ActivityIndicator color={Colors.successInk} />
-                  : <Text style={styles.podConfirmText}>Confirm delivery</Text>
+                {updatingStatus
+                  ? <ActivityIndicator color={job.status === 'arrived' ? Colors.successInk : '#fff'} />
+                  : <Text style={[styles.actionBtnText, job.status === 'arrived' && styles.actionBtnTextFinish]}>{nextAction.label}</Text>
                 }
               </TouchableOpacity>
+              <Text style={styles.nextHint}>{nextAction.hint}</Text>
             </View>
-          </KeyboardAvoidingView>
-        </Modal>
+          )}
 
-        {/* Message input */}
-        {!isDelivered && !isRejected && (
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              value={messageText}
-              onChangeText={setMessageText}
-              placeholder="Message the lab or office…"
-              placeholderTextColor={Colors.textMuted}
-              multiline
-              // Return adds a new line; the button beside the field sends.
-              submitBehavior="newline"
-              accessibilityLabel="Message"
-            />
+          {isDelivered && (
+            <View style={[styles.outcome, styles.outcomeDelivered]}>
+              <View style={[styles.outcomeIcon, { backgroundColor: Colors.successBorder }]}>
+                <IconSymbol name="checkmark" size={20} color="#FFFFFF" />
+              </View>
+              <View style={styles.outcomeBody}>
+                <Text style={[styles.outcomeTitle, { color: Colors.success }]}>Delivered</Text>
+                {deliveredAt && <Text style={styles.outcomeSub}>{formatTime(deliveredAt)}</Text>}
+              </View>
+            </View>
+          )}
+
+          {isRejected && (
+            <View style={[styles.outcome, styles.outcomeRejected]}>
+              <View style={[styles.outcomeIcon, { backgroundColor: Colors.dangerBorder }]}>
+                <IconSymbol name="xmark" size={20} color="#FFFFFF" />
+              </View>
+              <View style={styles.outcomeBody}>
+                <Text style={[styles.outcomeTitle, { color: Colors.danger }]}>You rejected this job</Text>
+                <Text style={styles.outcomeSub}>It went back to dispatch to be reassigned.</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Messages: a preview here, the conversation on its own screen */}
+          <TouchableOpacity
+            style={[styles.sectionCard, styles.messagesCard, unread > 0 && styles.messagesCardUnread]}
+            onPress={() => router.push(`/chat/${job.id}`)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Messages${unread > 0 ? `, ${unread} unread` : ''}`}
+          >
+            <View style={[styles.messagesIcon, unread > 0 && styles.messagesIconUnread]}>
+              <IconSymbol name="bubble.left.and.bubble.right.fill" size={20} color={unread > 0 ? '#FFFFFF' : Colors.accent} />
+            </View>
+            <View style={styles.messagesBody}>
+              <Text style={styles.cardTitle}>Messages</Text>
+              <Text style={[styles.messagesPreview, unread > 0 && styles.messagesPreviewUnread]} numberOfLines={1}>
+                {preview}
+              </Text>
+            </View>
+            {unread > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+              </View>
+            )}
+            <IconSymbol name="chevron.right" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Where it's going */}
+          <SectionCard>
+            <Eyebrow title="Deliver to" />
+            {officeName && <Text style={styles.cardTitle}>{officeName}</Text>}
+            <View style={styles.metaRow}>
+              <IconSymbol name="mappin.and.ellipse" size={16} color={Colors.textSecondary} />
+              <Text style={styles.addressText}>{job.deliveryAddress}</Text>
+            </View>
+            {!isDelivered && !isRejected && (
+              <TouchableOpacity
+                style={styles.navigateBtn}
+                onPress={() => navigate({ address: job.deliveryAddress })}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+              >
+                <IconSymbol name="mappin.and.ellipse" size={18} color={Colors.accent} />
+                <Text style={styles.navigateBtnText}>Navigate</Text>
+              </TouchableOpacity>
+            )}
+          </SectionCard>
+
+          {/* What's in the case */}
+          <SectionCard>
+            <Eyebrow title={job.items.length === 1 ? 'Case' : `Case · ${job.items.length} items`} />
+            {job.items.map((item, i) => (
+              <View key={i} style={styles.itemRow}>
+                <View style={styles.itemLine}>
+                  <Text style={styles.itemDescription}>{item.description}</Text>
+                  <Text style={styles.itemQty}>× {item.quantity}</Text>
+                </View>
+                {item.flags.length > 0 && (
+                  <View style={styles.flagsRow}>
+                    {item.flags.map((flag) => (
+                      <View
+                        key={flag}
+                        style={[styles.flag, { backgroundColor: FlagColors[flag].bg }]}
+                      >
+                        <IconSymbol name="exclamationmark.triangle" size={12} color={FlagColors[flag].text} />
+                        <Text style={[styles.flagText, { color: FlagColors[flag].text }]}>
+                          {FlagLabels[flag]}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {i < job.items.length - 1 && <View style={styles.itemDivider} />}
+              </View>
+            ))}
+          </SectionCard>
+        </View>
+      </ScrollView>
+
+      {/* Proof of delivery modal */}
+      <Modal
+        visible={showPod}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowPod(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.podKav}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.podContainer}>
+            <View style={styles.podHeader}>
+              <View style={styles.podHeading}>
+                <Text style={styles.eyebrow}>{job.caseId}</Text>
+                <Text style={styles.podTitle}>Complete delivery</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.podCancelBtn}
+                onPress={() => setShowPod(false)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+              >
+                <Text style={styles.podCancel}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.podSubtitle}>
+              Who received it? Their name is saved as proof of delivery.
+            </Text>
+
+            <View style={styles.podField}>
+              <Text style={styles.podLabel} nativeID="recipientLabel">Recipient name</Text>
+              <TextInput
+                style={styles.podInput}
+                value={recipientName}
+                onChangeText={setRecipientName}
+                placeholder="e.g. Jane Smith"
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={handleConfirmDelivery}
+                autoFocus
+                accessibilityLabelledBy="recipientLabel"
+              />
+            </View>
+
             <TouchableOpacity
               style={[
-                styles.sendBtn,
-                (!messageText.trim() || sendingMessage) && styles.sendBtnDisabled,
+                styles.podConfirmBtn,
+                (!recipientName.trim() || submittingPod) && styles.podConfirmBtnDisabled,
               ]}
-              onPress={handleSendMessage}
-              disabled={!messageText.trim() || sendingMessage}
-              activeOpacity={0.8}
+              onPress={handleConfirmDelivery}
+              disabled={!recipientName.trim() || submittingPod}
+              activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel="Send message"
             >
-              {sendingMessage
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <IconSymbol name="paperplane.fill" size={20} color={messageText.trim() ? '#fff' : Colors.textMuted} />
+              {submittingPod
+                ? <ActivityIndicator color={Colors.successInk} />
+                : <Text style={styles.podConfirmText}>Confirm delivery</Text>
               }
             </TouchableOpacity>
           </View>
-        )}
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -653,9 +531,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: Colors.bg,
-  },
-  kav: {
-    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -964,109 +839,53 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 
-  // ── Messages ───────────────────────────────────────────────────────────────
-  messagesEmpty: {
-    fontFamily: Fonts.regular,
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    textAlign: 'center',
-    paddingVertical: Spacing.xl,
-    paddingHorizontal: Spacing.xl,
-    lineHeight: 19,
-  },
-  bubbleWrapper: {
-    maxWidth: '80%',
-    gap: 4,
-    marginBottom: Spacing.xs,
-  },
-  bubbleRight: {
-    alignSelf: 'flex-end',
-    alignItems: 'flex-end',
-  },
-  bubbleLeft: {
-    alignSelf: 'flex-start',
-    alignItems: 'flex-start',
-  },
-  bubbleSender: {
-    fontFamily: Fonts.semibold,
-    color: Colors.accent,
-    fontSize: FontSize.xs,
-    paddingHorizontal: Spacing.sm,
-  },
-  bubbleSenderOffice: {
-    color: Colors.warning,
-  },
-  bubble: {
-    borderRadius: 18,
-    paddingHorizontal: Spacing.md + 2,
-    paddingVertical: Spacing.sm + 2,
-  },
-  bubbleDriver: {
-    backgroundColor: Colors.primary,
-    borderBottomRightRadius: Radius.sm,
-  },
-  bubbleOther: {
-    backgroundColor: Colors.cardElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderBottomLeftRadius: Radius.sm,
-  },
-  bubbleText: {
-    fontFamily: Fonts.regular,
-    fontSize: FontSize.md,
-    lineHeight: 21,
-  },
-  bubbleTextOwn: {
-    color: '#fff',
-  },
-  bubbleTextOther: {
-    color: Colors.text,
-  },
-  bubbleTime: {
-    fontFamily: Fonts.regular,
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    paddingHorizontal: Spacing.sm,
-  },
-  inputRow: {
+  // ── Messages card ──────────────────────────────────────────────────────────
+  messagesCard: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm + 2,
-    paddingBottom: Spacing.sm + 2,
-    borderTopWidth: 1,
-    borderTopColor: Colors.tabBarBorder,
-    backgroundColor: Colors.tabBar,
+    alignItems: 'center',
+    gap: Spacing.md,
+    minHeight: 72,
   },
-  input: {
-    fontFamily: Fonts.regular,
-    flex: 1,
-    backgroundColor: Colors.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.text,
-    fontSize: FontSize.md,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 11,
-    paddingBottom: 11,
-    minHeight: 44,
-    maxHeight: 120,
+  messagesCardUnread: {
+    borderColor: Colors.accentBorder,
   },
-  sendBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    width: 44,
-    height: 44,
+  messagesIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Stays clearly visible while empty, so drivers know where Send is.
-  sendBtnDisabled: {
-    backgroundColor: Colors.cardElevated,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
+  messagesIconUnread: {
+    backgroundColor: Colors.primary,
+  },
+  messagesBody: {
+    flex: 1,
+    gap: 2,
+  },
+  messagesPreview: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+  },
+  messagesPreviewUnread: {
+    fontFamily: Fonts.medium,
+    color: Colors.text,
+  },
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadgeText: {
+    fontFamily: Fonts.bold,
+    color: Colors.dangerBg,
+    fontSize: 12,
   },
 
   // ── Proof of delivery modal ───────────────────────────────────────────────
