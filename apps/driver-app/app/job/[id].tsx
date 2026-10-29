@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Job, JobStatus, Message } from '@gepeto/types';
-import { supabase } from '@/lib/supabase';
+import { supabase, channelName } from '@/lib/supabase';
 import { apiPatch, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/auth';
 import { navigate } from '@/lib/navigation';
@@ -31,6 +31,7 @@ import {
   StatusColors,
   StatusLabels,
 } from '@/constants/theme';
+import { forgetJob } from '@/components/job-alerts';
 import { getDriverId } from '@/lib/driver';
 
 
@@ -140,7 +141,7 @@ export default function JobDetailScreen() {
   useEffect(() => {
     if (!id) return;
     const channel = supabase
-      .channel(`job-${id}`)
+      .channel(channelName(`job-${id}`))
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
@@ -189,7 +190,10 @@ export default function JobDetailScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             // API resets status to 'pending' and clears driver_id so the dispatcher can reassign
             const res = await apiPatch<Job>(`/api/jobs/${job.id}/response`, { driverResponse: 'rejected' });
-            if (res.data) setJob(res.data);
+            if (res.data) {
+              setJob(res.data);
+              forgetJob(job.id);
+            }
           },
         },
       ]

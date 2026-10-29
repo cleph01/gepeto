@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/context/auth';
+import { JobAlerts } from '@/components/job-alerts';
 import { Colors } from '@/constants/theme';
 
 function RouteGuard() {
@@ -53,6 +54,7 @@ export default function RootLayout() {
           }}
         />
       </Stack>
+      <JobAlerts />
       <StatusBar style="light" />
     </AuthProvider>
   );

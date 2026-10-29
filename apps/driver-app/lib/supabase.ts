@@ -18,3 +18,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+let channelSeq = 0;
+
+/**
+ * A realtime channel name that's unique per subscription. supabase.channel()
+ * returns the existing channel when the name is already in use, and adding
+ * callbacks to one that's subscribed throws, which happens when the same
+ * screen is open twice (e.g. a job opened from the new-job alert while its
+ * detail screen is already on the stack).
+ */
+export function channelName(base: string): string {
+  channelSeq += 1;
+  return `${base}:${channelSeq}`;
+}

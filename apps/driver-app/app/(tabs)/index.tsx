@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { rowToCamel } from '@/lib/transform';
 import { useLocationTracking } from '@/hooks/use-location-tracking';
 import {
@@ -8,13 +8,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Job } from '@gepeto/types';
-import { supabase } from '@/lib/supabase';
+import { supabase, channelName } from '@/lib/supabase';
 import { useAuth } from '@/context/auth';
 import {
   Colors,
@@ -25,6 +24,7 @@ import {
   StatusLabels,
 } from '@/constants/theme';
 import { getDriverId } from '@/lib/driver';
+import { onJobRemoved } from '@/components/job-alerts';
 
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -94,26 +94,6 @@ function JobCard({ job, onPress }: { job: Job; onPress: () => void }) {
   );
 }
 
-// ─── New job banner ───────────────────────────────────────────────────────────
-
-function NewJobBanner({ onDismiss }: { onDismiss: () => void }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.delay(4000),
-      Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
-    ]).start(onDismiss);
-  }, []);
-
-  return (
-    <Animated.View style={[styles.banner, { opacity }]}>
-      <Text style={styles.bannerText}>🔔 New job assigned — tap to review</Text>
-    </Animated.View>
-  );
-}
-
 // ─── Stats row ────────────────────────────────────────────────────────────────
 
 // Delivered/rejected today, by the driver's local date. deliveredAt is set when
@@ -156,7 +136,6 @@ export default function JobQueueScreen() {
   const { session } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [showBanner, setShowBanner] = useState(false);
 
   const driverId = getDriverId(session);
 
@@ -188,7 +167,7 @@ export default function JobQueueScreen() {
     if (!driverId) return;
 
     const channel = supabase
-      .channel('driver-jobs')
+      .channel(channelName('driver-jobs'))
       .on(
         'postgres_changes',
         {
@@ -201,11 +180,15 @@ export default function JobQueueScreen() {
           if (payload.eventType === 'INSERT') {
             const newJob = rowToCamel<Job>(payload.new as Record<string, unknown>);
             setJobs((prev) => [newJob, ...prev]);
-            setShowBanner(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           } else if (payload.eventType === 'UPDATE') {
             const updated = rowToCamel<Job>(payload.new as Record<string, unknown>);
-            setJobs((prev) => prev.map((j) => (j.id === updated.id ? updated : j)));
+            // A dispatcher assigning an existing job to this driver arrives as an
+            // UPDATE for a job not in the list yet; treat it like a new job.
+            setJobs((prev) =>
+              prev.some((j) => j.id === updated.id)
+                ? prev.map((j) => (j.id === updated.id ? updated : j))
+                : [updated, ...prev]
+            );
           }
         }
       )
@@ -213,6 +196,11 @@ export default function JobQueueScreen() {
 
     return () => { supabase.removeChannel(channel); };
   }, [driverId]);
+
+  // Dispatch took a job off this driver (no realtime row event reaches them).
+  useEffect(() => onJobRemoved((jobId) => {
+    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+  }), []);
 
   const activeJobs = jobs.filter((j) => j.status !== 'delivered' && j.status !== 'rejected');
   const completedJobs = jobs.filter(finishedToday);
@@ -246,7 +234,6 @@ export default function JobQueueScreen() {
         </Text>
       </View>
 
-      {showBanner && <NewJobBanner onDismiss={() => setShowBanner(false)} />}
 
       <FlatList
         data={flatData}
@@ -313,21 +300,6 @@ const styles = StyleSheet.create({
   headerDate: {
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
-  },
-  banner: {
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.warningBg,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.warningBorder,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  bannerText: {
-    color: Colors.warning,
-    fontSize: FontSize.sm,
-    fontWeight: '600',
   },
   listContent: {
     paddingHorizontal: Spacing.lg,
