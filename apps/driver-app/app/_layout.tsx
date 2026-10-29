@@ -31,7 +31,7 @@ function RouteGuard() {
     } else if (session && inAuthScreen) {
       router.replace('/(tabs)');
     }
-  }, [session, loading, segments]);
+  }, [session, loading, segments, router]);
 
   return null;
 }

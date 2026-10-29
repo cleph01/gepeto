@@ -110,9 +110,10 @@ export default function JobDetailScreen() {
   const driverId = getDriverId(session);
 
   // Set nav title to case ID
+  const caseId = job?.caseId;
   useEffect(() => {
-    if (job) navigation.setOptions({ title: job.caseId });
-  }, [job?.caseId]);
+    if (caseId) navigation.setOptions({ title: caseId });
+  }, [caseId, navigation]);
 
   // Fetch job
   useEffect(() => {
