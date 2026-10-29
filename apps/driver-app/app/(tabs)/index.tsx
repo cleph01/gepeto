@@ -197,7 +197,9 @@ export default function JobQueueScreen() {
     if (showSpinner) setRefreshing(false);
   }, [driverId]);
 
-  // Initial fetch
+  // Initial fetch. fetchJobs() only updates the list after awaiting the query;
+  // the spinner it shows first is intended.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
 
   // Supabase Realtime — subscribe to job changes for this driver
