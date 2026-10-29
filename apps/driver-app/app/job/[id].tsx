@@ -289,7 +289,14 @@ export default function JobDetailScreen() {
     if (res.data) {
       // Replace the optimistic entry with the real server message so the
       // incoming Realtime event (which carries the same UUID) gets deduped.
-      setMessages((prev) => prev.map((m) => (m.id === optimisticId ? res.data! : m)));
+      // If Realtime beat the response here, the real message is already in
+      // the list: just drop the optimistic one (two copies = duplicate keys).
+      const real = res.data;
+      setMessages((prev) =>
+        prev.some((m) => m.id === real.id)
+          ? prev.filter((m) => m.id !== optimisticId)
+          : prev.map((m) => (m.id === optimisticId ? real : m))
+      );
     }
 
     setSendingMessage(false);
