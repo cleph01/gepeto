@@ -7,8 +7,9 @@ import { useAuth } from "@/context/auth";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 // Polling, not Supabase realtime: realtime on `messages` would need RLS
-// policies for dispatchers that don't exist yet. Driver rejections are polled
-// too, and also re-checked the moment realtime reports a change to `jobs`.
+// policies for dispatchers that don't exist yet. Driver activity (rejected,
+// accepted, delivered) is polled too, and also re-checked the moment realtime
+// reports a change to `jobs`.
 const POLL_MS = 10_000;
 const TOAST_MS = 7_000;
 const MAX_TOASTS = 3;
@@ -32,18 +33,18 @@ interface UnreadResponse {
   recent: UnreadMessage[];
 }
 
-interface Rejection {
-  // camelCased by @gepeto/db
-  id: string;
+interface DriverActivity {
+  key: string;
+  kind: "rejected" | "accepted" | "delivered";
   jobId: string;
-  createdAt: string;
   caseId: string;
   driverName: string | null;
+  at: string;
 }
 
 interface Toast {
   key: string;
-  kind: "message" | "rejection";
+  kind: "message" | DriverActivity["kind"];
   jobId: string | null; // null = summary toast for a burst of messages
   title: string;
   body: string;
@@ -64,7 +65,7 @@ interface MessageNotificationsContextType {
   /** A thread the jobs page should open (set by openThread). */
   pendingOpenJobId: string | null;
   clearPendingOpen: () => void;
-  /** A job whose history popup the jobs page should open (rejection toast clicked). */
+  /** A job whose history popup the jobs page should open (rejected/delivered toast clicked). */
   pendingHistoryJobId: string | null;
   clearPendingHistory: () => void;
   /** Bumped on every realtime change to the lab's jobs, so lists can reload. */
@@ -106,14 +107,21 @@ function toastFor(m: UnreadMessage): Toast {
   };
 }
 
-function toastForRejection(r: Rejection): Toast {
+const ACTIVITY_TOAST: Record<DriverActivity["kind"], { verb: string; body: string; color: string }> = {
+  rejected:  { verb: "rejected",  body: "It's back to Pending and unassigned.", color: "#A32D2D" },
+  accepted:  { verb: "accepted",  body: "They're on it.",                       color: "#185FA5" },
+  delivered: { verb: "delivered", body: "Marked delivered.",                    color: "#3B6D11" },
+};
+
+function toastForActivity(a: DriverActivity): Toast {
+  const t = ACTIVITY_TOAST[a.kind];
   return {
-    key: `rejection-${r.id}`,
-    kind: "rejection",
-    jobId: r.jobId,
-    title: `${r.driverName ?? "A driver"} rejected ${r.caseId}`,
-    body: "It's back to Pending and unassigned.",
-    color: "#A32D2D",
+    key: `activity-${a.key}`,
+    kind: a.kind,
+    jobId: a.jobId,
+    title: `${a.driverName ?? "A driver"} ${t.verb} ${a.caseId}`,
+    body: t.body,
+    color: t.color,
   };
 }
 
@@ -182,8 +190,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const seenIds = useRef<Set<string>>(new Set());
   const primed = useRef(false); // first poll only records what's already unread — no toast storm on page load
-  const seenRejections = useRef<Set<string>>(new Set());
-  const rejectionsPrimed = useRef(false);
+  const seenActivity = useRef<Set<string>>(new Set());
+  const activityPrimed = useRef(false);
   const activeThread = useRef<string | null>(null);
   const soundRef = useRef(soundEnabled);
 
@@ -260,34 +268,34 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const isDispatcher = session?.user.app_metadata?.role === "dispatcher" || session?.user.user_metadata?.role === "dispatcher";
   const labId = (session?.user.app_metadata as Record<string, string> | undefined)?.lab_id;
 
-  const pollRejections = useCallback(async () => {
+  const pollActivity = useCallback(async () => {
     if (!session || !isDispatcher) return;
-    let res: ApiResponse<Rejection[]>;
+    let res: ApiResponse<DriverActivity[]>;
     try {
-      res = await apiFetch<ApiResponse<Rejection[]>>("/api/jobs/rejections");
+      res = await apiFetch<ApiResponse<DriverActivity[]>>("/api/jobs/driver-activity");
     } catch {
       return;
     }
     if (!res.data) return;
 
-    const fresh = res.data.filter((r) => !seenRejections.current.has(r.id));
-    for (const r of fresh) seenRejections.current.add(r.id);
-    if (!rejectionsPrimed.current) {
-      rejectionsPrimed.current = true;
+    const fresh = res.data.filter((a) => !seenActivity.current.has(a.key));
+    for (const a of fresh) seenActivity.current.add(a.key);
+    if (!activityPrimed.current) {
+      activityPrimed.current = true;
       return;
     }
     if (fresh.length === 0) return;
     setJobsChangedAt(Date.now()); // in case realtime missed it
-    pushToasts(fresh.reverse().slice(-MAX_TOASTS).map(toastForRejection));
+    pushToasts(fresh.reverse().slice(-MAX_TOASTS).map(toastForActivity));
     if (soundRef.current) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
   const pollAll = useCallback(() => {
     poll();
-    pollRejections();
-  }, [poll, pollRejections]);
+    pollActivity();
+  }, [poll, pollActivity]);
 
-  // Realtime: any change to the lab's jobs re-checks rejections right away and
+  // Realtime: any change to the lab's jobs re-checks driver activity right away and
   // tells open job lists to reload. Polling above still covers a dropped socket.
   useEffect(() => {
     if (!labId) return;
@@ -298,14 +306,14 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         { event: "*", schema: "public", table: "jobs", filter: `lab_id=eq.${labId}` },
         () => {
           setJobsChangedAt(Date.now());
-          pollRejections();
+          pollActivity();
         }
       )
       .subscribe();
     return () => {
       supabaseBrowser.removeChannel(channel);
     };
-  }, [labId, pollRejections]);
+  }, [labId, pollActivity]);
 
   useEffect(() => {
     if (!session) return;
@@ -360,7 +368,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if (t.kind === "rejection" && t.jobId) {
+    if ((t.kind === "rejected" || t.kind === "delivered") && t.jobId) {
       setPendingHistoryJobId(t.jobId);
       if (pathname !== "/jobs") router.push("/jobs");
     } else if (t.jobId) openThread(t.jobId);
@@ -430,10 +438,15 @@ function ToastStack({
           }}
         >
           <svg width="16" height="16" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, marginTop: 1, color: t.color }}>
-            {t.kind === "rejection" ? (
+            {t.kind === "rejected" ? (
               <>
                 <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
                 <path d="M4 4l4 4M8 4L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </>
+            ) : t.kind === "accepted" || t.kind === "delivered" ? (
+              <>
+                <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M3.8 6.2l1.5 1.5 2.9-3.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
               </>
             ) : (
               <path d="M1 2.5h10v6H4.5L1 11V2.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />

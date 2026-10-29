@@ -8,7 +8,7 @@ import { supabase, channelName } from '@/lib/supabase';
 import { rowToCamel } from '@/lib/transform';
 import { useAuth } from '@/context/auth';
 import { getDriverId } from '@/lib/driver';
-import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
+import { Colors, FontSize, Radius, Spacing, StatusLabels } from '@/constants/theme';
 
 // App-wide job alerts. Mounted once in the root layout so they show over
 // whatever screen or tab the driver is on, and stay until tapped or dismissed.
@@ -17,13 +17,22 @@ import { Colors, FontSize, Radius, Spacing } from '@/constants/theme';
 //   stat     a job they have was made STAT
 //   unstat   a job they have is no longer STAT
 //   removed  dispatch reassigned or unassigned a job they had
+//   status   dispatch changed the status of one of their jobs
 //
-// new/stat/unstat come from postgres_changes on the driver's jobs. A job taken
-// off the driver is hidden from them by row-level security, so the server
-// sends a `job_removed` broadcast instead (see dispatcher-web lib/realtime.ts).
+// new/stat/unstat come from postgres_changes on the driver's jobs. The other
+// two come as broadcasts from the server (see dispatcher-web lib/realtime.ts):
+// a job taken off the driver is hidden from them by row-level security, and a
+// row change alone can't tell dispatch's status changes from the driver's own.
 
-type AlertKind = 'new' | 'stat' | 'unstat' | 'removed';
-type JobAlert = { kind: AlertKind; jobId: string; caseId: string; deliveryAddress: string; priority: Job['priority'] };
+type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status';
+type JobAlert = {
+  kind: AlertKind;
+  jobId: string;
+  caseId: string;
+  deliveryAddress: string;
+  priority: Job['priority'];
+  status?: Job['status'];
+};
 type KnownJob = Pick<JobAlert, 'caseId' | 'deliveryAddress' | 'priority'>;
 
 // Jobs this driver already has, by id. null until loaded. Module-level so the
@@ -117,6 +126,26 @@ export function JobAlerts() {
         removedListeners.forEach((l) => l(jobId));
         show({ kind: 'removed', jobId, ...info });
       })
+      .on('broadcast', { event: 'job_status_changed' }, async ({ payload }) => {
+        const jobId = (payload as { jobId?: string })?.jobId;
+        if (!jobId) return;
+        // Read the job back rather than trusting the (unauthenticated) message.
+        const { data } = await supabase
+          .from('jobs')
+          .select('id, case_id, delivery_address, priority, status')
+          .eq('id', jobId)
+          .maybeSingle();
+        if (!data) return;
+        const row = rowToCamel<Job>(data);
+        show({
+          kind: 'status',
+          jobId,
+          caseId: row.caseId,
+          deliveryAddress: row.deliveryAddress,
+          priority: row.priority,
+          status: row.status,
+        });
+      })
       .subscribe();
 
     return () => {
@@ -148,24 +177,28 @@ export function JobAlerts() {
   };
 
   const look = LOOK[alert.kind];
+  // Lead with what happened; the case ID goes on the second line so a driver
+  // with several jobs can still tell which one without tapping.
   const title = {
-    new: 'New job assigned',
-    stat: `${alert.caseId} is now STAT`,
-    unstat: `${alert.caseId} is no longer STAT`,
-    removed: `${alert.caseId} was taken off your jobs`,
+    new: 'New job',
+    stat: 'Now STAT',
+    unstat: 'No longer STAT',
+    removed: 'Job removed',
+    status: `Moved to ${alert.status ? StatusLabels[alert.status] : 'a new status'}`,
   }[alert.kind];
   const detail = {
     new: `${alert.caseId} → ${alert.deliveryAddress}`,
-    stat: `→ ${alert.deliveryAddress}`,
-    unstat: 'Back to standard priority.',
-    removed: 'Dispatch reassigned or unassigned it.',
+    stat: `${alert.caseId} → ${alert.deliveryAddress}`,
+    unstat: alert.caseId,
+    removed: `${alert.caseId} · by dispatch`,
+    status: `${alert.caseId} · by dispatch`,
   }[alert.kind];
-  const cta = {
-    new: 'Tap to accept or reject',
-    stat: 'Tap to view',
-    unstat: 'Tap to view',
-    removed: onJobScreen ? 'Tap to go back to your jobs' : 'Tap to dismiss',
-  }[alert.kind];
+  // Only when the tap does something the driver needs to know about.
+  const cta = alert.kind === 'new'
+    ? 'Tap to accept or reject'
+    : alert.kind === 'removed' && onJobScreen
+      ? 'Tap to go back to your jobs'
+      : null;
 
   return (
     <Animated.View
@@ -188,7 +221,7 @@ export function JobAlerts() {
             )}
           </View>
           <Text style={styles.detail} numberOfLines={1}>{detail}</Text>
-          <Text style={[styles.cta, { color: look.cta }]}>{cta}</Text>
+          {cta && <Text style={[styles.cta, { color: look.cta }]}>{cta}</Text>}
         </View>
         <TouchableOpacity
           onPress={() => setAlert(null)}
@@ -207,6 +240,7 @@ const LOOK: Record<AlertKind, { icon: string; bg: string; border: string; cta: s
   stat:    { icon: '⚡', bg: '#3A1300',         border: '#FF6B35',           cta: '#FF6B35' },
   unstat:  { icon: '↓',  bg: Colors.card,      border: Colors.border,       cta: Colors.textSecondary },
   removed: { icon: '↩',  bg: Colors.card,      border: Colors.border,       cta: Colors.textSecondary },
+  status:  { icon: '📋', bg: Colors.card,      border: Colors.primary,      cta: Colors.primaryLight },
 };
 
 const styles = StyleSheet.create({

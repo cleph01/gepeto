@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { notifyDriver } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -69,6 +70,12 @@ export async function PATCH(
         });
       }
     });
+
+    // Dispatch changed the status of a driver's job: tell the driver. (Their own
+    // changes need no alert; the app already shows them.)
+    if (user.role === "dispatcher" && job.driverId && job.status !== status) {
+      await notifyDriver(job.driverId, "job_status_changed", { jobId: id });
+    }
 
     // Return the same joined shape as GET /api/jobs so the jobs list can re-render the row
     const updated = await db("jobs")
