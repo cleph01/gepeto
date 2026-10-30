@@ -19,6 +19,11 @@ type ApiDriver = {
   id: string; name: string; status: string; activeJobs: number; currentLocation: { lat: number; lng: number } | null;
 };
 
+// Active Jobs columns. Office and Driver flex (Office gets the most room); the
+// rest are sized to their chips, so Office never squeezes to nothing on narrower
+// screens. Shared by the header row and JobRow.
+const JOB_COLUMNS = "112px minmax(100px, 1.4fr) minmax(90px, 1fr) 64px 92px 60px";
+
 export default function DashboardPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
@@ -164,6 +169,7 @@ export default function DashboardPage() {
         <div style={{
           flex: bp === "desktop" ? "0 0 55%" : "none",
           overflowY: bp === "desktop" ? "auto" : "visible",
+          minHeight: 0,
           padding: bp === "mobile" ? "12px" : bp === "tablet" ? "16px" : "20px 24px",
           display: "flex",
           flexDirection: "column",
@@ -171,7 +177,7 @@ export default function DashboardPage() {
         }}>
           {/* Metrics row */}
           {/* 5 across on desktop; on smaller screens the messages card spans the full row */}
-          <div className="stats-grid" style={bp === "desktop" ? { gridTemplateColumns: "repeat(5, 1fr)" } : undefined}>
+          <div className="stats-grid" style={{ flexShrink: 0, ...(bp === "desktop" ? { gridTemplateColumns: "repeat(5, 1fr)" } : {}) }}>
             <MetricCard value={loaded ? String(metrics.active) : "–"}    label="Active Jobs" sublabel={loaded ? `${metrics.createdToday} today` : undefined} />
             <MetricCard value={loaded ? String(metrics.inTransit) : "–"} label="In Transit"     color="#185FA5" sublabel={loaded ? `${metrics.statInTransit} STAT` : undefined} />
             <MetricCard value={loaded ? String(metrics.delivered) : "–"} label="Delivered Today" color="#3B6D11" />
@@ -188,7 +194,9 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Active Jobs section */}
+          {/* Active Jobs section. On desktop it and Drivers On Shift share the
+              column: each takes the height its rows need, and when they don't
+              both fit they shrink and scroll inside, headers staying put. */}
           <div
             style={{
               background: "#FFFFFF",
@@ -196,6 +204,9 @@ export default function DashboardPage() {
               borderRadius: 12,
               overflow: "hidden",
               boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+              display: "flex",
+              flexDirection: "column",
+              ...(bp === "desktop" ? { flex: "0 1 auto", minHeight: 200 } : {}),
             }}
           >
             {/* Table header */}
@@ -235,7 +246,7 @@ export default function DashboardPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "100px 1fr 110px 80px 110px 80px",
+                gridTemplateColumns: JOB_COLUMNS,
                 padding: "6px 16px",
                 background: "#FAFAFA",
                 borderBottom: "1px solid rgba(0,0,0,0.06)",
@@ -258,15 +269,17 @@ export default function DashboardPage() {
             </div>
 
             {/* Job rows */}
-            {filteredJobs.length === 0 ? (
-              <div style={{ padding: "24px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
-                {!loaded ? "Loading jobs…" : jobFilter === "all" ? "No active jobs." : "No matching jobs."}
-              </div>
-            ) : (
-              filteredJobs.map((job, i) => (
-                <JobRow key={job.id} job={job} isLast={i === filteredJobs.length - 1} />
-              ))
-            )}
+            <div style={{ overflowY: "auto", minHeight: 0, ...(bp === "desktop" ? {} : { maxHeight: 360 }) }}>
+              {filteredJobs.length === 0 ? (
+                <div style={{ padding: "24px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
+                  {!loaded ? "Loading jobs…" : jobFilter === "all" ? "No active jobs." : "No matching jobs."}
+                </div>
+              ) : (
+                filteredJobs.map((job, i) => (
+                  <JobRow key={job.id} job={job} isLast={i === filteredJobs.length - 1} />
+                ))
+              )}
+            </div>
           </div>
 
           {/* Driver roster */}
@@ -277,6 +290,9 @@ export default function DashboardPage() {
               borderRadius: 12,
               overflow: "hidden",
               boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+              display: "flex",
+              flexDirection: "column",
+              ...(bp === "desktop" ? { flex: "0 1 auto", minHeight: 160 } : {}),
             }}
           >
             <div
@@ -289,9 +305,14 @@ export default function DashboardPage() {
               }}
             >
               <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>Drivers On Shift</span>
-              <span style={{ fontSize: 12, color: "#185FA5", fontWeight: 500, cursor: "pointer" }}>View all →</span>
+              <button
+                onClick={() => router.push("/drivers")}
+                style={{ fontSize: 12, color: "#185FA5", fontWeight: 500, cursor: "pointer", background: "none", border: "none", padding: 0, fontFamily: "inherit" }}
+              >
+                View all →
+              </button>
             </div>
-            <div style={{ padding: "8px 0" }}>
+            <div style={{ padding: "8px 0", overflowY: "auto", minHeight: 0, ...(bp === "desktop" ? {} : { maxHeight: 300 }) }}>
               {drivers.length === 0 ? (
                 <div style={{ padding: "16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>{loaded ? "No drivers." : "Loading drivers…"}</div>
               ) : (
@@ -529,7 +550,7 @@ function JobRow({ job, isLast }: { job: Job; isLast: boolean }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "100px 1fr 110px 80px 110px 80px",
+        gridTemplateColumns: JOB_COLUMNS,
         padding: "9px 16px",
         borderBottom: isLast ? "none" : "1px solid rgba(0,0,0,0.05)",
         alignItems: "center",
@@ -539,13 +560,13 @@ function JobRow({ job, isLast }: { job: Job; isLast: boolean }) {
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.018)"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <span style={{ fontSize: 12.5, fontWeight: 500, color: "#185FA5", fontFamily: "monospace" }}>
+      <span style={{ fontSize: 12.5, fontWeight: 500, color: "#185FA5", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>
         {job.caseId}
       </span>
       <span style={{ fontSize: 13, color: "#1a1a1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }}>
         {job.officeName}
       </span>
-      <span style={{ fontSize: 13, color: "#3a3a3a" }}>{job.driverName ?? "—"}</span>
+      <span style={{ fontSize: 13, color: "#3a3a3a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }}>{job.driverName ?? "—"}</span>
       <span>
         {job.priority === "stat" ? (
           <span style={{ fontSize: 10.5, fontWeight: 500, background: "rgba(133,79,11,0.10)", color: "#854F0B", borderRadius: 20, padding: "2px 8px", letterSpacing: "0.03em", textTransform: "uppercase" }}>
