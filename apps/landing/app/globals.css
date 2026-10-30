@@ -78,3 +78,30 @@ body {
 .reveal-delay-4 { transition-delay: 0.32s; }
 .reveal-delay-5 { transition-delay: 0.40s; }
 .reveal-delay-6 { transition-delay: 0.48s; }
+
+/* ── Feature guide: print / Save as PDF ── */
+
+.print-only { display: none; }
+
+@media print {
+  @page { margin: 16mm 14mm; }
+  .no-print { display: none !important; }
+  .print-only { display: flex; }
+  p.print-only { display: block; }
+  html { scroll-behavior: auto; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* The navy hero becomes a plain title block on paper. */
+  .feature-hero { background: none !important; color: #111827 !important; }
+  .feature-hero > div { padding: 0 0 8mm !important; }
+  .feature-hero h1 { font-size: 26pt; color: #111827; }
+  .feature-hero p { color: #4b5563 !important; }
+
+  .feature-body { gap: 0; padding-right: 2px; }
+  .feature-body > * + * { margin-top: 10mm !important; }
+  .feature-section { break-before: page; }
+  .feature-section:first-child { break-before: auto; }
+  .feature-section h2 { break-after: avoid; }
+  .feature-section h3 { break-after: avoid; }
+  .feature-card { break-inside: avoid; border-color: #e5e7eb; }
+}

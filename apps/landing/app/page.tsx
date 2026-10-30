@@ -220,6 +220,7 @@ const NAV_LINKS: [string, string][] = [
   ["#problem", "Problem"],
   ["#how-it-works", "How it works"],
   ["#features", "Features"],
+  ["/features", "Why Gepeto"],
 ];
 
 function Nav({ scrolled }: { scrolled: boolean }) {
@@ -262,9 +263,14 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                 key={href}
                 href={href}
                 className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  scrolled
-                    ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                    : "text-white/65 hover:text-white hover:bg-white/8"
+                  // "Why Gepeto" is a page, not a section of this one: outline it.
+                  href.startsWith("/")
+                    ? scrolled
+                      ? "ml-1 border border-gray-300 text-gray-800 hover:border-gray-400 hover:bg-gray-50"
+                      : "ml-1 border border-white/30 text-white hover:border-white/60 hover:bg-white/8"
+                    : scrolled
+                      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                      : "text-white/65 hover:text-white hover:bg-white/8"
                 }`}
               >
                 {label}
@@ -653,6 +659,15 @@ function FeaturesSection() {
             </div>
           ))}
         </div>
+        <div className="mt-10 text-center">
+          <a
+            href="/features"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue hover:text-blue-dark transition-colors"
+          >
+            See everything Gepeto does · Download the brochure (PDF)
+            <span aria-hidden>→</span>
+          </a>
+        </div>
       </div>
     </section>
   );
@@ -754,6 +769,9 @@ function Footer() {
             className="hover:text-white/50 transition-colors"
           >
             Contact
+          </a>
+          <a href="/features" className="hover:text-white/50 transition-colors">
+            Why Gepeto
           </a>
           <a href="/privacy" className="hover:text-white/50 transition-colors">
             Privacy
