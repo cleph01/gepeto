@@ -1693,6 +1693,8 @@ export default function JobsPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
   const [jobs, setJobs]               = useState<Job[]>([]);
+  // Until the first load lands, show "Loading" rather than zeros and an empty table.
+  const [jobsLoaded, setJobsLoaded]   = useState(false);
   const [offices, setOffices]         = useState<OfficeOption[]>([]);
   const [drivers, setDrivers]         = useState<DriverOption[]>([]);
   const [showNewJob, setShowNewJob]   = useState(false);
@@ -1746,7 +1748,7 @@ export default function JobsPage() {
       if (jobsRes.data)    setJobs(jobsRes.data.map(mapJob));
       if (officesRes.data) setOffices(officesRes.data);
       if (driversRes.data) setDrivers(driversRes.data);
-    });
+    }).catch(() => {}).finally(() => setJobsLoaded(true));
   }, [session]);
 
   // Live updates: reload the list whenever realtime reports a job change
@@ -1874,7 +1876,9 @@ export default function JobsPage() {
             Jobs
           </h1>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, fontWeight: 400 }}>
-            {activeCount} active · {counts.pending} pending · {counts.delivered} delivered today
+            {jobsLoaded
+              ? `${activeCount} active · ${counts.pending} pending · ${counts.delivered} delivered today`
+              : "Loading jobs…"}
           </p>
         </div>
         <button
@@ -1898,10 +1902,10 @@ export default function JobsPage() {
 
         {/* Stats */}
         <div className="stats-grid">
-          <StatCard label="Total Jobs"      value={counts.all}        />
-          <StatCard label="Active"          value={activeCount}       color="#185FA5" />
-          <StatCard label="Delivered Today" value={counts.delivered}  color="#3B6D11" />
-          <StatCard label="Pending"         value={counts.pending}    color="#854F0B" />
+          <StatCard label="Total Jobs"      value={jobsLoaded ? counts.all : "–"}        />
+          <StatCard label="Active"          value={jobsLoaded ? activeCount : "–"}       color="#185FA5" />
+          <StatCard label="Delivered Today" value={jobsLoaded ? counts.delivered : "–"}  color="#3B6D11" />
+          <StatCard label="Pending"         value={jobsLoaded ? counts.pending : "–"}    color="#854F0B" />
         </div>
 
         {/* Table */}
@@ -1978,7 +1982,7 @@ export default function JobsPage() {
           {/* Rows */}
           {filtered.length === 0 ? (
             <div style={{ padding: "40px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
-              No jobs with this status.
+              {jobsLoaded ? "No jobs with this status." : "Loading jobs…"}
             </div>
           ) : bp === "mobile" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -2063,7 +2067,7 @@ export default function JobsPage() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color = "#1a1a1a" }: { label: string; value: number; color?: string }) {
+function StatCard({ label, value, color = "#1a1a1a" }: { label: string; value: number | string; color?: string }) {
   return (
     <div style={{ background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.07)" }}>
       <div style={{ fontSize: 26, fontWeight: 600, color, lineHeight: 1.1, letterSpacing: "-0.02em" }}>{value}</div>

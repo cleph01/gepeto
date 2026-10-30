@@ -1025,6 +1025,8 @@ function SelectField({
         onFocus={(e) => { e.currentTarget.style.borderColor = "#185FA5"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(24,95,165,0.10)"; }}
         onBlur={(e)  => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.12)"; e.currentTarget.style.boxShadow = "none"; }}
       >
+        {/* Without this, an unset value shows the first option (e.g. "AL") as if chosen. */}
+        {!options.some((o) => o.value === value) && <option value="" disabled>Select…</option>}
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
@@ -1045,7 +1047,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
         color: "#5F5E5A",
         background: "#F8F9FB",
       }}>
-        {value}
+        {value || "—"}
       </div>
     </div>
   );
