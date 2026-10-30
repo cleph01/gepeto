@@ -339,6 +339,8 @@ export default function DriversPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
   const [drivers, setDrivers]           = useState<Driver[]>([]);
+  // Until the first load lands, show "Loading" rather than zeros and an empty table.
+  const [loaded, setLoaded]             = useState(false);
   const [modalDriver, setModalDriver]   = useState<Partial<Driver> | null | "new">(null);
   const [deactivating, setDeactivating] = useState<Driver | null>(null);
   const [filter, setFilter]             = useState<DriverStatus | "all">("all");
@@ -352,7 +354,7 @@ export default function DriversPage() {
         joinedDate: new Date(d.createdAt)
           .toLocaleDateString("en-US", { month: "short", year: "numeric" }),
       })));
-    });
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, [session]);
 
   const onSave = async (data: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate"> & { email?: string }) => {
@@ -446,7 +448,9 @@ export default function DriversPage() {
             Drivers
           </h1>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, fontWeight: 400 }}>
-            {counts.on_delivery} on delivery · {counts.available} available · {counts.off_duty} off duty
+            {loaded
+              ? `${counts.on_delivery} on delivery · ${counts.available} available · ${counts.off_duty} off duty`
+              : "Loading drivers…"}
           </p>
         </div>
         <button
@@ -470,10 +474,10 @@ export default function DriversPage() {
 
         {/* Stats row */}
         <div className="stats-grid">
-          <StatCard label="Total Drivers"  value={counts.all}         />
-          <StatCard label="On Delivery"    value={counts.on_delivery} color="#185FA5" />
-          <StatCard label="Available"      value={counts.available}   color="#3B6D11" />
-          <StatCard label="Off Duty"       value={counts.off_duty}    color="#5F5E5A" />
+          <StatCard label="Total Drivers"  value={loaded ? counts.all : "–"}         />
+          <StatCard label="On Delivery"    value={loaded ? counts.on_delivery : "–"} color="#185FA5" />
+          <StatCard label="Available"      value={loaded ? counts.available : "–"}   color="#3B6D11" />
+          <StatCard label="Off Duty"       value={loaded ? counts.off_duty : "–"}    color="#5F5E5A" />
         </div>
 
         {/* Driver table */}
@@ -551,7 +555,7 @@ export default function DriversPage() {
           {/* Rows */}
           {filtered.length === 0 ? (
             <div style={{ padding: "40px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
-              No drivers with this status.
+              {loaded ? "No drivers with this status." : "Loading drivers…"}
             </div>
           ) : bp === "mobile" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -608,7 +612,7 @@ export default function DriversPage() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color = "#1a1a1a" }: { label: string; value: number; color?: string }) {
+function StatCard({ label, value, color = "#1a1a1a" }: { label: string; value: number | string; color?: string }) {
   return (
     <div
       style={{

@@ -28,6 +28,8 @@ export default function DashboardPage() {
   const [jobs, setJobs]      = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
   const [labName, setLabName] = useState<string | null>(null);
+  // Until the first load lands, show "Loading" rather than zeros and empty lists.
+  const [loaded, setLoaded]   = useState(false);
   const [jobFilter, setJobFilter] = useState<"all" | "stat" | "in_transit" | "pending">("all");
 
   // Initial load
@@ -41,7 +43,7 @@ export default function DashboardPage() {
       if (jobsRes.data)      setJobs(jobsRes.data);
       if (driversRes.data)   setDrivers(driversRes.data);
       if (settingsRes.data)  setLabName(settingsRes.data.lab.name);
-    });
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, [session]);
 
   // Upserts a single enriched job into state (used by Realtime hook)
@@ -170,10 +172,10 @@ export default function DashboardPage() {
           {/* Metrics row */}
           {/* 5 across on desktop; on smaller screens the messages card spans the full row */}
           <div className="stats-grid" style={bp === "desktop" ? { gridTemplateColumns: "repeat(5, 1fr)" } : undefined}>
-            <MetricCard value={String(metrics.active)}    label="Active Jobs" sublabel={`${metrics.createdToday} today`} />
-            <MetricCard value={String(metrics.inTransit)} label="In Transit"     color="#185FA5" sublabel={`${metrics.statInTransit} STAT`} />
-            <MetricCard value={String(metrics.delivered)} label="Delivered Today" color="#3B6D11" />
-            <MetricCard value={String(metrics.pending)}   label="Pending"        color="#854F0B" />
+            <MetricCard value={loaded ? String(metrics.active) : "–"}    label="Active Jobs" sublabel={loaded ? `${metrics.createdToday} today` : undefined} />
+            <MetricCard value={loaded ? String(metrics.inTransit) : "–"} label="In Transit"     color="#185FA5" sublabel={loaded ? `${metrics.statInTransit} STAT` : undefined} />
+            <MetricCard value={loaded ? String(metrics.delivered) : "–"} label="Delivered Today" color="#3B6D11" />
+            <MetricCard value={loaded ? String(metrics.pending) : "–"}   label="Pending"        color="#854F0B" />
             <MetricCard
               value={String(totalUnread)}
               label="Unread Messages"
@@ -258,7 +260,7 @@ export default function DashboardPage() {
             {/* Job rows */}
             {filteredJobs.length === 0 ? (
               <div style={{ padding: "24px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
-                {jobFilter === "all" ? "No active jobs." : "No matching jobs."}
+                {!loaded ? "Loading jobs…" : jobFilter === "all" ? "No active jobs." : "No matching jobs."}
               </div>
             ) : (
               filteredJobs.map((job, i) => (
@@ -291,7 +293,7 @@ export default function DashboardPage() {
             </div>
             <div style={{ padding: "8px 0" }}>
               {drivers.length === 0 ? (
-                <div style={{ padding: "16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>No drivers.</div>
+                <div style={{ padding: "16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>{loaded ? "No drivers." : "Loading drivers…"}</div>
               ) : (
                 drivers.map((d) => <DriverRow key={d.id} driver={d} />)
               )}

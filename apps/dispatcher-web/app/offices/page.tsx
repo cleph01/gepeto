@@ -24,6 +24,8 @@ export default function OfficesPage() {
   const { apiFetch, session } = useAuth();
 
   const [offices, setOffices]       = useState<Office[]>([]);
+  // Until the first load lands, show placeholder cards, not the "No offices yet" screen.
+  const [loaded, setLoaded]         = useState(false);
   const [showModal, setShowModal]   = useState(false);
   const [editOffice, setEditOffice] = useState<Office | null>(null);
 
@@ -31,7 +33,7 @@ export default function OfficesPage() {
     if (!session) return;
     apiFetch<{ data: Office[] | null; error: null }>("/api/offices").then((res) => {
       if (res.data) setOffices(res.data);
-    });
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, [session]);
 
   async function onSave(draft: Omit<Office, "id" | "trackingToken">, id?: string) {
@@ -71,7 +73,7 @@ export default function OfficesPage() {
             Offices
           </h1>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0 }}>
-            {offices.length} dental office{offices.length !== 1 ? "s" : ""}
+            {loaded ? `${offices.length} dental office${offices.length !== 1 ? "s" : ""}` : "Loading offices…"}
           </p>
         </div>
         <button
@@ -92,7 +94,7 @@ export default function OfficesPage() {
 
       {/* Content */}
       <div style={{ padding: isMobile ? 12 : "20px 28px", flex: 1 }}>
-        {offices.length === 0 ? (
+        {loaded && offices.length === 0 ? (
           <EmptyState onAdd={() => setShowModal(true)} />
         ) : (
           <div style={{
@@ -100,6 +102,7 @@ export default function OfficesPage() {
             gridTemplateColumns: isMobile ? "1fr" : bp === "tablet" ? "1fr 1fr" : "1fr 1fr 1fr",
             gap: 16,
           }}>
+            {!loaded && [0, 1, 2].map((i) => <OfficeCardSkeleton key={i} />)}
             {offices.map((office) => (
               <OfficeCard
                 key={office.id}
@@ -123,6 +126,33 @@ export default function OfficesPage() {
 }
 
 // ── Office card ───────────────────────────────────────────────────────────────
+
+// Same outline as OfficeCard, so nothing shifts when the real cards arrive.
+function OfficeCardSkeleton() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        background: "#FFFFFF",
+        border: "1px solid rgba(0,0,0,0.08)",
+        borderRadius: 12,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ padding: "16px 16px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="skeleton" style={{ height: 14, width: "60%", marginBottom: 4 }} />
+        <div className="skeleton" style={{ height: 10, width: "45%" }} />
+        <div className="skeleton" style={{ height: 10, width: "35%" }} />
+        <div className="skeleton" style={{ height: 10, width: "75%" }} />
+      </div>
+      <div style={{ padding: "10px 16px 14px", borderTop: "1px solid rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="skeleton" style={{ height: 8, width: "30%" }} />
+        <div className="skeleton" style={{ height: 28, width: "100%", borderRadius: 7 }} />
+      </div>
+    </div>
+  );
+}
 
 function OfficeCard({ office, onEdit }: { office: Office; onEdit: () => void }) {
   const [copied, setCopied] = useState(false);
