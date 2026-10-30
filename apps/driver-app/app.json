@@ -2,6 +2,7 @@
   "expo": {
     "name": "driver-app",
     "slug": "driver-app",
+    "owner": "gepeto-delivery-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -52,6 +53,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4c1c2ccd-dce0-4f95-a326-5ab511d7d84a"
+      }
     }
   }
 }
