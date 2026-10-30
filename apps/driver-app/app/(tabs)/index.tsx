@@ -28,6 +28,7 @@ import {
 } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
+import { navigate } from '@/lib/navigation';
 import { onJobRemoved } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, dueInfo, needsReply } from '@/lib/jobs';
 
@@ -41,9 +42,26 @@ function toQueueJob(row: Record<string, unknown>): QueueJob {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// One place the driver goes: a single job, or several for the same office
+// (grouped so they can be delivered on one trip).
+type Stop = { key: string; jobs: QueueJob[] };
+
+const dueTime = (j: QueueJob) => (j.scheduledAt ? new Date(j.scheduledAt).getTime() : Infinity);
+
+/** Groups jobs by office and orders the stops by their earliest due time (no due time last). */
+function toStops(jobs: QueueJob[]): Stop[] {
+  const byKey = new Map<string, QueueJob[]>();
+  for (const job of jobs) {
+    const key = job.officeId ?? job.deliveryAddress;
+    byKey.set(key, [...(byKey.get(key) ?? []), job]);
+  }
+  const stops = [...byKey].map(([key, group]) => ({ key, jobs: group.sort((a, b) => dueTime(a) - dueTime(b)) }));
+  return stops.sort((a, b) => dueTime(a.jobs[0]) - dueTime(b.jobs[0]));
+}
+
 // ─── Job card ─────────────────────────────────────────────────────────────────
 
-function JobCard({ job, unread, onPress }: { job: QueueJob; unread: number; onPress: () => void }) {
+function JobCard({ job, unread, inGroup, onPress }: { job: QueueJob; unread: number; inGroup?: boolean; onPress: () => void }) {
   const statusColor = StatusColors[job.status];
   const pendingReply = needsReply(job);
   const due = dueInfo(job);
@@ -83,8 +101,9 @@ function JobCard({ job, unread, onPress }: { job: QueueJob; unread: number; onPr
       </View>
 
       <View style={styles.cardBody}>
-        <Text style={styles.officeName} numberOfLines={1}>{job.officeName ?? job.deliveryAddress}</Text>
-        {job.officeName && (
+        {/* In a group the office and address are on the group header. */}
+        {!inGroup && <Text style={styles.officeName} numberOfLines={1}>{job.officeName ?? job.deliveryAddress}</Text>}
+        {!inGroup && job.officeName && (
           <View style={styles.metaRow}>
             <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
             <Text style={styles.metaText} numberOfLines={1}>{job.deliveryAddress}</Text>
@@ -161,6 +180,61 @@ function StatsRow({ jobs }: { jobs: Job[] }) {
   );
 }
 
+// ─── Office group header ─────────────────────────────────────────────────────
+
+function GroupHeader({ jobs }: { jobs: QueueJob[] }) {
+  const first = jobs[0];
+  const due = dueInfo(first); // jobs are sorted, so this is the earliest
+  const hasStat = jobs.some((j) => j.priority === 'stat');
+  return (
+    <View
+      style={styles.groupHeader}
+      accessibilityLabel={`${first.officeName ?? first.deliveryAddress}, ${jobs.length} jobs${hasStat ? ', includes STAT' : ''}`}
+    >
+      <View style={styles.groupHeaderBody}>
+        <View style={styles.groupTitleRow}>
+          <Text style={[styles.officeName, styles.groupOfficeName]} numberOfLines={1}>{first.officeName ?? first.deliveryAddress}</Text>
+          <View style={styles.groupCount}>
+            <Text style={styles.groupCountText}>{jobs.length} jobs</Text>
+          </View>
+          {hasStat && (
+            <View style={styles.statBadge}>
+              <Text style={styles.statBadgeText}>STAT</Text>
+            </View>
+          )}
+        </View>
+        {first.officeName && (
+          <View style={styles.metaRow}>
+            <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
+            <Text style={styles.metaText} numberOfLines={1}>{first.deliveryAddress}</Text>
+          </View>
+        )}
+        {due && (
+          <View style={styles.metaRow}>
+            <IconSymbol
+              name="clock"
+              size={15}
+              color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
+            />
+            <Text style={[styles.metaText, due.tone === 'late' && styles.dueLate, due.tone === 'soon' && styles.dueSoon]}>
+              {jobs.length > 1 ? `Earliest: ${due.text}` : due.text}
+            </Text>
+          </View>
+        )}
+      </View>
+      <TouchableOpacity
+        style={styles.groupNavigate}
+        onPress={() => navigate({ address: first.deliveryAddress })}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`Navigate to ${first.officeName ?? first.deliveryAddress}`}
+      >
+        <IconSymbol name="mappin.and.ellipse" size={20} color={Colors.accent} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function StatTile({ label, value, highlight, valueColor }: { label: string; value: number; highlight?: boolean; valueColor?: string }) {
   return (
     <View style={[styles.statTile, highlight && styles.statTileHighlight]}>
@@ -175,7 +249,8 @@ function StatTile({ label, value, highlight, valueColor }: { label: string; valu
 type Row =
   | { type: 'stats' }
   | { type: 'section'; title: string }
-  | { type: 'job'; job: QueueJob };
+  | { type: 'group'; key: string; jobs: QueueJob[] }
+  | { type: 'job'; job: QueueJob; inGroup?: boolean; lastInGroup?: boolean };
 
 export default function JobQueueScreen() {
   const router = useRouter();
@@ -264,17 +339,26 @@ export default function JobQueueScreen() {
   const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
   useLocationTracking(hasActiveJob);
 
+  // Active sections group jobs going to the same office, so they can go out on one trip.
   const sections = [
-    { title: `Needs your reply · ${replyJobs.length}`, data: replyJobs },
-    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs },
-    { title: `Completed today · ${completedJobs.length}`, data: completedJobs },
+    { title: `Needs your reply · ${replyJobs.length}`, data: replyJobs, grouped: true },
+    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs, grouped: true },
+    { title: `Completed today · ${completedJobs.length}`, data: completedJobs, grouped: false },
   ].filter((s) => s.data.length > 0);
 
   const flatData: Row[] = [
     { type: 'stats' },
-    ...sections.flatMap((s) => [
-      { type: 'section' as const, title: s.title },
-      ...s.data.map((job) => ({ type: 'job' as const, job })),
+    ...sections.flatMap((s): Row[] => [
+      { type: 'section', title: s.title },
+      ...(s.grouped
+        ? toStops(s.data).flatMap((stop): Row[] =>
+            stop.jobs.length === 1
+              ? [{ type: 'job', job: stop.jobs[0] }]
+              : [
+                  { type: 'group', key: `${s.title}-${stop.key}`, jobs: stop.jobs },
+                  ...stop.jobs.map((job, i): Row => ({ type: 'job', job, inGroup: true, lastInGroup: i === stop.jobs.length - 1 })),
+                ])
+        : s.data.map((job): Row => ({ type: 'job', job }))),
     ]),
   ];
 
@@ -291,7 +375,7 @@ export default function JobQueueScreen() {
 
       <FlatList
         data={flatData}
-        keyExtractor={(item, i) => (item.type === 'job' ? item.job.id : `${item.type}-${i}`)}
+        keyExtractor={(item, i) => (item.type === 'job' ? item.job.id : item.type === 'group' ? `group-${item.key}` : `${item.type}-${i}`)}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -324,16 +408,24 @@ export default function JobQueueScreen() {
           if (item.type === 'section') {
             return <Text style={styles.sectionTitle}>{item.title}</Text>;
           }
-          return (
+          if (item.type === 'group') {
+            return <GroupHeader jobs={item.jobs} />;
+          }
+          const card = (
             <JobCard
               job={item.job}
               unread={unreadByJob[item.job.id] ?? 0}
+              inGroup={item.inGroup}
               onPress={() => {
                 Haptics.selectionAsync();
                 router.push(`/job/${item.job.id}`);
               }}
             />
           );
+          // Grouped jobs hang off their office header on a blue rail.
+          return item.inGroup
+            ? <View style={[styles.groupRail, item.lastInGroup && styles.groupRailLast]}>{card}</View>
+            : card;
         }}
         ListFooterComponent={
           sections.length === 0 ? (
@@ -458,6 +550,57 @@ const styles = StyleSheet.create({
   },
   statLabelHighlight: {
     color: Colors.accentText,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  groupHeaderBody: {
+    flex: 1,
+    gap: 6,
+  },
+  groupTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  groupOfficeName: {
+    flexShrink: 1,
+  },
+  groupCount: {
+    flexShrink: 0,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accentBg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    paddingHorizontal: Spacing.sm + 1,
+    paddingVertical: 2,
+  },
+  groupCountText: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: 12,
+  },
+  groupNavigate: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentBg,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupRail: {
+    marginLeft: Spacing.sm,
+    paddingLeft: Spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.accentBorder,
+  },
+  groupRailLast: {
+    marginBottom: Spacing.sm,
   },
   sectionTitle: {
     fontFamily: Fonts.semibold,
