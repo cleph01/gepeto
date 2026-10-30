@@ -118,6 +118,8 @@ export default function SettingsPage() {
       setProfile(res.data.profile);
     });
     loadTeam();
+    // Load once per session; apiFetch and loadTeam are recreated every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // ── Team handlers ───────────────────────────────────────────────────────────
@@ -900,7 +902,7 @@ function InviteTeammateModal({
             />
             {fieldErrors.email && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "#A32D2D" }}>{fieldErrors.email}</p>}
             <p style={{ margin: "5px 0 0", fontSize: 11.5, color: "#5F5E5A" }}>
-              They'll be invited as a dispatcher — able to manage jobs, drivers, and offices.
+              They&apos;ll be invited as a dispatcher — able to manage jobs, drivers, and offices.
             </p>
           </div>
 
