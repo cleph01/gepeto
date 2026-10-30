@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -29,8 +31,10 @@ import {
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { navigate } from '@/lib/navigation';
+import { apiPatch } from '@/lib/api';
+import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { onJobRemoved } from '@/components/job-alerts';
-import { ON_THE_WAY, STEPS, dueInfo, needsReply } from '@/lib/jobs';
+import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
 // The queue reads office names alongside each job (drivers can read their lab's offices).
 type QueueJob = Job & { officeName: string | null };
@@ -182,55 +186,82 @@ function StatsRow({ jobs }: { jobs: Job[] }) {
 
 // ─── Office group header ─────────────────────────────────────────────────────
 
-function GroupHeader({ jobs }: { jobs: QueueJob[] }) {
+function GroupHeader({
+  jobs,
+  action,
+  busy,
+  onAction,
+}: {
+  jobs: QueueJob[];
+  action: BatchAction | null;
+  busy: boolean;
+  onAction: () => void;
+}) {
   const first = jobs[0];
   const due = dueInfo(first); // jobs are sorted, so this is the earliest
   const hasStat = jobs.some((j) => j.priority === 'stat');
+  const finishing = action?.next === 'delivered';
   return (
-    <View
-      style={styles.groupHeader}
-      accessibilityLabel={`${first.officeName ?? first.deliveryAddress}, ${jobs.length} jobs${hasStat ? ', includes STAT' : ''}`}
-    >
-      <View style={styles.groupHeaderBody}>
-        <View style={styles.groupTitleRow}>
-          <Text style={[styles.officeName, styles.groupOfficeName]} numberOfLines={1}>{first.officeName ?? first.deliveryAddress}</Text>
-          <View style={styles.groupCount}>
-            <Text style={styles.groupCountText}>{jobs.length} jobs</Text>
+    <View style={styles.groupHeader}>
+      <View
+        style={styles.groupHeaderTop}
+        accessibilityLabel={`${first.officeName ?? first.deliveryAddress}, ${jobs.length} jobs${hasStat ? ', includes STAT' : ''}`}
+      >
+        <View style={styles.groupHeaderBody}>
+          <View style={styles.groupTitleRow}>
+            <Text style={[styles.officeName, styles.groupOfficeName]} numberOfLines={1}>{first.officeName ?? first.deliveryAddress}</Text>
+            <View style={styles.groupCount}>
+              <Text style={styles.groupCountText}>{jobs.length} jobs</Text>
+            </View>
+            {hasStat && (
+              <View style={styles.statBadge}>
+                <Text style={styles.statBadgeText}>STAT</Text>
+              </View>
+            )}
           </View>
-          {hasStat && (
-            <View style={styles.statBadge}>
-              <Text style={styles.statBadgeText}>STAT</Text>
+          {first.officeName && (
+            <View style={styles.metaRow}>
+              <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
+              <Text style={styles.metaText} numberOfLines={1}>{first.deliveryAddress}</Text>
+            </View>
+          )}
+          {due && (
+            <View style={styles.metaRow}>
+              <IconSymbol
+                name="clock"
+                size={15}
+                color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
+              />
+              <Text style={[styles.metaText, due.tone === 'late' && styles.dueLate, due.tone === 'soon' && styles.dueSoon]}>
+                {jobs.length > 1 ? `Earliest: ${due.text}` : due.text}
+              </Text>
             </View>
           )}
         </View>
-        {first.officeName && (
-          <View style={styles.metaRow}>
-            <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
-            <Text style={styles.metaText} numberOfLines={1}>{first.deliveryAddress}</Text>
-          </View>
-        )}
-        {due && (
-          <View style={styles.metaRow}>
-            <IconSymbol
-              name="clock"
-              size={15}
-              color={due.tone === 'late' ? Colors.danger : due.tone === 'soon' ? Colors.warning : Colors.textSecondary}
-            />
-            <Text style={[styles.metaText, due.tone === 'late' && styles.dueLate, due.tone === 'soon' && styles.dueSoon]}>
-              {jobs.length > 1 ? `Earliest: ${due.text}` : due.text}
-            </Text>
-          </View>
-        )}
+        <TouchableOpacity
+          style={styles.groupNavigate}
+          onPress={() => navigate({ address: first.deliveryAddress })}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Navigate to ${first.officeName ?? first.deliveryAddress}`}
+        >
+          <IconSymbol name="mappin.and.ellipse" size={20} color={Colors.accent} />
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        style={styles.groupNavigate}
-        onPress={() => navigate({ address: first.deliveryAddress })}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={`Navigate to ${first.officeName ?? first.deliveryAddress}`}
-      >
-        <IconSymbol name="mappin.and.ellipse" size={20} color={Colors.accent} />
-      </TouchableOpacity>
+      {/* Move the group along together: one tap at the lab, one at the door. */}
+      {action && (
+        <TouchableOpacity
+          style={[styles.batchBtn, finishing && styles.batchBtnFinish, busy && styles.batchBtnBusy]}
+          onPress={onAction}
+          disabled={busy}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
+          {busy
+            ? <ActivityIndicator color={finishing ? Colors.successInk : '#fff'} />
+            : <Text style={[styles.batchBtnText, finishing && styles.batchBtnTextFinish]}>{action.label}</Text>}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -258,6 +289,8 @@ export default function JobQueueScreen() {
   const { unreadByJob } = useMessages();
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [busyGroup, setBusyGroup] = useState<string | null>(null);
+  const [delivering, setDelivering] = useState<{ key: string; officeName: string; jobs: QueueJob[] } | null>(null);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const driverId = getDriverId(session);
@@ -335,6 +368,58 @@ export default function JobQueueScreen() {
   const inProgressJobs = activeJobs.filter((j) => !needsReply(j));
   const completedJobs = jobs.filter(finishedToday);
 
+  // ── Group batch actions ──────────────────────────────────────────────────
+  // Each job is updated through the same endpoint as the single-job buttons,
+  // so status history, dispatch alerts and live updates all behave the same.
+  const applyToJobs = async (key: string, jobsToMove: QueueJob[], body: (job: QueueJob) => object) => {
+    setBusyGroup(key);
+    const results = await Promise.allSettled(
+      jobsToMove.map((job) => apiPatch<Job>(`/api/jobs/${job.id}/status`, body(job)))
+    );
+    const failed = jobsToMove.filter((_, i) => {
+      const r = results[i];
+      return r.status === 'rejected' || !r.value.data;
+    });
+    await fetchJobs(false);
+    setBusyGroup(null);
+    if (failed.length > 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        `${failed.length} of ${jobsToMove.length} didn't update`,
+        `${failed.map((j) => j.caseId).join(', ')}. Check your signal and try again, or open the job.`
+      );
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  const runBatch = (key: string, group: QueueJob[], action: BatchAction & { jobs: QueueJob[] }) => {
+    if (action.next === 'delivered') {
+      setDelivering({ key, officeName: group[0].officeName ?? group[0].deliveryAddress, jobs: action.jobs });
+      return;
+    }
+    // Several jobs at once: one stray tap shouldn't move them all.
+    Alert.alert(
+      `${action.label}?`,
+      action.jobs.map((j) => j.caseId).join(', '),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => applyToJobs(key, action.jobs, () => ({ status: action.next })) },
+      ]
+    );
+  };
+
+  const confirmGroupDelivery = async (recipientName: string) => {
+    if (!delivering) return;
+    const { key, jobs: toDeliver } = delivering;
+    setDelivering(null);
+    const timestamp = new Date().toISOString();
+    await applyToJobs(key, toDeliver, () => ({
+      status: 'delivered',
+      proofOfDelivery: { recipientName, timestamp },
+    }));
+  };
+
   // Track location whenever the driver has at least one active job
   const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
   useLocationTracking(hasActiveJob);
@@ -409,7 +494,15 @@ export default function JobQueueScreen() {
             return <Text style={styles.sectionTitle}>{item.title}</Text>;
           }
           if (item.type === 'group') {
-            return <GroupHeader jobs={item.jobs} />;
+            const action = batchAction(item.jobs);
+            return (
+              <GroupHeader
+                jobs={item.jobs}
+                action={action}
+                busy={busyGroup === item.key}
+                onAction={() => action && runBatch(item.key, item.jobs, action)}
+              />
+            );
           }
           const card = (
             <JobCard
@@ -440,6 +533,13 @@ export default function JobQueueScreen() {
         }
       />
       </SafeAreaView>
+      <GroupDeliveryModal
+        visible={!!delivering}
+        officeName={delivering?.officeName ?? ''}
+        caseIds={delivering?.jobs.map((j) => j.caseId) ?? []}
+        onCancel={() => setDelivering(null)}
+        onConfirm={confirmGroupDelivery}
+      />
     </View>
   );
 }
@@ -552,10 +652,34 @@ const styles = StyleSheet.create({
     color: Colors.accentText,
   },
   groupHeader: {
+    gap: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  groupHeaderTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    paddingTop: Spacing.sm,
+  },
+  batchBtn: {
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  batchBtnFinish: {
+    backgroundColor: Colors.success,
+  },
+  batchBtnBusy: {
+    opacity: 0.7,
+  },
+  batchBtnText: {
+    fontFamily: Fonts.semibold,
+    color: '#fff',
+    fontSize: FontSize.md,
+  },
+  batchBtnTextFinish: {
+    color: Colors.successInk,
   },
   groupHeaderBody: {
     flex: 1,
