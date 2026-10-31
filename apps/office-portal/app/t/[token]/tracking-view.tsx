@@ -3,16 +3,12 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import JobMap from "./job-map";
 import { ChatIcon, ConversationModal, unreadForJobs, type Message } from "./messages";
+import DeliveredView from "./delivered-view";
+import { itemsLine, timeAgo, type Item } from "./format";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type JobStatus = "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
-
-interface Item {
-  description: string;
-  quantity: number;
-  flags: string[];
-}
 
 interface TrackingJob {
   id: string;
@@ -31,16 +27,6 @@ interface TrackingJob {
   driverLocation: { lat: number; lng: number } | null;
 }
 
-interface RecentJob {
-  id: string;
-  caseId: string;
-  status: "delivered";
-  priority: "stat" | "standard";
-  deliveryAddress: string;
-  items: Item[] | null;
-  updatedAt: string;
-}
-
 interface Office {
   id: string;
   name: string;
@@ -54,7 +40,6 @@ interface Office {
 interface TrackingData {
   office: Office;
   jobs: TrackingJob[];
-  recentDelivered: RecentJob[];
 }
 
 // ── Status, in the office's terms ─────────────────────────────────────────────
@@ -74,33 +59,6 @@ function stageOf(job: TrackingJob): Stage {
 const STEP_NAMES = ["At the lab", "On the way", "Arrived"];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1)  return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
-/** Handling notes the person signing for the box should know about ("rush" is lab-internal). */
-const HANDLING: Record<string, string> = {
-  fragile: "Fragile",
-  temperature_sensitive: "Keep cool",
-  biohazard: "Biohazard",
-};
-
-function itemsLine(items: Item[] | null): { text: string; handling: string[] } {
-  const list = items ?? [];
-  const text = list
-    .map((i) => (i.quantity > 1 ? `${i.description} ×${i.quantity}` : i.description))
-    .filter(Boolean)
-    .join(" · ");
-  const handling = [...new Set(list.flatMap((i) => i.flags ?? []).map((f) => HANDLING[f]).filter(Boolean))];
-  return { text, handling };
-}
 
 const sameAddress = (a: string, b: string) =>
   a.replace(/[^a-z0-9]/gi, "").toLowerCase() === b.replace(/[^a-z0-9]/gi, "").toLowerCase();
@@ -163,6 +121,7 @@ export default function TrackingView({
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [tab, setTab] = useState<"active" | "delivered">("active");
   // Bumped when a conversation is read, so unread badges (kept in localStorage) re-render.
   const [, setSeenTick] = useState(0);
 
@@ -216,7 +175,7 @@ export default function TrackingView({
     return () => clearInterval(id);
   }, [jobIds, loadMessages]);
 
-  const { office, jobs, recentDelivered } = data;
+  const { office, jobs } = data;
   const groups = useMemo(() => groupByDriver(jobs), [jobs]);
   const onTheWay = jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
   const conversation = openGroup ? groups.find((g) => g.key === openGroup) ?? null : null;
@@ -256,7 +215,7 @@ export default function TrackingView({
             <div style={{ fontSize: 14, fontWeight: 600, color: "#185FA5", letterSpacing: "-0.01em", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {office.labName}
             </div>
-            <div style={{ fontSize: 10.5, color: "#5F5E5A", letterSpacing: "0.03em" }}>
+            <div style={{ fontSize: 10.5, color: "#5F5E5A", letterSpacing: "0.03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               Delivery Tracker · updated {timeAgo(lastUpdated.toISOString())}
             </div>
           </div>
@@ -282,7 +241,7 @@ export default function TrackingView({
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 48px" }}>
 
         {/* Office greeting */}
-        <div style={{ marginBottom: 22 }}>
+        <div style={{ marginBottom: 16 }}>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1a1a1a", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
             {office.name}
           </h1>
@@ -293,64 +252,51 @@ export default function TrackingView({
           </p>
         </div>
 
-        {/* Active cases, by driver */}
-        {jobs.length > 0 && (
-          <section style={{ marginBottom: 32, display: "flex", flexDirection: "column", gap: 14 }}>
-            {groups.map((g) => (
-              <DriverCard
-                key={g.key}
-                group={g}
-                officeAddress={office.address}
-                unread={unreadForJobs(messages, g.jobs.map((j) => j.id))}
-                onOpenMessages={() => setOpenGroup(g.key)}
-              />
-            ))}
-          </section>
-        )}
+        {/* Tabs */}
+        <div role="tablist" aria-label="Deliveries" style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(0,0,0,0.08)", marginBottom: 18 }}>
+          {([["active", `In progress (${jobs.length})`], ["delivered", "Delivered"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: "9px 12px", marginBottom: -1,
+                fontSize: 13.5, fontWeight: tab === id ? 600 : 500, color: tab === id ? "#185FA5" : "#5F5E5A",
+                borderBottom: `2px solid ${tab === id ? "#185FA5" : "transparent"}`,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-        {/* Recent delivered */}
-        {recentDelivered.length > 0 && (
-          <section>
-            <div style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
-              Recently delivered
+        {tab === "active" ? (
+          jobs.length > 0 ? (
+            <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {groups.map((g) => (
+                <DriverCard
+                  key={g.key}
+                  group={g}
+                  officeAddress={office.address}
+                  unread={unreadForJobs(messages, g.jobs.map((j) => j.id))}
+                  onOpenMessages={() => setOpenGroup(g.key)}
+                />
+              ))}
+            </section>
+          ) : (
+            <div style={{ textAlign: "center", padding: "44px 24px", background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", marginBottom: 6 }}>Nothing on the way right now</div>
+              <div style={{ fontSize: 13, color: "#5F5E5A", marginBottom: 14 }}>
+                New cases from {office.labName} will show up here as soon as they&apos;re dispatched.
+              </div>
+              <button onClick={() => setTab("delivered")} style={{ fontSize: 13, fontWeight: 600, color: "#185FA5", background: "#EBF2FA", border: "1px solid #C0D9F0", borderRadius: 8, padding: "7px 14px", cursor: "pointer" }}>
+                See delivered cases
+              </button>
             </div>
-            <div style={{ background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, overflow: "hidden" }}>
-              {recentDelivered.map((job, i) => {
-                const items = itemsLine(job.items);
-                return (
-                  <div
-                    key={job.id}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "11px 16px",
-                      borderBottom: i < recentDelivered.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", fontFamily: "ui-monospace, monospace" }}>{job.caseId}</div>
-                      {items.text && <div style={{ fontSize: 12, color: "#5F5E5A", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{items.text}</div>}
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ display: "inline-block", background: "#F0FAF0", color: "#3B6D11", fontSize: 11, fontWeight: 500, borderRadius: 20, padding: "2px 10px", border: "1px solid #C0E0C0", marginBottom: 3 }}>
-                        Delivered
-                      </div>
-                      <div style={{ fontSize: 11, color: "#9a9a9a" }}>{timeAgo(job.updatedAt)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* Empty state */}
-        {jobs.length === 0 && recentDelivered.length === 0 && (
-          <div style={{ textAlign: "center", padding: "48px 24px", background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12 }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>📦</div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", marginBottom: 6 }}>No deliveries yet</div>
-            <div style={{ fontSize: 13, color: "#5F5E5A" }}>
-              Your deliveries will appear here once your lab dispatches them.
-            </div>
-          </div>
+          )
+        ) : (
+          <DeliveredView token={token} />
         )}
       </main>
 
