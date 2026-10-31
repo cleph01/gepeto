@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
-import { EMPTY_RETURN, type ReturnDraft } from '@/lib/returns';
+import { EMPTY_RETURN, draftForPickup, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 
 // Proof of delivery for several jobs at one office: the recipient's name is
 // entered once and saved on every job. Same look as the single-job sheet.
@@ -23,10 +23,13 @@ export function GroupDeliveryModal({
   caseIds,
   onCancel,
   onConfirm,
+  pickupRequest,
 }: {
   visible: boolean;
   officeName: string;
   caseIds: string[];
+  /** The office's open pickup request, if any: the return arrives pre-filled. */
+  pickupRequest?: ReturnCase | null;
   onCancel: () => void;
   onConfirm: (recipientName: string, returnDraft: ReturnDraft) => Promise<void>;
 }) {
@@ -44,7 +47,13 @@ export function GroupDeliveryModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onCancel}
+      onShow={() => setReturnDraft(pickupRequest ? draftForPickup(pickupRequest) : EMPTY_RETURN)}
+    >
       <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
@@ -86,7 +95,7 @@ export function GroupDeliveryModal({
             />
           </View>
 
-          <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} />
+          <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} request={pickupRequest} />
 
           <TouchableOpacity
             style={[styles.confirmBtn, (!name.trim() || submitting) && styles.confirmBtnDisabled]}

@@ -42,6 +42,7 @@ export const SECTIONS: Section[] = [
         id: "dispatch-returns",
         title: "Nothing lost on the way back",
         features: [
+          { title: "Offices can request a pickup", body: "When an office has cases ready to go back, it asks from its tracking page. You get an alert, assign a driver from Returning Cases, and Gepeto points out who's already headed there." },
           { title: "Every returning case tracked", body: "Remakes, adjustments and new work a driver picks up at an office get their own return number and show up for you the moment the driver logs them, before they reach your door." },
           { title: "Check in at the front desk in seconds", body: "Confirm how many cases arrived, give the return your lab's case number, and link it to the delivery it came back from. Gepeto suggests the likely match." },
           { title: "Count mismatches caught", body: "If fewer cases arrive than the driver logged, you see it at check-in, and the difference is recorded in the return's history." },
@@ -99,6 +100,7 @@ export const SECTIONS: Section[] = [
         id: "driver-returns",
         title: "Bringing cases back",
         features: [
+          { title: "Pickups come to you", body: "When the lab assigns you an office's pickup, you get an alert and it waits in your list with when it's ready. At the door, the return form arrives pre-filled from the office's request." },
           { title: "Log returns at the door", body: "Completing a delivery asks \"Bringing anything back to the lab?\" Tap Yes, set the number of cases, and add case numbers or a note if you like. The lab sees it right away." },
           { title: "Pickups without a delivery", body: "Log cases collected from any office, even when you weren't dropping anything off." },
           { title: "One tap at the lab", body: "\"Dropped off\" tells the front desk your returns are waiting, and you can see when they've been checked in." },
@@ -139,6 +141,7 @@ export const SECTIONS: Section[] = [
           { title: "Grouped by driver", body: "Cases are organized under the driver bringing them, with one live map per driver that shows how close they are. Each case shows what's in the box, any handling notes like Fragile or Keep cool, and a simple At the lab, On the way, Arrived tracker." },
           { title: "A map only when it matters", body: "A driver's location appears once they're actually carrying your cases, not before." },
           { title: "One conversation per driver", body: "Message the lab and your driver about all of their cases in one place, with a badge for what's new since you last looked. Pick which case you mean with a tap." },
+          { title: "Request a pickup", body: "Cases ready to go back? Tell the lab how many, add case numbers or a note, and say when they're ready. Follow it from \"Waiting for a driver\" to \"Checked in at the lab\", and cancel any time before a driver is on it." },
           { title: "Call the lab in one tap", body: "The lab's number sits at the top of the tracking page: tap it on a phone, or read it off and dial from the front desk." },
           { title: "Delivery history on demand", body: "A Delivered tab keeps past deliveries out of the way until you need them. Filter by today, the last 7, 30 or 90 days, or any dates you choose, and see who signed for each case." },
           { title: "Private conversations", body: "If a case is moved to a different office, the new office never sees messages from the previous one." },

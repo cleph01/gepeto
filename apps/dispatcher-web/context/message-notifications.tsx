@@ -44,13 +44,17 @@ interface DriverActivity {
 
 /** Open returning cases (sidebar badge, dashboard tile). */
 export interface ReturnsSummary {
+  /** Pickups offices have asked for; `unassigned` of them still need a driver. */
+  requested: number;
+  requestedCases: number;
+  unassigned: number;
   withDriver: number;
   withDriverCases: number;
   atLab: number;
   atLabCases: number;
 }
 
-const EMPTY_RETURNS: ReturnsSummary = { withDriver: 0, withDriverCases: 0, atLab: 0, atLabCases: 0 };
+const EMPTY_RETURNS: ReturnsSummary = { requested: 0, requestedCases: 0, unassigned: 0, withDriver: 0, withDriverCases: 0, atLab: 0, atLabCases: 0 };
 
 interface Toast {
   key: string;
@@ -349,6 +353,28 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         color: "#854F0B",
       }]);
       if (soundRef.current) playChime();
+      return;
+    }
+    if (payload.change === "requested" && payload.returnId) {
+      try {
+        const res = await apiFetch<ApiResponse<{ id: string; caseCount: number; officeName: string | null; note: string | null; readyAt: string | null }[]>>("/api/returns?status=open");
+        const r = res.data?.find((x) => x.id === payload.returnId);
+        if (!r) return;
+        const ready = r.readyAt && new Date(r.readyAt) > new Date()
+          ? `Ready after ${new Date(r.readyAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+          : "Ready now";
+        pushToasts([{
+          key: `pickup-${r.id}`,
+          kind: "return",
+          jobId: null,
+          title: `${r.officeName ?? "An office"} requested a pickup · ${r.caseCount} case${r.caseCount === 1 ? "" : "s"}`,
+          body: [ready, r.note, "Assign a driver in Returning Cases."].filter(Boolean).join(" · "),
+          color: "#854F0B",
+        }]);
+        if (soundRef.current) playChime();
+      } catch {
+        // The badge still updated.
+      }
       return;
     }
     if (payload.change !== "logged" || !payload.returnId) return;

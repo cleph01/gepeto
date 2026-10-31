@@ -35,7 +35,7 @@ import {
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { forgetJob } from '@/components/job-alerts';
 import { STEPS, dueInfo } from '@/lib/jobs';
-import { EMPTY_RETURN, logReturn, type ReturnDraft } from '@/lib/returns';
+import { EMPTY_RETURN, draftForPickup, findPickupRequest, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
@@ -86,6 +86,7 @@ export default function JobDetailScreen() {
   const [showPod, setShowPod] = useState(false);
   const [recipientName, setRecipientName] = useState('');
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
+  const [pickupRequest, setPickupRequest] = useState<ReturnCase | null>(null);
   const [submittingPod, setSubmittingPod] = useState(false);
 
   // Set nav title to case ID
@@ -196,7 +197,15 @@ export default function JobDetailScreen() {
     if (job.status === 'arrived') {
       setRecipientName('');
       setReturnDraft(EMPTY_RETURN);
+      setPickupRequest(null);
       setShowPod(true);
+      // If the office asked for a pickup, arrive with the return pre-filled.
+      const officeId = job.officeId;
+      findPickupRequest(officeId).then((request) => {
+        if (!request) return;
+        setPickupRequest(request);
+        setReturnDraft(draftForPickup(request));
+      });
       return;
     }
 
@@ -514,7 +523,7 @@ export default function JobDetailScreen() {
               />
             </View>
 
-            <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} />
+            <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} request={pickupRequest} />
 
             <TouchableOpacity
               style={[

@@ -83,7 +83,7 @@ function NavContent({
   onNavigate?: () => void;
 }) {
   const { totalUnread, returnsSummary } = useMessageNotifications();
-  const openReturns = returnsSummary.withDriver + returnsSummary.atLab;
+  const openReturns = returnsSummary.requested + returnsSummary.withDriver + returnsSummary.atLab;
   return (
     <>
       {/* Logo */}
@@ -189,7 +189,7 @@ function UserArea() {
 export default function Sidebar() {
   const pathname = usePathname();
   const { totalUnread, returnsSummary } = useMessageNotifications();
-  const openReturns = returnsSummary.withDriver + returnsSummary.atLab;
+  const openReturns = returnsSummary.requested + returnsSummary.withDriver + returnsSummary.atLab;
   const [isMobile, setIsMobile] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 

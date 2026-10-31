@@ -15,7 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
-import { EMPTY_RETURN, logReturn, type ReturnDraft } from '@/lib/returns';
+import { EMPTY_RETURN, draftForPickup, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 
 type OfficeOption = { id: string; name: string; address: string };
 
@@ -27,9 +27,12 @@ export function LogPickupModal({
   suggestedOfficeId,
   onClose,
   onLogged,
+  pickupRequest,
 }: {
   visible: boolean;
   suggestedOfficeId?: string | null;
+  /** Opened from an office's pickup request: that office, pre-filled. */
+  pickupRequest?: ReturnCase | null;
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -50,8 +53,8 @@ export function LogPickupModal({
 
   // Fresh form each time it opens.
   const reset = () => {
-    setOfficeId(suggestedOfficeId ?? null);
-    setDraft({ ...EMPTY_RETURN, bringing: true });
+    setOfficeId(pickupRequest?.officeId ?? suggestedOfficeId ?? null);
+    setDraft(pickupRequest ? draftForPickup(pickupRequest) : { ...EMPTY_RETURN, bringing: true });
     setError(null);
   };
 
@@ -72,8 +75,9 @@ export function LogPickupModal({
   };
 
   // Suggested office first, then alphabetical.
+  const suggested = pickupRequest?.officeId ?? suggestedOfficeId;
   const ordered = [...offices].sort((a, b) =>
-    a.id === suggestedOfficeId ? -1 : b.id === suggestedOfficeId ? 1 : a.name.localeCompare(b.name)
+    a.id === suggested ? -1 : b.id === suggested ? 1 : a.name.localeCompare(b.name)
   );
 
   return (
@@ -118,7 +122,7 @@ export function LogPickupModal({
             </View>
           </View>
 
-          <ReturnPickupFields value={draft} onChange={setDraft} askFirst={false} />
+          <ReturnPickupFields value={draft} onChange={setDraft} askFirst={false} request={pickupRequest} />
 
           {error && <Text style={styles.error}>{error}</Text>}
 

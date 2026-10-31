@@ -8,7 +8,7 @@ import type { ApiResponse } from "@gepeto/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ReturnStatus = "with_driver" | "at_lab" | "checked_in";
+type ReturnStatus = "requested" | "with_driver" | "at_lab" | "checked_in" | "cancelled";
 
 interface ReturnCase {
   id: string;
@@ -16,12 +16,16 @@ interface ReturnCase {
   status: ReturnStatus;
   officeId: string;
   officeName: string | null;
+  driverId: string | null;
   driverName: string | null;
   caseCount: number;
   caseNumbers: string[];
   note: string | null;
-  pickedUpAt: string;
+  pickedUpAt: string | null;
   droppedAt: string | null;
+  // Office pickup requests
+  requestedAt: string | null;
+  readyAt: string | null;
   pickedUpDuringCaseId: string | null;
   // Set at check-in
   receivedCount: number | null;
@@ -30,11 +34,19 @@ interface ReturnCase {
   checkedInAt: string | null;
 }
 
-type Filter = "open" | "with_driver" | "at_lab" | "checked_in";
+type Filter = "open" | "requested" | "with_driver" | "at_lab" | "checked_in";
+
+interface DriverOption {
+  id: string;
+  name: string;
+  status: string;
+}
 
 const CHECKED_IN_DAYS = 30;
 
 const STATUS: Record<ReturnStatus, { label: string; color: string; bg: string }> = {
+  requested:   { label: "Pickup requested",         color: "#854F0B", bg: "rgba(133,79,11,0.12)" },
+  cancelled:   { label: "Cancelled",                color: "#5F5E5A", bg: "rgba(0,0,0,0.06)" },
   with_driver: { label: "With driver",              color: "#185FA5", bg: "rgba(24,95,165,0.10)" },
   at_lab:      { label: "At lab · needs check-in",  color: "#854F0B", bg: "rgba(133,79,11,0.12)" },
   checked_in:  { label: "Checked in",               color: "#3B6D11", bg: "rgba(59,109,17,0.10)" },
@@ -61,6 +73,35 @@ export default function ReturnsPage() {
   const [filter, setFilter] = useState<Filter>("open");
   const [checkInFor, setCheckInFor] = useState<ReturnCase | null>(null);
   const [historyFor, setHistoryFor] = useState<ReturnCase | null>(null);
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+
+  // Drivers for the Assign dropdown on pickup requests.
+  useEffect(() => {
+    if (!session) return;
+    apiFetch<ApiResponse<DriverOption[]>>("/api/drivers")
+      .then((res) => { if (res.data) setDrivers(res.data); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  const assignPickup = async (r: ReturnCase, driverId: string | null) => {
+    setRowError(null);
+    const res = await apiFetch<ApiResponse<ReturnCase>>(`/api/returns/${r.id}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ driverId }),
+    }).catch(() => null);
+    if (res?.data) setReturns((prev) => prev.map((x) => (x.id === r.id ? res.data! : x)));
+    else setRowError({ id: r.id, message: res?.error?.message ?? "Couldn't assign. Try again." });
+  };
+
+  const cancelPickup = async (r: ReturnCase) => {
+    if (!window.confirm(`Cancel the pickup request from ${r.officeName ?? "this office"}?`)) return;
+    setRowError(null);
+    const res = await apiFetch<ApiResponse<{ ok: boolean }>>(`/api/returns/${r.id}/cancel`, { method: "POST" }).catch(() => null);
+    if (res?.data) setReturns((prev) => prev.filter((x) => x.id !== r.id));
+    else setRowError({ id: r.id, message: res?.error?.message ?? "Couldn't cancel. Try again." });
+  };
 
   // Load on open, and again whenever a return is logged, dropped off or checked in.
   useEffect(() => {
@@ -92,12 +133,12 @@ export default function ReturnsPage() {
     filter === "checked_in" ? checkedIn ?? []
     : filter === "open" ? returns
     : returns.filter((r) => r.status === filter);
-  // Waiting for check-in first: that's what the front desk acts on.
-  const ordered = [...shown].sort((a, b) =>
-    a.status === b.status ? 0 : a.status === "at_lab" ? -1 : b.status === "at_lab" ? 1 : 0
-  );
+  // What the front desk acts on first: pickups with no driver, then check-ins.
+  const priority = (r: ReturnCase) =>
+    r.status === "requested" && !r.driverId ? 0 : r.status === "at_lab" ? 1 : r.status === "requested" ? 2 : 3;
+  const ordered = [...shown].sort((a, b) => priority(a) - priority(b));
 
-  const { withDriver, withDriverCases, atLab, atLabCases } = returnsSummary;
+  const { requested, unassigned, withDriver, withDriverCases, atLab, atLabCases } = returnsSummary;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#F8F9FB" }}>
@@ -114,7 +155,11 @@ export default function ReturnsPage() {
           </h1>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0 }}>
             {loaded
-              ? `${atLabCases} case${atLabCases === 1 ? "" : "s"} waiting for check-in · ${withDriverCases} with drivers`
+              ? [
+                  unassigned > 0 && (unassigned === 1 ? "1 pickup needs a driver" : `${unassigned} pickups need a driver`),
+                  `${atLabCases} case${atLabCases === 1 ? "" : "s"} waiting for check-in`,
+                  `${withDriverCases} with drivers`,
+                ].filter(Boolean).join(" · ")
               : "Loading returns…"}
           </p>
         </div>
@@ -123,7 +168,8 @@ export default function ReturnsPage() {
       <div style={{ padding: isMobile ? 12 : "20px 28px", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Filters */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Chip active={filter === "open"} onClick={() => setFilter("open")}>All open · {withDriver + atLab}</Chip>
+          <Chip active={filter === "open"} onClick={() => setFilter("open")}>All open · {requested + withDriver + atLab}</Chip>
+          <Chip active={filter === "requested"} onClick={() => setFilter("requested")}>Pickups requested · {requested}</Chip>
           <Chip active={filter === "at_lab"} onClick={() => setFilter("at_lab")}>At lab · {atLab}</Chip>
           <Chip active={filter === "with_driver"} onClick={() => setFilter("with_driver")}>With drivers · {withDriver}</Chip>
           <Chip active={filter === "checked_in"} onClick={() => setFilter("checked_in")}>Checked in · last {CHECKED_IN_DAYS} days</Chip>
@@ -160,6 +206,10 @@ export default function ReturnsPage() {
                 isLast={i === ordered.length - 1}
                 onCheckIn={() => setCheckInFor(r)}
                 onHistory={() => setHistoryFor(r)}
+                drivers={drivers}
+                onAssign={(driverId) => assignPickup(r, driverId)}
+                onCancel={() => cancelPickup(r)}
+                error={rowError?.id === r.id ? rowError.message : null}
               />
             ))
           )}
@@ -184,17 +234,40 @@ const rowGrid: React.CSSProperties = {
 };
 
 function ReturnRow({
-  r, isMobile, isLast, onCheckIn, onHistory,
+  r, isMobile, isLast, onCheckIn, onHistory, drivers, onAssign, onCancel, error,
 }: {
   r: ReturnCase; isMobile: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
+  drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void; error: string | null;
 }) {
   const st = STATUS[r.status];
+  const isRequest = r.status === "requested";
   const actions = (
-    <div style={{ display: "flex", gap: 6, justifyContent: isMobile ? "flex-start" : "flex-end", flexWrap: "wrap" }}>
-      {r.status !== "checked_in" && (
-        <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: isMobile ? "flex-start" : "flex-end" }}>
+      {isRequest && (
+        <select
+          value={r.driverId ?? ""}
+          onChange={(e) => onAssign(e.target.value || null)}
+          aria-label={`Driver for RET-${r.number}`}
+          style={{
+            fontSize: 12, padding: "5px 8px", borderRadius: 7, maxWidth: 150, cursor: "pointer",
+            border: `1px solid ${r.driverId ? "rgba(0,0,0,0.15)" : "#854F0B"}`,
+            background: r.driverId ? "#fff" : "rgba(133,79,11,0.06)", color: "#1a1a1a",
+          }}
+        >
+          <option value="">Assign driver…</option>
+          {drivers.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}{d.status === "off_duty" ? " (off duty)" : ""}</option>
+          ))}
+        </select>
       )}
-      <button onClick={onHistory} style={ghostBtn}>History</button>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+        {(r.status === "with_driver" || r.status === "at_lab") && (
+          <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>
+        )}
+        {isRequest && <button onClick={onCancel} style={ghostBtn}>Cancel</button>}
+        <button onClick={onHistory} style={ghostBtn}>History</button>
+      </div>
+      {error && <span style={{ fontSize: 11.5, color: "#A32D2D" }}>{error}</span>}
     </div>
   );
   const checkInDetail = r.status === "checked_in" && (
@@ -222,10 +295,18 @@ function ReturnRow({
       {checkInDetail}
     </div>
   );
+  const readyLater = r.readyAt && new Date(r.readyAt) > new Date();
   const when = (
     <div style={{ fontSize: 11.5, color: "#9a9a9a", marginTop: 2 }}>
-      Picked up {timeLabel(r.pickedUpAt)}
+      {r.pickedUpAt
+        ? <>Picked up {timeLabel(r.pickedUpAt)}</>
+        : r.requestedAt && <>Requested {timeLabel(r.requestedAt)}</>}
       {r.droppedAt && <> · dropped {timeLabel(r.droppedAt)}</>}
+      {isRequest && (
+        <div style={{ color: readyLater ? "#5F5E5A" : "#3B6D11", fontWeight: 500 }}>
+          {readyLater ? `Ready after ${timeLabel(r.readyAt!)}` : "Ready now"}
+        </div>
+      )}
     </div>
   );
 
@@ -237,7 +318,7 @@ function ReturnRow({
           {status}
         </div>
         <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>{r.officeName ?? "Office"}</div>
-        <div style={{ fontSize: 12.5, color: "#3a3a3a" }}>{r.driverName ?? "Driver"}</div>
+        <div style={{ fontSize: 12.5, color: "#3a3a3a" }}>{r.driverName ?? (isRequest ? "No driver yet" : "Driver")}</div>
         {cases}
         {when}
         {actions}
@@ -257,7 +338,7 @@ function ReturnRow({
           <div style={{ fontSize: 11.5, color: "#9a9a9a", marginTop: 2 }}>During delivery of {r.pickedUpDuringCaseId}</div>
         )}
       </div>
-      <div style={{ fontSize: 13, color: "#3a3a3a" }}>{r.driverName ?? "—"}</div>
+      <div style={{ fontSize: 13, color: r.driverName ? "#3a3a3a" : "#9a9a9a" }}>{r.driverName ?? (isRequest ? "No driver yet" : "—")}</div>
       {cases}
       <div>{status}</div>
       {actions}
@@ -496,9 +577,13 @@ const stepBtn: React.CSSProperties = {
 
 interface ReturnEvent {
   id: string;
-  event: "logged" | "dropped_at_lab" | "checked_in" | "linked" | "redelivery_created" | "edited";
-  detail: { caseCount?: number; receivedCount?: number; caseId?: string; caseNumbers?: string[]; fromStatus?: string } | null;
-  actorRole: "driver" | "dispatcher";
+  event: "requested" | "assigned" | "cancelled" | "logged" | "dropped_at_lab" | "checked_in" | "linked" | "redelivery_created" | "edited";
+  detail: {
+    caseCount?: number; receivedCount?: number; caseId?: string; caseNumbers?: string[]; fromStatus?: string;
+    requestedCount?: number; fulfilledRequest?: boolean; readyAt?: string | null; driverId?: string | null;
+  } | null;
+  actorRole: "driver" | "dispatcher" | "office";
+  assignedDriverName: string | null;
   actorName: string | null;
   linkedCaseId: string | null;
   createdAt: string;
@@ -507,8 +592,28 @@ interface ReturnEvent {
 function describeEvent(e: ReturnEvent): React.ReactNode {
   const d = e.detail ?? {};
   switch (e.event) {
+    case "requested":
+      return (
+        <>
+          <strong>Pickup requested</strong>: {d.caseCount} case{d.caseCount === 1 ? "" : "s"}
+          {d.caseNumbers?.length ? <> ({d.caseNumbers.join(", ")})</> : null}
+          {d.readyAt ? <>, ready after {timeLabel(d.readyAt)}</> : <>, ready now</>}
+        </>
+      );
+    case "assigned":
+      return d.driverId ? <>Assigned to <strong>{e.assignedDriverName ?? "a driver"}</strong></> : <>Driver unassigned</>;
+    case "cancelled":
+      return <><strong>Pickup cancelled</strong></>;
     case "logged":
-      return <>Logged <strong>{d.caseCount} case{d.caseCount === 1 ? "" : "s"}</strong> at the office{d.caseNumbers?.length ? <> ({d.caseNumbers.join(", ")})</> : null}</>;
+      return (
+        <>
+          {d.fulfilledRequest ? "Picked up" : "Logged"} <strong>{d.caseCount} case{d.caseCount === 1 ? "" : "s"}</strong> at the office
+          {d.caseNumbers?.length ? <> ({d.caseNumbers.join(", ")})</> : null}
+          {d.fulfilledRequest && d.requestedCount !== undefined && d.requestedCount !== d.caseCount && (
+            <span style={{ color: "#854F0B" }}> (office said {d.requestedCount})</span>
+          )}
+        </>
+      );
     case "dropped_at_lab":
       return <>Dropped off at the lab</>;
     case "checked_in":
@@ -559,7 +664,11 @@ function ReturnHistoryModal({ r, onClose }: { r: ReturnCase; onClose: () => void
               </div>
               <div>
                 {describeEvent(e)}
-                <span style={{ color: "#5F5E5A" }}> by {e.actorName ?? "Unknown"} ({e.actorRole === "driver" ? "Driver" : "Dispatcher"})</span>
+                <span style={{ color: "#5F5E5A" }}>
+                  {e.actorRole === "office"
+                    ? " by the office"
+                    : ` by ${e.actorName ?? "Unknown"} (${e.actorRole === "driver" ? "Driver" : "Dispatcher"})`}
+                </span>
               </div>
             </div>
           ))}

@@ -4,8 +4,9 @@ import { requireAuth } from "@/lib/auth";
 const db = require("@gepeto/db");
 
 // GET /api/returns/summary  (dispatcher)
-// Open returns for the sidebar badge and dashboard tile: how many returns and
-// cases are still in a driver's car vs. waiting at the lab for check-in.
+// Open returns for the sidebar badge and dashboard tile: pickups offices have
+// requested, cases still in a driver's car, and cases waiting at the lab for
+// check-in. "unassigned" counts requests that still need a driver.
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
@@ -14,16 +15,21 @@ export async function GET(request: NextRequest) {
     }
     const rows = await db("returns")
       .where({ lab_id: user.labId })
-      .whereIn("status", ["with_driver", "at_lab"])
+      .whereIn("status", ["requested", "with_driver", "at_lab"])
       .groupBy("status")
       .select("status")
       .count("* as returns")
       .sum("case_count as cases");
 
-    const summary = { withDriver: 0, withDriverCases: 0, atLab: 0, atLabCases: 0 };
+    const summary = { requested: 0, requestedCases: 0, unassigned: 0, withDriver: 0, withDriverCases: 0, atLab: 0, atLabCases: 0 };
     for (const r of rows as { status: string; returns: string; cases: string }[]) {
       if (r.status === "with_driver") { summary.withDriver = Number(r.returns); summary.withDriverCases = Number(r.cases); }
       if (r.status === "at_lab") { summary.atLab = Number(r.returns); summary.atLabCases = Number(r.cases); }
+      if (r.status === "requested") { summary.requested = Number(r.returns); summary.requestedCases = Number(r.cases); }
+    }
+    if (summary.requested > 0) {
+      const u = await db("returns").where({ lab_id: user.labId, status: "requested" }).whereNull("driver_id").count("* as n").first();
+      summary.unassigned = Number(u?.n ?? 0);
     }
     return Response.json({ data: summary, error: null });
   } catch (err) {

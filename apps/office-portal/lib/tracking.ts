@@ -45,6 +45,32 @@ export async function loadTracking(token: string) {
       "drivers.current_location as driverLocation"
     );
 
+  // The office's pickup requests and returns still moving, plus anything
+  // checked in during the last day, so the office sees it land.
+  const pickups = await db("returns as r")
+    .leftJoin("drivers as d", "r.driver_id", "d.id")
+    .where("r.office_id", office.id)
+    .where((w: typeof db) =>
+      w.whereIn("r.status", ["requested", "with_driver", "at_lab"])
+        .orWhere("r.checked_in_at", ">=", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+    )
+    .orderByRaw("COALESCE(r.requested_at, r.picked_up_at, r.created_at) DESC")
+    .limit(30)
+    .select(
+      "r.id",
+      "r.number",
+      "r.status",
+      "r.case_count as caseCount",
+      "r.case_numbers as caseNumbers",
+      "r.note",
+      "r.requested_at as requestedAt",
+      "r.ready_at as readyAt",
+      "r.picked_up_at as pickedUpAt",
+      "r.checked_in_at as checkedInAt",
+      "r.driver_id as driverId",
+      "d.name as driverName"
+    );
+
   // A driver's live location is only shared once they're carrying at least one
   // of this office's cases. Before that the office has no reason to see where
   // the driver is, so it never leaves the server.
@@ -57,5 +83,5 @@ export async function loadTracking(token: string) {
     if (!j.driverId || !driversOnTheWay.has(j.driverId)) j.driverLocation = null;
   }
 
-  return { office, jobs };
+  return { office, jobs, pickups };
 }

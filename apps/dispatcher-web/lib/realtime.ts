@@ -10,6 +10,13 @@ export async function notifyDriver(driverId: string, event: string, payload: Rec
   await broadcast(`driver:${driverId}`, event, payload);
 }
 
+// Pickup requests assigned to (or taken off) a driver. A separate topic from
+// `driver:<id>`, which the app's job alerts own and reset on every subscribe.
+// The app only reloads its returns list on this, so a forged message is harmless.
+export async function notifyDriverPickups(driverId: string, event: string, payload: Record<string, unknown>) {
+  await broadcast(`driver-pickups:${driverId}`, event, payload);
+}
+
 // Driver-to-dispatch: the dashboard listens on `lab:<labId>` so a driver's
 // accept, reject or status step shows up without waiting for the poll.
 // (postgres_changes alone proved unreliable for the dispatcher's session.)

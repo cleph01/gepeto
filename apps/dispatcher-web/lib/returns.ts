@@ -2,9 +2,9 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
-export type ReturnStatus = "with_driver" | "at_lab" | "checked_in";
+export type ReturnStatus = "requested" | "with_driver" | "at_lab" | "checked_in" | "cancelled";
 
-/** Returns with their office, driver and linked job case numbers, newest first. */
+/** Returns (and pickup requests) with their office, driver and linked job case numbers, newest first. */
 export function returnsQuery(labId: string) {
   return db("returns as r")
     .leftJoin("offices as o", "r.office_id", "o.id")
@@ -20,7 +20,8 @@ export function returnsQuery(labId: string) {
       "pj.case_id as picked_up_during_case_id",
       "sj.case_id as source_case_id"
     )
-    .orderBy("r.picked_up_at", "desc");
+    // Requests haven't been picked up yet; they sort by when they were asked for.
+    .orderByRaw("COALESCE(r.picked_up_at, r.requested_at, r.created_at) DESC");
 }
 
 /** RET-1042 */

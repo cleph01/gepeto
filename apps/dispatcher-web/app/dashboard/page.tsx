@@ -29,7 +29,14 @@ export default function DashboardPage() {
   const { apiFetch, session } = useAuth();
   const router = useRouter();
   const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary } = useMessageNotifications();
-  const returningCases = returnsSummary.withDriverCases + returnsSummary.atLabCases;
+  const returningCases = returnsSummary.requestedCases + returnsSummary.withDriverCases + returnsSummary.atLabCases;
+  // What needs the front desk first: pickups with no driver, then check-ins.
+  const returnsNeedAction = returnsSummary.unassigned > 0 || returnsSummary.atLabCases > 0;
+  const returnsSublabel = [
+    returnsSummary.unassigned > 0 && (returnsSummary.unassigned === 1 ? "1 pickup needs a driver" : `${returnsSummary.unassigned} pickups need a driver`),
+    returnsSummary.atLabCases > 0 && `${returnsSummary.atLabCases} to check in`,
+    returnsSummary.withDriverCases > 0 && `${returnsSummary.withDriverCases} with drivers`,
+  ].filter(Boolean).slice(0, 2).join(" · ");
   const unreadJobCount = Object.values(unreadByJob).filter((n) => n > 0).length;
   const [jobs, setJobs]      = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
@@ -185,13 +192,9 @@ export default function DashboardPage() {
             <MetricCard
               value={String(returningCases)}
               label="Returning Cases"
-              color={returnsSummary.atLabCases > 0 ? "#854F0B" : "#1a1a1a"}
-              sublabel={
-                returningCases === 0
-                  ? "None on the way"
-                  : `${returnsSummary.atLabCases} to check in · ${returnsSummary.withDriverCases} with drivers`
-              }
-              highlight={returnsSummary.atLabCases > 0}
+              color={returnsNeedAction ? "#854F0B" : "#1a1a1a"}
+              sublabel={returningCases === 0 ? "None on the way" : returnsSublabel || "Pickups scheduled"}
+              highlight={returnsNeedAction}
               hint="Open Returning Cases"
               onClick={() => router.push("/returns")}
             />

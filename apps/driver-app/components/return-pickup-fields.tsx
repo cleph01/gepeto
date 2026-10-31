@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-nativ
 import * as Haptics from 'expo-haptics';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import type { ReturnDraft } from '@/lib/returns';
+import { readyLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 
 const MAX_CASES = 99;
 
@@ -14,10 +14,13 @@ export function ReturnPickupFields({
   value,
   onChange,
   askFirst = true,
+  request,
 }: {
   value: ReturnDraft;
   onChange: (next: ReturnDraft) => void;
   askFirst?: boolean;
+  /** The office's pickup request, when there is one; the form arrives pre-filled from it. */
+  request?: ReturnCase | null;
 }) {
   const [caseText, setCaseText] = useState('');
   const set = (patch: Partial<ReturnDraft>) => onChange({ ...value, ...patch });
@@ -39,6 +42,16 @@ export function ReturnPickupFields({
 
   return (
     <View style={styles.wrap}>
+      {request && (
+        <View style={styles.requestBanner} accessibilityRole="summary">
+          <IconSymbol name="tray" size={16} color={Colors.accent} />
+          <Text style={styles.requestText}>
+            The office asked for a pickup: {request.caseCount} case{request.caseCount === 1 ? '' : 's'}
+            {request.caseNumbers.length > 0 ? ` (${request.caseNumbers.join(', ')})` : ''} · {readyLabel(request)}
+            {request.note ? `\n“${request.note}”` : ''}
+          </Text>
+        </View>
+      )}
       {askFirst && (
         <View style={styles.askRow}>
           <Text style={styles.label} nativeID="returnAskLabel">Bringing anything back to the lab?</Text>
@@ -233,4 +246,15 @@ const styles = StyleSheet.create({
   addBtnDisabled: { opacity: 0.4 },
   addBtnText: { fontFamily: Fonts.semibold, color: Colors.accent, fontSize: FontSize.sm },
   noteInput: { minHeight: 64, maxHeight: 120, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
+  requestBanner: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'flex-start',
+    backgroundColor: Colors.accentBg,
+    borderColor: Colors.accentBorder,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+  },
+  requestText: { flex: 1, fontFamily: Fonts.medium, color: Colors.accentText, fontSize: FontSize.sm, lineHeight: 20 },
 });

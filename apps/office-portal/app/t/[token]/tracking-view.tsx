@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import JobMap from "./job-map";
 import { ChatIcon, ConversationModal, unreadForJobs, type Message } from "./messages";
 import DeliveredView from "./delivered-view";
+import { BoxIcon, PickupsSection, RequestPickupModal, type Pickup } from "./pickups";
 import { itemsLine, timeAgo, type Item } from "./format";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ interface Office {
 interface TrackingData {
   office: Office;
   jobs: TrackingJob[];
+  pickups: Pickup[];
 }
 
 // ── Status, in the office's terms ─────────────────────────────────────────────
@@ -122,6 +124,7 @@ export default function TrackingView({
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [tab, setTab] = useState<"active" | "delivered">("active");
+  const [requesting, setRequesting] = useState(false);
   // Bumped when a conversation is read, so unread badges (kept in localStorage) re-render.
   const [, setSeenTick] = useState(0);
 
@@ -175,7 +178,7 @@ export default function TrackingView({
     return () => clearInterval(id);
   }, [jobIds, loadMessages]);
 
-  const { office, jobs } = data;
+  const { office, jobs, pickups } = data;
   const groups = useMemo(() => groupByDriver(jobs), [jobs]);
   const onTheWay = jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
   const conversation = openGroup ? groups.find((g) => g.key === openGroup) ?? null : null;
@@ -184,6 +187,7 @@ export default function TrackingView({
     setMessages((prev) => ({ ...prev, [jobId]: list }));
     setSeenTick((t) => t + 1);
   }, []);
+  const closeRequest = useCallback(() => setRequesting(false), []);
   const closeConversation = useCallback(() => {
     setOpenGroup(null);
     setSeenTick((t) => t + 1);
@@ -245,16 +249,28 @@ export default function TrackingView({
       {/* Body */}
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 48px" }}>
 
-        {/* Office greeting */}
-        <div style={{ marginBottom: 16 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1a1a1a", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
-            {office.name}
-          </h1>
-          <p style={{ fontSize: 13.5, color: "#5F5E5A", margin: 0 }}>
-            {jobs.length === 0
-              ? "No cases in progress right now."
-              : `${jobs.length} case${jobs.length === 1 ? "" : "s"} in progress · ${onTheWay} on the way`}
-          </p>
+        {/* Office greeting + pickup request */}
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1a1a1a", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
+              {office.name}
+            </h1>
+            <p style={{ fontSize: 13.5, color: "#5F5E5A", margin: 0 }}>
+              {jobs.length === 0
+                ? "No cases in progress right now."
+                : `${jobs.length} case${jobs.length === 1 ? "" : "s"} in progress · ${onTheWay} on the way`}
+            </p>
+          </div>
+          <button
+            onClick={() => setRequesting(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "#fff",
+              background: "#185FA5", border: "none", borderRadius: 8, padding: "8px 13px", cursor: "pointer",
+            }}
+          >
+            <BoxIcon size={15} />
+            Request a pickup
+          </button>
         </div>
 
         {/* Tabs */}
@@ -277,8 +293,9 @@ export default function TrackingView({
         </div>
 
         {tab === "active" ? (
-          jobs.length > 0 ? (
+          jobs.length > 0 || pickups.length > 0 ? (
             <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <PickupsSection token={token} pickups={pickups} onChanged={refresh} />
               {groups.map((g) => (
                 <DriverCard
                   key={g.key}
@@ -309,6 +326,10 @@ export default function TrackingView({
       <footer style={{ textAlign: "center", padding: "20px", fontSize: 12, color: "#9a9a9a", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
         Powered by <span style={{ color: "#185FA5", fontWeight: 500 }}>Gepeto</span> · Updates automatically every 30 seconds
       </footer>
+
+      {requesting && (
+        <RequestPickupModal token={token} onClose={closeRequest} onSent={refresh} />
+      )}
 
       {conversation && (
         <ConversationModal

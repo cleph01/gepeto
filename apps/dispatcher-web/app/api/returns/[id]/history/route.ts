@@ -32,6 +32,7 @@ export async function GET(
         this.on("d.user_id", "e.actor_user_id").andOn("d.lab_id", "e.lab_id");
       })
       .leftJoin("jobs as j", db.raw("j.id = (e.detail->>'sourceJobId')::uuid"))
+      .leftJoin("drivers as ad", db.raw("ad.id = (e.detail->>'driverId')::uuid"))
       .where({ "e.return_id": id, "e.lab_id": user.labId })
       .orderBy("e.created_at", "asc")
       .select(
@@ -41,7 +42,8 @@ export async function GET(
         "e.actor_role",
         "e.created_at",
         "j.case_id as linked_case_id",
-        db.raw("CASE WHEN e.actor_role = 'driver' THEN d.name ELSE lu.name END as actor_name")
+        "ad.name as assigned_driver_name",
+        db.raw("CASE WHEN e.actor_role = 'driver' THEN d.name WHEN e.actor_role = 'office' THEN NULL ELSE lu.name END as actor_name")
       );
 
     return Response.json({ data: events, error: null });

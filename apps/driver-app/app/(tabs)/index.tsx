@@ -34,7 +34,7 @@ import { navigate } from '@/lib/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
-import { RETURN_STATUS_LABEL, logReturn, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { RETURN_STATUS_LABEL, logReturn, readyLabel, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { onJobRemoved } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
@@ -274,16 +274,49 @@ function ReturningSection({
   returns,
   dropping,
   onDropAll,
+  onLogPickup,
 }: {
   returns: ReturnCase[];
   dropping: boolean;
   onDropAll: () => void;
+  onLogPickup: (r: ReturnCase) => void;
 }) {
   const inCar = returns.filter((r) => r.status === 'with_driver');
   const casesInCar = inCar.reduce((n, r) => n + r.caseCount, 0);
   return (
     <View style={styles.returnsWrap}>
       {returns.map((r) => {
+        if (r.status === 'requested') {
+          // An office asked for a pickup and dispatch gave it to this driver.
+          return (
+            <View key={r.id} style={[styles.returnCard, styles.returnCardInCar]}>
+              <View style={styles.returnTop}>
+                <Text style={styles.returnTitle} numberOfLines={1}>
+                  {r.officeName ?? 'Office'} · {r.caseCount} case{r.caseCount === 1 ? '' : 's'}
+                </Text>
+                <Text style={styles.returnNumber}>{returnLabel(r)}</Text>
+              </View>
+              {r.caseNumbers.length > 0 && (
+                <Text style={styles.returnCases} numberOfLines={2}>{r.caseNumbers.join(', ')}</Text>
+              )}
+              {r.note && <Text style={styles.returnNote} numberOfLines={2}>{r.note}</Text>}
+              <View style={styles.returnFooter}>
+                <IconSymbol name="tray" size={14} color={Colors.accent} />
+                <Text style={[styles.returnStatus, { color: Colors.accent }]}>{RETURN_STATUS_LABEL.requested}</Text>
+                <Text style={styles.returnTime}>{readyLabel(r)}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.batchBtn, { marginTop: Spacing.sm }]}
+                onPress={() => onLogPickup(r)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityHint="Opens the pickup form, pre-filled from the office's request"
+              >
+                <Text style={styles.batchBtnText}>Log pickup</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
         const inYourCar = r.status === 'with_driver';
         return (
           <View key={r.id} style={[styles.returnCard, inYourCar && styles.returnCardInCar]}>
@@ -306,9 +339,11 @@ function ReturningSection({
               <Text style={[styles.returnStatus, r.status === 'checked_in' && { color: Colors.success }, inYourCar && { color: Colors.accent }]}>
                 {RETURN_STATUS_LABEL[r.status]}
               </Text>
-              <Text style={styles.returnTime}>
-                Picked up {new Date(r.pickedUpAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-              </Text>
+              {r.pickedUpAt && (
+                <Text style={styles.returnTime}>
+                  Picked up {new Date(r.pickedUpAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </Text>
+              )}
             </View>
           </View>
         );
@@ -360,6 +395,7 @@ export default function JobQueueScreen() {
   const [delivering, setDelivering] = useState<{ key: string; officeName: string; jobs: QueueJob[] } | null>(null);
   const [returns, setReturns] = useState<ReturnCase[]>([]);
   const [showLogPickup, setShowLogPickup] = useState(false);
+  const [logPickupFor, setLogPickupFor] = useState<ReturnCase | null>(null);
   const [dropping, setDropping] = useState(false);
 
   // Returns the driver is carrying or dropped off (and today's checked-in ones).
@@ -408,6 +444,44 @@ export default function JobQueueScreen() {
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const driverId = getDriverId(session);
+
+  // Dispatch assigned (or took back) an office's pickup request. The message
+  // carries only an id and isn't authenticated, so it just triggers a reload
+  // through the API; the alert names what the API actually returns.
+  useEffect(() => {
+    if (!driverId) return;
+    const topic = `driver-pickups:${driverId}`;
+    for (const c of supabase.getChannels()) {
+      if (c.topic === `realtime:${topic}`) supabase.removeChannel(c);
+    }
+    const channel = supabase
+      .channel(topic)
+      .on('broadcast', { event: 'pickup_assigned' }, async ({ payload }) => {
+        const returnId = (payload as { returnId?: string })?.returnId;
+        try {
+          const res = await apiGet<ReturnCase[]>('/api/returns');
+          if (!res.data) return;
+          setReturns(res.data);
+          const r = res.data.find((x) => x.id === returnId && x.status === 'requested');
+          if (!r) return;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          Alert.alert(
+            'New pickup',
+            `${r.officeName ?? 'An office'} has ${r.caseCount} case${r.caseCount === 1 ? '' : 's'} for the lab. ${readyLabel(r)}.` +
+              (r.note ? `\n\n“${r.note}”` : '')
+          );
+        } catch {
+          // Offline: it shows up on the next refresh.
+        }
+      })
+      .on('broadcast', { event: 'pickup_removed' }, () => {
+        loadReturns();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [driverId, loadReturns]);
 
   const fetchJobs = useCallback(async (showSpinner = true) => {
     if (!driverId) return;
@@ -554,7 +628,10 @@ export default function JobQueueScreen() {
   // "Returning to lab" sits after the active work, before Completed today.
   const returningRows: Row[] = returns.length > 0
     ? [
-        { type: 'section', title: `Returning to lab · ${returns.reduce((n, r) => n + r.caseCount, 0)} cases` },
+        {
+          type: 'section',
+          title: `${returns.some((r) => r.status === 'requested') ? 'Pickups & returns' : 'Returning to lab'} · ${returns.reduce((n, r) => n + r.caseCount, 0)} cases`,
+        },
         { type: 'returns' },
       ]
     : [];
@@ -639,7 +716,14 @@ export default function JobQueueScreen() {
             );
           }
           if (item.type === 'returns') {
-            return <ReturningSection returns={returns} dropping={dropping} onDropAll={dropAllAtLab} />;
+            return (
+              <ReturningSection
+                returns={returns}
+                dropping={dropping}
+                onDropAll={dropAllAtLab}
+                onLogPickup={(r) => { setLogPickupFor(r); setShowLogPickup(true); }}
+              />
+            );
           }
           if (item.type === 'section') {
             return <Text style={styles.sectionTitle}>{item.title}</Text>;
@@ -688,13 +772,19 @@ export default function JobQueueScreen() {
         visible={!!delivering}
         officeName={delivering?.officeName ?? ''}
         caseIds={delivering?.jobs.map((j) => j.caseId) ?? []}
+        pickupRequest={
+          delivering
+            ? returns.find((r) => r.status === 'requested' && r.officeId === delivering.jobs[0]?.officeId) ?? null
+            : null
+        }
         onCancel={() => setDelivering(null)}
         onConfirm={confirmGroupDelivery}
       />
       <LogPickupModal
         visible={showLogPickup}
         suggestedOfficeId={arrivedAt}
-        onClose={() => setShowLogPickup(false)}
+        pickupRequest={logPickupFor ?? (arrivedAt ? returns.find((r) => r.status === 'requested' && r.officeId === arrivedAt) ?? null : null)}
+        onClose={() => { setShowLogPickup(false); setLogPickupFor(null); }}
         onLogged={loadReturns}
       />
     </View>

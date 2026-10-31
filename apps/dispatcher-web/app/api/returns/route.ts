@@ -9,9 +9,9 @@ const MAX_CASES = 99;
 const MAX_NOTE = 500;
 
 // GET /api/returns
-// Driver: their returns that aren't checked in yet (what's in their car or
-// waiting at the lab), plus anything checked in today.
-// Dispatcher: ?status=open (with_driver + at_lab, default) | checked_in | all,
+// Driver: pickups assigned to them, their returns that aren't checked in yet
+// (in their car or waiting at the lab), plus anything checked in today.
+// Dispatcher: ?status=open (requested + with_driver + at_lab, default) | checked_in | all,
 // optional ?from=&to= (ISO dates, on picked_up_at), ?officeId=, ?driverId=.
 export async function GET(request: NextRequest) {
   try {
@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
       q.where("r.driver_id", user.driverId).where((w: typeof db) =>
-        w.whereIn("r.status", ["with_driver", "at_lab"]).orWhere("r.checked_in_at", ">=", startOfToday.toISOString())
+        w.whereIn("r.status", ["requested", "with_driver", "at_lab"]).orWhere("r.checked_in_at", ">=", startOfToday.toISOString())
       );
     } else {
       const status = params.get("status") ?? "open";
-      if (status === "open") q.whereIn("r.status", ["with_driver", "at_lab"]);
+      if (status === "open") q.whereIn("r.status", ["requested", "with_driver", "at_lab"]);
       else if (status === "checked_in") q.where("r.status", "checked_in");
       const from = params.get("from");
       const to = params.get("to");
@@ -49,6 +49,9 @@ export async function GET(request: NextRequest) {
 // POST /api/returns  (driver)
 // Logs cases picked up at an office to bring back to the lab.
 // Body: { officeId, caseCount, caseNumbers?: string[], note?, pickedUpDuringJobId? }
+// If that office has an open pickup request (assigned to this driver, or not
+// assigned yet), the pickup fulfills it instead of creating a second return,
+// so the office's request and the driver's pickup are one record.
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
@@ -81,7 +84,39 @@ export async function POST(request: NextRequest) {
     const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, MAX_NOTE) : null;
     const caseNumbers = cleanCaseNumbers(body.caseNumbers);
 
-    const created = await db.transaction(async (trx: typeof db) => {
+    const { id: created, fulfilledRequest } = await db.transaction(async (trx: typeof db) => {
+      const request = await trx("returns")
+        .where({ lab_id: user.labId, office_id: office.id, status: "requested" })
+        .where((w: typeof db) => w.where("driver_id", user.driverId).orWhereNull("driver_id"))
+        // Prefer one assigned to this driver, then the oldest.
+        .orderByRaw("(driver_id IS NULL) ASC, requested_at ASC")
+        .forUpdate()
+        .first();
+
+      if (request) {
+        const merged = [...new Set([...(request.caseNumbers ?? []), ...caseNumbers])].slice(0, 50);
+        const mergedNote = [request.note, note].filter(Boolean).join(" · ") || null;
+        await trx("returns").where({ id: request.id }).update({
+          status: "with_driver",
+          driver_id: user.driverId,
+          case_count: caseCount,
+          case_numbers: JSON.stringify(merged),
+          note: mergedNote,
+          picked_up_during_job_id: pickedUpDuringJobId,
+          picked_up_at: trx.fn.now(),
+          updated_at: trx.fn.now(),
+        });
+        await trx("return_events").insert({
+          return_id: request.id,
+          lab_id: user.labId,
+          event: "logged",
+          detail: JSON.stringify({ caseCount, caseNumbers, requestedCount: request.caseCount, fulfilledRequest: true }),
+          actor_role: "driver",
+          actor_user_id: user.id,
+        });
+        return { id: request.id as string, fulfilledRequest: true };
+      }
+
       const [row] = await trx("returns")
         .insert({
           lab_id: user.labId,
@@ -91,6 +126,7 @@ export async function POST(request: NextRequest) {
           case_numbers: JSON.stringify(caseNumbers),
           note,
           picked_up_during_job_id: pickedUpDuringJobId,
+          picked_up_at: trx.fn.now(),
         })
         .returning("id");
       await trx("return_events").insert({
@@ -101,10 +137,10 @@ export async function POST(request: NextRequest) {
         actor_role: "driver",
         actor_user_id: user.id,
       });
-      return row.id as string;
+      return { id: row.id as string, fulfilledRequest: false };
     });
 
-    await notifyLab(user.labId, "return_changed", { returnId: created, change: "logged" });
+    await notifyLab(user.labId, "return_changed", { returnId: created, change: "logged", fulfilledRequest });
     const ret = await returnsQuery(user.labId).where("r.id", created).first();
     return Response.json({ data: ret, error: null }, { status: 201 });
   } catch (err) {
