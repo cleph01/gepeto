@@ -16,7 +16,8 @@ export async function loadTracking(token: string) {
       "offices.address",
       "offices.phone",
       "offices.contact_name as contactName",
-      "labs.name as labName"
+      "labs.name as labName",
+      "labs.phone as labPhone"
     )
     .first();
   if (!office) return null;
@@ -35,6 +36,7 @@ export async function loadTracking(token: string) {
         "jobs.delivery_address as deliveryAddress",
         "jobs.delivery_lat as deliveryLat",
         "jobs.delivery_lng as deliveryLng",
+        "jobs.items",
         "jobs.created_at as createdAt",
         "jobs.updated_at as updatedAt",
         "jobs.driver_id as driverId",
@@ -52,6 +54,7 @@ export async function loadTracking(token: string) {
         "jobs.status",
         "jobs.priority",
         "jobs.delivery_address as deliveryAddress",
+        "jobs.items",
         "jobs.updated_at as updatedAt"
       ),
   ]);

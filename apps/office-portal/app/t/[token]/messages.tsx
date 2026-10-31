@@ -123,41 +123,73 @@ function markSeen(messages: Message[], jobId: string) {
   } catch {}
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
+/** Unread across several cases (a driver's card). */
+export function unreadForJobs(messages: Record<string, Message[]>, jobIds: string[]): number {
+  return jobIds.reduce((n, id) => n + unreadCount(messages[id], id), 0);
+}
 
-export function MessageModal({
+// ── Conversation modal (one per driver) ───────────────────────────────────────
+// Conversations are stored per case, which is how dispatch and the driver see
+// them. The office sees one combined conversation per driver: every message
+// is tagged with its case, and a new message goes to the case picked above
+// the composer.
+
+export interface ConversationCase {
+  jobId: string;
+  caseId: string;
+}
+
+export function ConversationModal({
   token,
-  jobId,
-  caseId,
-  driverName,
+  title,
+  subtitle,
+  cases,
   messages,
   onMessages,
   onClose,
 }: {
   token: string;
-  jobId: string;
-  caseId: string;
-  driverName: string | null;
-  messages: Message[];
-  onMessages: (messages: Message[]) => void;
+  title: string;
+  subtitle: string;
+  cases: ConversationCase[];
+  messages: Record<string, Message[]>;
+  onMessages: (jobId: string, list: Message[]) => void;
   onClose: () => void;
 }) {
+  const multi = cases.length > 1;
+  // Default to the case with the most recent message, else the first one.
+  const [target, setTarget] = useState<string>(() => {
+    let best = cases[0]?.jobId ?? "";
+    let bestAt = "";
+    for (const c of cases) {
+      const last = messages[c.jobId]?.at(-1)?.createdAt ?? "";
+      if (last > bestAt) { bestAt = last; best = c.jobId; }
+    }
+    return best;
+  });
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const [phone, setPhone] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
+  const caseIdFor = (jobId: string) => cases.find((c) => c.jobId === jobId)?.caseId ?? "";
+  const jobKey = cases.map((c) => c.jobId).join(",");
+
   const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/track/${token}/jobs/${jobId}/messages`);
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.data) onMessages(json.data);
-    } catch {
-      // silent — next poll catches up
-    }
-  }, [token, jobId, onMessages]);
+    await Promise.all(
+      jobKey.split(",").filter(Boolean).map(async (jobId) => {
+        try {
+          const res = await fetch(`/api/track/${token}/jobs/${jobId}/messages`);
+          if (!res.ok) return;
+          const json = await res.json();
+          if (json.data) onMessages(jobId, json.data);
+        } catch {
+          // silent — next poll catches up
+        }
+      })
+    );
+  }, [token, jobKey, onMessages]);
 
   // Live while open: refresh every 10s, close on Escape, no page scroll behind.
   useEffect(() => {
@@ -178,26 +210,32 @@ export function MessageModal({
     };
   }, [load, onClose]);
 
+  const timeline = cases
+    .flatMap((c) => (messages[c.jobId] ?? []).map((m) => ({ ...m, jobId: c.jobId })))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const newest = timeline.at(-1)?.id;
+
   // Everything shown is read; always open on the newest message.
   useEffect(() => {
-    markSeen(messages, jobId);
+    for (const c of cases) markSeen(messages[c.jobId] ?? [], c.jobId);
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, jobId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newest, jobKey]);
 
   async function handleSend() {
     const body = draft.trim();
-    if (!body || sending) return;
+    if (!body || sending || !target) return;
     setSending(true);
     setSendError(false);
     try {
-      const res = await fetch(`/api/track/${token}/jobs/${jobId}/messages`, {
+      const res = await fetch(`/api/track/${token}/jobs/${target}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body }),
       });
       const json = res.ok ? await res.json() : null;
       if (json?.data) {
-        onMessages([...messages, json.data]);
+        onMessages(target, [...(messages[target] ?? []), json.data]);
         setDraft("");
       } else {
         setSendError(true);
@@ -221,20 +259,18 @@ export function MessageModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Messages for ${caseId}`}
+        aria-label={title}
         style={{
-          background: "#fff", width: "100%", maxWidth: phone ? "none" : 460,
-          height: phone ? "100%" : "auto", maxHeight: phone ? "none" : "80vh",
+          background: "#fff", width: "100%", maxWidth: phone ? "none" : 480,
+          height: phone ? "100%" : "auto", maxHeight: phone ? "none" : "82vh",
           margin: phone ? 0 : "0 16px", borderRadius: phone ? 0 : 14,
           boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
         <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Messages · {caseId}</h2>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>
-              With the lab{driverName ? ` and ${driverName}, your driver` : ""}
-            </p>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>{title}</h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#5F5E5A" }}>{subtitle}</p>
           </div>
           <button onClick={onClose} aria-label="Close messages" style={{ background: "none", border: "none", cursor: "pointer", color: "#9a9a9a", padding: 4, display: "flex" }}>
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -247,23 +283,25 @@ export function MessageModal({
           <RoleLegend />
         </div>
 
-        <div
-          ref={listRef}
-          style={{ flex: 1, minHeight: 160, overflowY: "auto", padding: "6px 18px 12px", display: "flex", flexDirection: "column", gap: 8 }}
-        >
-          {messages.length === 0 && (
+        <div ref={listRef} style={{ flex: 1, minHeight: 160, overflowY: "auto", padding: "6px 18px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {timeline.length === 0 && (
             <div style={{ fontSize: 12.5, color: "#9a9a9a", textAlign: "center", padding: "24px 0" }}>
-              No messages yet. Questions about this case go straight to the lab and your driver.
+              No messages yet.
             </div>
           )}
-          {messages.map((m) => (
+          {timeline.map((m) => (
             <div key={m.id} style={{ alignSelf: m.senderRole === "office" ? "flex-end" : "flex-start", maxWidth: "85%" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: m.senderRole === "office" ? "flex-end" : "flex-start", marginBottom: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", justifyContent: m.senderRole === "office" ? "flex-end" : "flex-start", marginBottom: 2 }}>
                 <RoleIcon role={m.senderRole} color={ROLE_COLOR[m.senderRole]} />
                 <span style={{ fontSize: 10.5, fontWeight: 600, color: ROLE_COLOR[m.senderRole] }}>{SENDER_LABEL[m.senderRole]}</span>
                 <span style={{ fontSize: 10.5, color: "#9a9a9a" }}>
                   · {new Date(m.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 </span>
+                {multi && (
+                  <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: "#5F5E5A", background: "#F1F1EF", borderRadius: 4, padding: "0 5px" }}>
+                    {caseIdFor(m.jobId)}
+                  </span>
+                )}
               </div>
               <div style={{ background: ROLE_BG[m.senderRole], color: "#1a1a1a", borderRadius: 10, padding: "7px 11px", fontSize: 13.5, lineHeight: 1.4, wordBreak: "break-word" }}>
                 {m.body}
@@ -273,13 +311,33 @@ export function MessageModal({
         </div>
 
         <div style={{ padding: "10px 18px 16px", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+          {multi && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              <span style={{ fontSize: 11.5, color: "#5F5E5A" }}>About:</span>
+              {cases.map((c) => (
+                <button
+                  key={c.jobId}
+                  onClick={() => setTarget(c.jobId)}
+                  aria-pressed={target === c.jobId}
+                  style={{
+                    fontSize: 11.5, fontFamily: "ui-monospace, monospace", padding: "3px 9px", borderRadius: 20, cursor: "pointer",
+                    border: `1px solid ${target === c.jobId ? "#185FA5" : "rgba(0,0,0,0.12)"}`,
+                    background: target === c.jobId ? "#EBF2FA" : "#fff", color: target === c.jobId ? "#185FA5" : "#3a3a3a",
+                    fontWeight: target === c.jobId ? 600 : 400,
+                  }}
+                >
+                  {c.caseId}
+                </button>
+              ))}
+            </div>
+          )}
           {sendError && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 6 }}>Couldn&apos;t send. Check your connection and try again.</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
-              placeholder="Message the lab and driver…"
+              placeholder={multi ? `Message about ${caseIdFor(target)}…` : "Message the lab and driver…"}
               aria-label="Message"
               autoFocus={!phone}
               style={{ flex: 1, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, padding: "9px 11px", fontSize: 14, color: "#1a1a1a", outline: "none" }}
