@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import JobMap from "./job-map";
-import MessageThread from "./message-thread";
+import { ChatIcon, MessageModal, unreadCount, type Message } from "./messages";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,9 @@ interface TrackingJob {
   deliveryLng: number | null;
   createdAt: string;
   updatedAt: string;
+  driverId: string | null;
   driverName: string | null;
+  /** Only sent once this driver is carrying one of the office's cases (lib/tracking.ts). */
   driverLocation: { lat: number; lng: number } | null;
 }
 
@@ -84,6 +86,52 @@ function stepIndex(status: JobStatus): number {
   return STATUS_STEPS.indexOf(status);
 }
 
+const ON_THE_WAY: JobStatus[] = ["picked_up", "in_transit", "arrived"];
+
+interface DriverGroup {
+  key: string;
+  driverName: string | null; // null = no driver yet
+  driverLocation: { lat: number; lng: number } | null;
+  jobs: TrackingJob[];
+}
+
+/** Cases grouped by driver: arrived/on-the-way first, then assigned, then unassigned. */
+function groupByDriver(jobs: TrackingJob[]): DriverGroup[] {
+  const groups = new Map<string, DriverGroup>();
+  for (const job of jobs) {
+    const key = job.driverId ?? "unassigned";
+    if (!groups.has(key)) {
+      groups.set(key, { key, driverName: job.driverId ? job.driverName : null, driverLocation: null, jobs: [] });
+    }
+    const g = groups.get(key)!;
+    g.jobs.push(job);
+    if (job.driverLocation) g.driverLocation = job.driverLocation;
+  }
+  const rank = (g: DriverGroup) => {
+    if (!g.driverName) return 3;
+    if (g.jobs.some((j) => j.status === "arrived")) return 0;
+    if (g.jobs.some((j) => ON_THE_WAY.includes(j.status))) return 1;
+    return 2;
+  };
+  return [...groups.values()].sort((a, b) => rank(a) - rank(b));
+}
+
+function groupSummary(g: DriverGroup): string {
+  const n = g.jobs.length;
+  const cases = `${n} case${n === 1 ? "" : "s"} for you`;
+  if (!g.driverName) return `${cases}. The lab will assign one soon.`;
+  const arrived = g.jobs.filter((j) => j.status === "arrived").length;
+  const moving = g.jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
+  if (arrived > 0) return `${cases} · arrived`;
+  if (moving === 0) return `${cases} · assigned, not on the way yet`;
+  if (moving === n) return `${cases} · on the way`;
+  return `${cases} · ${moving} of ${n} on the way`;
+}
+
+function initials(name: string) {
+  return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function TrackingView({
@@ -95,6 +143,31 @@ export default function TrackingView({
 }) {
   const [data, setData] = useState<TrackingData>(initial);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [messages, setMessages] = useState<Record<string, Message[]>>({});
+  const [openThread, setOpenThread] = useState<string | null>(null);
+  // Bumped when a thread is read, so unread badges (kept in localStorage) re-render.
+  const [, setSeenTick] = useState(0);
+
+  // Every active case's messages, so badges can show what's new without opening
+  // anything. Small: an office rarely has more than a handful of cases in flight.
+  const loadMessages = useCallback(async (jobIds: string[]) => {
+    const entries = await Promise.all(
+      jobIds.map(async (id) => {
+        try {
+          const res = await fetch(`/api/track/${token}/jobs/${id}/messages`);
+          const json = res.ok ? await res.json() : null;
+          return [id, (json?.data ?? null) as Message[] | null] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      })
+    );
+    setMessages((prev) => {
+      const next = { ...prev };
+      for (const [id, list] of entries) if (list) next[id] = list;
+      return next;
+    });
+  }, [token]);
 
   const refresh = useCallback(async () => {
     try {
@@ -116,7 +189,27 @@ export default function TrackingView({
     return () => clearInterval(id);
   }, [refresh]);
 
+  const jobIds = data.jobs.map((j) => j.id).join(",");
+  useEffect(() => {
+    const ids = jobIds ? jobIds.split(",") : [];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadMessages(ids);
+    const id = setInterval(() => loadMessages(ids), 30_000);
+    return () => clearInterval(id);
+  }, [jobIds, loadMessages]);
+
   const { office, jobs, recentDelivered } = data;
+  const groups = useMemo(() => groupByDriver(jobs), [jobs]);
+  const threadJob = openThread ? jobs.find((j) => j.id === openThread) ?? null : null;
+  const setThreadMessages = useCallback((list: Message[]) => {
+    if (!openThread) return;
+    setMessages((prev) => ({ ...prev, [openThread]: list }));
+    setSeenTick((t) => t + 1);
+  }, [openThread]);
+  const closeThread = useCallback(() => {
+    setOpenThread(null);
+    setSeenTick((t) => t + 1);
+  }, []);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F8F9FB", fontFamily: "system-ui, -apple-system, sans-serif" }}>
@@ -175,9 +268,9 @@ export default function TrackingView({
             <div style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
               Active Deliveries
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {jobs.map((job) => (
-                <JobCard key={job.id} job={job} token={token} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {groups.map((g) => (
+                <DriverCard key={g.key} group={g} messages={messages} onOpenMessages={setOpenThread} />
               ))}
             </div>
           </section>
@@ -260,15 +353,42 @@ export default function TrackingView({
       }}>
         Powered by <span style={{ color: "#185FA5", fontWeight: 500 }}>Gepeto</span> · Updates automatically every 30 seconds
       </footer>
+
+      {threadJob && (
+        <MessageModal
+          token={token}
+          jobId={threadJob.id}
+          caseId={threadJob.caseId}
+          driverName={threadJob.driverName}
+          messages={messages[threadJob.id] ?? []}
+          onMessages={setThreadMessages}
+          onClose={closeThread}
+        />
+      )}
     </div>
   );
 }
 
-// ── Job card ──────────────────────────────────────────────────────────────────
+// ── Driver card ───────────────────────────────────────────────────────────────
 
-function JobCard({ job, token }: { job: TrackingJob; token: string }) {
-  const colors = STATUS_COLOR[job.status];
-  const currentStep = stepIndex(job.status);
+function DriverCard({
+  group,
+  messages,
+  onOpenMessages,
+}: {
+  group: DriverGroup;
+  messages: Record<string, Message[]>;
+  onOpenMessages: (jobId: string) => void;
+}) {
+  const unread = group.jobs.reduce((n, j) => n + unreadCount(messages[j.id], j.id), 0);
+  // Map points: where this driver's cases are headed (normally just the office).
+  const destinations = [
+    ...new Map(
+      group.jobs
+        .filter((j) => j.deliveryLat != null && j.deliveryLng != null)
+        .map((j) => [`${j.deliveryLat},${j.deliveryLng}`, { lat: j.deliveryLat!, lng: j.deliveryLng! }])
+    ).values(),
+  ];
 
   return (
     <div style={{
@@ -278,136 +398,137 @@ function JobCard({ job, token }: { job: TrackingJob; token: string }) {
       overflow: "hidden",
       boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
     }}>
-      {/* Card header */}
-      <div style={{
-        padding: "14px 16px 12px",
-        borderBottom: "1px solid rgba(0,0,0,0.06)",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        gap: 12,
-      }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: "#1a1a1a" }}>{job.caseId}</span>
-            {job.priority === "stat" && (
-              <span style={{
-                background: "#FFF0EB",
-                color: "#C53B0A",
-                fontSize: 10,
-                fontWeight: 600,
-                borderRadius: 4,
-                padding: "1px 6px",
-                letterSpacing: "0.03em",
-              }}>
-                STAT
-              </span>
-            )}
+      {/* Driver header */}
+      <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+          background: group.driverName ? "#185FA5" : "#E8E8E6",
+          color: group.driverName ? "white" : "#5F5E5A",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600,
+        }}>
+          {group.driverName ? initials(group.driverName) : "?"}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: "#1a1a1a" }}>
+            {group.driverName ?? "Waiting for a driver"}
+            {group.driverName && <span style={{ fontSize: 12, fontWeight: 400, color: "#9a9a9a" }}> · your driver</span>}
           </div>
-          <div style={{ fontSize: 12.5, color: "#5F5E5A" }}>{job.deliveryAddress}</div>
+          <div style={{ fontSize: 12.5, color: "#5F5E5A", marginTop: 1 }}>{groupSummary(group)}</div>
         </div>
-        <div style={{
-          background: colors.bg,
-          color: colors.text,
-          border: `1px solid ${colors.border}`,
-          fontSize: 11.5,
-          fontWeight: 500,
-          borderRadius: 20,
-          padding: "3px 10px",
-          whiteSpace: "nowrap",
-          flexShrink: 0,
-        }}>
-          {STATUS_LABEL[job.status]}
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ padding: "12px 16px" }}>
-        <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
-          {STATUS_STEPS.slice(0, 5).map((step, i) => (
-            <div
-              key={step}
-              style={{
-                flex: 1,
-                height: 4,
-                borderRadius: 2,
-                background: i <= currentStep ? "#185FA5" : "rgba(0,0,0,0.08)",
-                transition: "background 0.3s",
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Step labels */}
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 10, color: "#9a9a9a" }}>Pending</span>
-          <span style={{ fontSize: 10, color: "#9a9a9a" }}>In Transit</span>
-          <span style={{ fontSize: 10, color: "#9a9a9a" }}>Arrived</span>
-        </div>
-      </div>
-
-      {/* Driver info */}
-      {job.driverName && (
-        <div style={{
-          padding: "10px 16px",
-          borderTop: "1px solid rgba(0,0,0,0.06)",
-          display: "flex",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "6px 8px",
-          background: "#FAFAFA",
-        }}>
-          <div style={{
-            width: 24, height: 24, borderRadius: "50%",
-            background: "#185FA5",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 600, color: "white", flexShrink: 0,
+        {unread > 0 && (
+          <span title={`${unread} new message${unread === 1 ? "" : "s"}`} style={{
+            background: "#D93025", color: "white", fontSize: 11, fontWeight: 700, borderRadius: 10,
+            padding: "2px 8px", flexShrink: 0,
           }}>
-            {job.driverName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+            {unread} new
+          </span>
+        )}
+      </div>
+
+      {/* One map per driver, only once they're on the way (location is withheld before that) */}
+      {group.driverName && group.driverLocation && (
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+          <div style={{ padding: "6px 16px", fontSize: 11, color: "#5F5E5A", display: "flex", alignItems: "center", gap: 5, background: "#FAFAFA" }}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <circle cx="5" cy="5" r="4" stroke="#3B6D11" strokeWidth="1.5" />
+              <circle cx="5" cy="5" r="1.5" fill="#3B6D11" />
+            </svg>
+            Live location
           </div>
-          <div style={{ minWidth: 0 }}>
-            <span style={{ fontSize: 12.5, color: "#3a3a3a", fontWeight: 500 }}>{job.driverName}</span>
-            <span style={{ fontSize: 12, color: "#9a9a9a", marginLeft: 6 }}>· your driver</span>
-          </div>
-          {job.driverLocation && (
-            <span style={{ fontSize: 11, color: "#5F5E5A", display: "flex", alignItems: "center", gap: 4 }}>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <circle cx="5" cy="5" r="4" stroke="#3B6D11" strokeWidth="1.5" />
-                <circle cx="5" cy="5" r="1.5" fill="#3B6D11" />
-              </svg>
-              Live location
+          <JobMap driverName={group.driverName} driverLocation={group.driverLocation} destinations={destinations} />
+        </div>
+      )}
+
+      {/* Cases */}
+      <div>
+        {group.jobs.map((job) => (
+          <CaseRow
+            key={job.id}
+            job={job}
+            unread={unreadCount(messages[job.id], job.id)}
+            onOpenMessages={() => onOpenMessages(job.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Case row (collapsed by default) ───────────────────────────────────────────
+
+function CaseRow({ job, unread, onOpenMessages }: { job: TrackingJob; unread: number; onOpenMessages: () => void }) {
+  const [open, setOpen] = useState(false);
+  const colors = STATUS_COLOR[job.status];
+  const currentStep = stepIndex(job.status);
+
+  return (
+    <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px 10px 16px" }}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          style={{
+            flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+            background: "none", border: "none", padding: "4px 0", cursor: "pointer", textAlign: "left",
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, color: "#9a9a9a", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+            <path d="M4.5 3l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a", fontFamily: "ui-monospace, monospace" }}>{job.caseId}</span>
+          {job.priority === "stat" && (
+            <span style={{ background: "#FFF0EB", color: "#C53B0A", fontSize: 10, fontWeight: 600, borderRadius: 4, padding: "1px 6px", letterSpacing: "0.03em" }}>
+              STAT
             </span>
           )}
+          <span style={{
+            background: colors.bg, color: colors.text, border: `1px solid ${colors.border}`,
+            fontSize: 11, fontWeight: 500, borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap",
+          }}>
+            {STATUS_LABEL[job.status]}
+          </span>
+        </button>
+        <button
+          onClick={onOpenMessages}
+          aria-label={unread > 0 ? `Messages for ${job.caseId}, ${unread} new` : `Messages for ${job.caseId}`}
+          style={{
+            position: "relative", flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
+            border: "1px solid #C0D9F0", background: unread > 0 ? "#EBF2FA" : "#FFFFFF", color: "#185FA5",
+            borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          <ChatIcon size={14} />
+          Message
+          {unread > 0 && (
+            <span style={{
+              position: "absolute", top: -7, right: -7, background: "#D93025", color: "white",
+              fontSize: 10, fontWeight: 700, minWidth: 17, height: 17, lineHeight: "17px", borderRadius: 9,
+              textAlign: "center", padding: "0 4px", boxShadow: "0 0 0 2px #fff",
+            }}>
+              {unread}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ padding: "0 16px 14px 36px" }}>
+          <div style={{ display: "flex", gap: 3, margin: "2px 0 6px" }}>
+            {STATUS_STEPS.slice(0, 5).map((step, i) => (
+              <div key={step} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= currentStep ? "#185FA5" : "rgba(0,0,0,0.08)" }} />
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontSize: 10, color: "#9a9a9a" }}>Pending</span>
+            <span style={{ fontSize: 10, color: "#9a9a9a" }}>In Transit</span>
+            <span style={{ fontSize: 10, color: "#9a9a9a" }}>Arrived</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: "#3a3a3a" }}>{job.deliveryAddress}</div>
+          <div style={{ fontSize: 11, color: "#9a9a9a", marginTop: 4 }}>
+            Created {timeAgo(job.createdAt)} · Updated {timeAgo(job.updatedAt)}
+          </div>
         </div>
       )}
-
-      {/* Live map */}
-      {job.driverName && job.driverLocation && (
-        <JobMap
-          driverName={job.driverName}
-          driverLocation={job.driverLocation}
-          deliveryLat={job.deliveryLat}
-          deliveryLng={job.deliveryLng}
-        />
-      )}
-
-      {/* Messages */}
-      <MessageThread token={token} jobId={job.id} />
-
-      {/* Footer meta */}
-      <div style={{
-        padding: "8px 16px",
-        borderTop: "1px solid rgba(0,0,0,0.05)",
-        display: "flex",
-        justifyContent: "space-between",
-      }}>
-        <span style={{ fontSize: 11, color: "#9a9a9a" }}>
-          Created {timeAgo(job.createdAt)}
-        </span>
-        <span style={{ fontSize: 11, color: "#9a9a9a" }}>
-          Updated {timeAgo(job.updatedAt)}
-        </span>
-      </div>
     </div>
   );
 }

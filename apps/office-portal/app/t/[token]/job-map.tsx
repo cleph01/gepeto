@@ -2,16 +2,19 @@
 
 import { useEffect, useRef } from "react";
 
+type LatLng = { lat: number; lng: number };
+
 interface JobMapProps {
   driverName: string;
-  driverLocation: { lat: number; lng: number };
-  deliveryLat: number | null;
-  deliveryLng: number | null;
+  driverLocation: LatLng;
+  /** Delivery points for this driver's cases (usually just the office). */
+  destinations: LatLng[];
 }
 
-// Single-driver tracking map for the public office tracking page — a scoped-down
-// version of dispatcher-web's fleet-wide LiveMap, showing just this one delivery.
-export default function JobMap({ driverName, driverLocation, deliveryLat, deliveryLng }: JobMapProps) {
+// One map per driver on the public office tracking page: the driver plus where
+// their cases for this office are headed, zoomed to fit both. A scoped-down
+// version of dispatcher-web's fleet-wide LiveMap.
+export default function JobMap({ driverName, driverLocation, destinations }: JobMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
@@ -29,8 +32,8 @@ export default function JobMap({ driverName, driverLocation, deliveryLat, delive
         maxZoom: 19,
       }).addTo(map);
 
-      mapRef.current = { map, L, driverMarker: null as unknown, destMarker: null as unknown };
-      renderMarkers(mapRef.current, driverName, driverLocation, deliveryLat, deliveryLng);
+      mapRef.current = { map, L, driverMarker: null as unknown, destMarkers: [] as unknown[] };
+      renderMarkers(mapRef.current, driverName, driverLocation, destinations);
     });
 
     return () => {
@@ -43,26 +46,29 @@ export default function JobMap({ driverName, driverLocation, deliveryLat, delive
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Re-render only when a position actually changes (polling hands us new
+  // objects every 30s), so the map doesn't snap back while someone pans it.
+  const key = JSON.stringify([driverLocation, destinations]);
   useEffect(() => {
     if (!mapRef.current) return;
-    renderMarkers(mapRef.current, driverName, driverLocation, deliveryLat, deliveryLng);
-  }, [driverName, driverLocation, deliveryLat, deliveryLng]);
+    renderMarkers(mapRef.current, driverName, driverLocation, destinations);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverName, key]);
 
   return (
     <>
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-      <div ref={containerRef} style={{ width: "100%", height: 180, background: "#eef1f5" }} />
+      <div ref={containerRef} style={{ width: "100%", height: 200, background: "#eef1f5" }} />
     </>
   );
 }
 
 function renderMarkers(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ref: { map: any; L: any; driverMarker: any; destMarker: any },
+  ref: { map: any; L: any; driverMarker: any; destMarkers: any[] },
   driverName: string,
-  driverLocation: { lat: number; lng: number },
-  deliveryLat: number | null,
-  deliveryLng: number | null
+  driverLocation: LatLng,
+  destinations: LatLng[]
 ) {
   const { map, L } = ref;
   const points: [number, number][] = [[driverLocation.lat, driverLocation.lng]];
@@ -84,21 +90,19 @@ function renderMarkers(
   });
   ref.driverMarker = L.marker([driverLocation.lat, driverLocation.lng], { icon: driverIcon })
     .addTo(map)
-    .bindPopup(`<strong>${driverName}</strong><br>your driver`);
+    .bindPopup(`<strong>${driverName.replace(/[<>&]/g, "")}</strong><br>your driver`);
 
-  if (ref.destMarker) ref.destMarker.remove();
-  if (deliveryLat != null && deliveryLng != null) {
-    points.push([deliveryLat, deliveryLng]);
-    const destIcon = L.divIcon({
-      className: "",
-      html: `<div style="width:12px;height:12px;border-radius:50%;background:#3B6D11;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
-      iconSize: [12, 12],
-      iconAnchor: [6, 6],
-    });
-    ref.destMarker = L.marker([deliveryLat, deliveryLng], { icon: destIcon })
-      .addTo(map)
-      .bindPopup("Delivery destination");
-  }
+  ref.destMarkers.forEach((m) => m.remove());
+  const destIcon = L.divIcon({
+    className: "",
+    html: `<div style="width:12px;height:12px;border-radius:50%;background:#3B6D11;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  });
+  ref.destMarkers = destinations.map((d) => {
+    points.push([d.lat, d.lng]);
+    return L.marker([d.lat, d.lng], { icon: destIcon }).addTo(map).bindPopup("Delivery destination");
+  });
 
   map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 15 });
 }

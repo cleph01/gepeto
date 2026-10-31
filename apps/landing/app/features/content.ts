@@ -136,8 +136,9 @@ export const SECTIONS: Section[] = [
         title: "Tracking without the phone calls",
         features: [
           { title: "A private tracking link", body: "Each office gets its own link. No account or password needed: open it to see every case on its way, with its status." },
-          { title: "Follow the delivery on a map", body: "See the driver's progress toward the office." },
-          { title: "Talk to the lab and the driver", body: "Send a message about any case, right from the tracking page." },
+          { title: "Grouped by driver", body: "Cases are organized under the driver bringing them, with one live map per driver that shows how close they are. Tap a case for its progress and details." },
+          { title: "A map only when it matters", body: "A driver's location appears once they're actually carrying your cases, not before." },
+          { title: "Talk to the lab and the driver", body: "Message about any case in a full-screen chat, with a badge showing what's new since you last looked." },
           { title: "Private conversations", body: "If a case is moved to a different office, the new office never sees messages from the previous one." },
         ],
       },
