@@ -28,14 +28,15 @@ export default function DashboardPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
   const router = useRouter();
-  const { totalUnread, unreadByJob, newestUnreadJobId, openThread } = useMessageNotifications();
+  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary } = useMessageNotifications();
+  const returningCases = returnsSummary.withDriverCases + returnsSummary.atLabCases;
   const unreadJobCount = Object.values(unreadByJob).filter((n) => n > 0).length;
   const [jobs, setJobs]      = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
   const [labName, setLabName] = useState<string | null>(null);
   // Until the first load lands, show "Loading" rather than zeros and empty lists.
   const [loaded, setLoaded]   = useState(false);
-  const [jobFilter, setJobFilter] = useState<"all" | "stat" | "in_transit" | "pending">("all");
+  const [jobFilter, setJobFilter] = useState<"all" | "stat" | "in_transit" | "pending" | "delivered">("all");
 
   // Initial load
   useEffect(() => {
@@ -74,7 +75,9 @@ export default function DashboardPage() {
 
   const today = now.toDateString();
   const activeJobs = jobs.filter((j) => !["delivered", "rejected"].includes(j.status));
-  const filteredJobs = activeJobs.filter((j) =>
+  // "Delivered" shows today's deliveries (it replaced the Delivered Today tile).
+  const deliveredToday = jobs.filter((j) => j.status === "delivered" && new Date(j.updatedAt).toDateString() === today);
+  const filteredJobs = jobFilter === "delivered" ? deliveredToday : activeJobs.filter((j) =>
     jobFilter === "all"  ? true :
     jobFilter === "stat" ? j.priority === "stat" :
     j.status === jobFilter
@@ -84,7 +87,6 @@ export default function DashboardPage() {
     createdToday: jobs.filter((j) => new Date(j.createdAt).toDateString() === today).length,
     inTransit:  jobs.filter((j) => j.status === "in_transit").length,
     statInTransit: jobs.filter((j) => j.status === "in_transit" && j.priority === "stat").length,
-    delivered:  jobs.filter((j) => j.status === "delivered" && new Date(j.updatedAt).toDateString() === today).length,
     pending:    jobs.filter((j) => j.status === "pending").length,
   };
   return (
@@ -180,7 +182,19 @@ export default function DashboardPage() {
           <div className="stats-grid" style={{ flexShrink: 0, ...(bp === "desktop" ? { gridTemplateColumns: "repeat(5, 1fr)" } : {}) }}>
             <MetricCard value={loaded ? String(metrics.active) : "–"}    label="Active Jobs" sublabel={loaded ? `${metrics.createdToday} today` : undefined} />
             <MetricCard value={loaded ? String(metrics.inTransit) : "–"} label="In Transit"     color="#185FA5" sublabel={loaded ? `${metrics.statInTransit} STAT` : undefined} />
-            <MetricCard value={loaded ? String(metrics.delivered) : "–"} label="Delivered Today" color="#3B6D11" />
+            <MetricCard
+              value={String(returningCases)}
+              label="Returning Cases"
+              color={returnsSummary.atLabCases > 0 ? "#854F0B" : "#1a1a1a"}
+              sublabel={
+                returningCases === 0
+                  ? "None on the way"
+                  : `${returnsSummary.atLabCases} to check in · ${returnsSummary.withDriverCases} with drivers`
+              }
+              highlight={returnsSummary.atLabCases > 0}
+              hint="Open Returning Cases"
+              onClick={() => router.push("/returns")}
+            />
             <MetricCard value={loaded ? String(metrics.pending) : "–"}   label="Pending"        color="#854F0B" />
             <MetricCard
               value={String(totalUnread)}
@@ -220,7 +234,7 @@ export default function DashboardPage() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>Active Jobs</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>{jobFilter === "delivered" ? "Delivered Today" : "Active Jobs"}</span>
                 <span
                   style={{
                     background: "#185FA5",
@@ -239,6 +253,7 @@ export default function DashboardPage() {
                 <FilterChip active={jobFilter === "stat"}       onClick={() => setJobFilter("stat")}>STAT</FilterChip>
                 <FilterChip active={jobFilter === "in_transit"} onClick={() => setJobFilter("in_transit")}>In Transit</FilterChip>
                 <FilterChip active={jobFilter === "pending"}    onClick={() => setJobFilter("pending")}>Pending</FilterChip>
+                <FilterChip active={jobFilter === "delivered"}  onClick={() => setJobFilter("delivered")}>Delivered</FilterChip>
               </div>
             </div>
 
@@ -272,7 +287,7 @@ export default function DashboardPage() {
             <div style={{ overflowY: "auto", minHeight: 0, ...(bp === "desktop" ? {} : { maxHeight: 360 }) }}>
               {filteredJobs.length === 0 ? (
                 <div style={{ padding: "24px 16px", textAlign: "center", color: "#9a9a9a", fontSize: 13 }}>
-                  {!loaded ? "Loading jobs…" : jobFilter === "all" ? "No active jobs." : "No matching jobs."}
+                  {!loaded ? "Loading jobs…" : jobFilter === "all" ? "No active jobs." : jobFilter === "delivered" ? "Nothing delivered yet today." : "No matching jobs."}
                 </div>
               ) : (
                 filteredJobs.map((job, i) => (

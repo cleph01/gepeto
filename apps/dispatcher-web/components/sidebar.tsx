@@ -30,6 +30,17 @@ const navLinks = [
     ),
   },
   {
+    href: "/returns",
+    label: "Returning Cases",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="2" y="5.5" width="12" height="8.5" rx="1.5" stroke="currentColor" strokeWidth="1.25" fill="none" />
+        <path d="M5.5 3.5L4 5.5M10.5 3.5L12 5.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        <path d="M5.5 9.75h5M7 8.25L5.5 9.75 7 11.25" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/drivers",
     label: "Drivers",
     icon: (
@@ -71,7 +82,8 @@ function NavContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const { totalUnread } = useMessageNotifications();
+  const { totalUnread, returnsSummary } = useMessageNotifications();
+  const openReturns = returnsSummary.withDriver + returnsSummary.atLab;
   return (
     <>
       {/* Logo */}
@@ -124,6 +136,7 @@ function NavContent({
               <span style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }}>{link.icon}</span>
               {link.label}
               {link.href === "/jobs" && <UnreadBadge count={totalUnread} style={{ marginLeft: "auto", boxShadow: "none" }} />}
+              {link.href === "/returns" && <UnreadBadge count={openReturns} style={{ marginLeft: "auto", boxShadow: "none" }} />}
             </Link>
           );
         })}
@@ -175,7 +188,8 @@ function UserArea() {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { totalUnread } = useMessageNotifications();
+  const { totalUnread, returnsSummary } = useMessageNotifications();
+  const openReturns = returnsSummary.withDriver + returnsSummary.atLab;
   const [isMobile, setIsMobile] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -217,7 +231,7 @@ export default function Sidebar() {
               position: "relative",
             }}
           >
-            {totalUnread > 0 && (
+            {(totalUnread > 0 || openReturns > 0) && (
               <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: "50%", background: "#D93025", boxShadow: "0 0 0 2px #fff" }} />
             )}
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">

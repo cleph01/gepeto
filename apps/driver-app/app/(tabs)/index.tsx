@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Job } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
@@ -31,8 +31,10 @@ import {
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { navigate } from '@/lib/navigation';
-import { apiPatch } from '@/lib/api';
+import { apiGet, apiPatch, apiPost } from '@/lib/api';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
+import { LogPickupModal } from '@/components/log-pickup-modal';
+import { RETURN_STATUS_LABEL, logReturn, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { onJobRemoved } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
@@ -266,6 +268,69 @@ function GroupHeader({
   );
 }
 
+// ─── Returning to lab ────────────────────────────────────────────────────────
+
+function ReturningSection({
+  returns,
+  dropping,
+  onDropAll,
+}: {
+  returns: ReturnCase[];
+  dropping: boolean;
+  onDropAll: () => void;
+}) {
+  const inCar = returns.filter((r) => r.status === 'with_driver');
+  const casesInCar = inCar.reduce((n, r) => n + r.caseCount, 0);
+  return (
+    <View style={styles.returnsWrap}>
+      {returns.map((r) => {
+        const inYourCar = r.status === 'with_driver';
+        return (
+          <View key={r.id} style={[styles.returnCard, inYourCar && styles.returnCardInCar]}>
+            <View style={styles.returnTop}>
+              <Text style={styles.returnTitle} numberOfLines={1}>
+                {r.officeName ?? 'Office'} · {r.caseCount} case{r.caseCount === 1 ? '' : 's'}
+              </Text>
+              <Text style={styles.returnNumber}>{returnLabel(r)}</Text>
+            </View>
+            {r.caseNumbers.length > 0 && (
+              <Text style={styles.returnCases} numberOfLines={2}>{r.caseNumbers.join(', ')}</Text>
+            )}
+            {r.note && <Text style={styles.returnNote} numberOfLines={2}>{r.note}</Text>}
+            <View style={styles.returnFooter}>
+              <IconSymbol
+                name={r.status === 'checked_in' ? 'checkmark' : inYourCar ? 'tray' : 'clock'}
+                size={14}
+                color={r.status === 'checked_in' ? Colors.success : inYourCar ? Colors.accent : Colors.textSecondary}
+              />
+              <Text style={[styles.returnStatus, r.status === 'checked_in' && { color: Colors.success }, inYourCar && { color: Colors.accent }]}>
+                {RETURN_STATUS_LABEL[r.status]}
+              </Text>
+              <Text style={styles.returnTime}>
+                Picked up {new Date(r.pickedUpAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+      {inCar.length > 0 && (
+        <TouchableOpacity
+          style={[styles.batchBtn, dropping && styles.batchBtnBusy]}
+          onPress={onDropAll}
+          disabled={dropping}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityHint="Tells the lab these cases are waiting for check-in"
+        >
+          {dropping
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.batchBtnText}>Dropped at lab · {casesInCar} case{casesInCar === 1 ? '' : 's'}</Text>}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 function StatTile({ label, value, highlight, valueColor }: { label: string; value: number; highlight?: boolean; valueColor?: string }) {
   return (
     <View style={[styles.statTile, highlight && styles.statTileHighlight]}>
@@ -281,7 +346,9 @@ type Row =
   | { type: 'stats' }
   | { type: 'section'; title: string }
   | { type: 'group'; key: string; jobs: QueueJob[] }
-  | { type: 'job'; job: QueueJob; inGroup?: boolean; lastInGroup?: boolean };
+  | { type: 'job'; job: QueueJob; inGroup?: boolean; lastInGroup?: boolean }
+  | { type: 'pickup' }
+  | { type: 'returns' };
 
 export default function JobQueueScreen() {
   const router = useRouter();
@@ -291,6 +358,53 @@ export default function JobQueueScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
   const [delivering, setDelivering] = useState<{ key: string; officeName: string; jobs: QueueJob[] } | null>(null);
+  const [returns, setReturns] = useState<ReturnCase[]>([]);
+  const [showLogPickup, setShowLogPickup] = useState(false);
+  const [dropping, setDropping] = useState(false);
+
+  // Returns the driver is carrying or dropped off (and today's checked-in ones).
+  const loadReturns = useCallback(async () => {
+    try {
+      const res = await apiGet<ReturnCase[]>('/api/returns');
+      if (res.data) setReturns(res.data);
+    } catch {
+      // Offline: keep what we have.
+    }
+  }, []);
+
+  // Refresh whenever the tab comes back into view (e.g. after a delivery logged a return).
+  useFocusEffect(
+    useCallback(() => {
+      loadReturns();
+    }, [loadReturns])
+  );
+
+  const dropAllAtLab = () => {
+    const inCar = returns.filter((r) => r.status === 'with_driver');
+    const cases = inCar.reduce((n, r) => n + r.caseCount, 0);
+    Alert.alert(
+      `Drop off ${cases} case${cases === 1 ? '' : 's'} at the lab?`,
+      'The lab will check them in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Dropped off',
+          onPress: async () => {
+            setDropping(true);
+            try {
+              const res = await apiPost<{ dropped: number }>('/api/returns/drop', {});
+              if (res.data) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              else Alert.alert("Couldn't update", res.error?.message ?? 'Try again.');
+            } catch {
+              Alert.alert("Couldn't update", 'Check your signal and try again.');
+            }
+            await loadReturns();
+            setDropping(false);
+          },
+        },
+      ]
+    );
+  };
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const driverId = getDriverId(session);
@@ -409,7 +523,7 @@ export default function JobQueueScreen() {
     );
   };
 
-  const confirmGroupDelivery = async (recipientName: string) => {
+  const confirmGroupDelivery = async (recipientName: string, returnDraft: ReturnDraft) => {
     if (!delivering) return;
     const { key, jobs: toDeliver } = delivering;
     setDelivering(null);
@@ -418,6 +532,12 @@ export default function JobQueueScreen() {
       status: 'delivered',
       proofOfDelivery: { recipientName, timestamp },
     }));
+    // One return for the stop, linked to the first delivery in the group.
+    const returnError = await logReturn(returnDraft, toDeliver[0].officeId, toDeliver[0].id);
+    if (returnError) {
+      Alert.alert("Deliveries saved, but the return wasn't logged", `${returnError} Use "Log a pickup" to add it.`);
+    }
+    loadReturns();
   };
 
   // Track location whenever the driver has at least one active job
@@ -431,9 +551,20 @@ export default function JobQueueScreen() {
     { title: `Completed today · ${completedJobs.length}`, data: completedJobs, grouped: false },
   ].filter((s) => s.data.length > 0);
 
+  // "Returning to lab" sits after the active work, before Completed today.
+  const returningRows: Row[] = returns.length > 0
+    ? [
+        { type: 'section', title: `Returning to lab · ${returns.reduce((n, r) => n + r.caseCount, 0)} cases` },
+        { type: 'returns' },
+      ]
+    : [];
+  const activeSections = sections.filter((s) => s.grouped);
+  const doneSections = sections.filter((s) => !s.grouped);
+
   const flatData: Row[] = [
     { type: 'stats' },
-    ...sections.flatMap((s): Row[] => [
+    { type: 'pickup' },
+    ...[...activeSections, null, ...doneSections].flatMap((s): Row[] => s === null ? returningRows : [
       { type: 'section', title: s.title },
       ...(s.grouped
         ? toStops(s.data).flatMap((stop): Row[] =>
@@ -446,6 +577,9 @@ export default function JobQueueScreen() {
         : s.data.map((job): Row => ({ type: 'job', job }))),
     ]),
   ];
+
+  // At an office right now? That's the likely pickup spot.
+  const arrivedAt = activeJobs.find((j) => j.status === 'arrived')?.officeId ?? null;
 
   return (
     <View style={styles.screen}>
@@ -465,7 +599,7 @@ export default function JobQueueScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={fetchJobs}
+            onRefresh={() => { fetchJobs(); loadReturns(); }}
             tintColor={Colors.accent}
           />
         }
@@ -489,6 +623,23 @@ export default function JobQueueScreen() {
         renderItem={({ item }) => {
           if (item.type === 'stats') {
             return <StatsRow jobs={jobs} />;
+          }
+          if (item.type === 'pickup') {
+            return (
+              <TouchableOpacity
+                style={styles.pickupBtn}
+                onPress={() => setShowLogPickup(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityHint="Log cases you picked up at an office to bring back to the lab"
+              >
+                <IconSymbol name="tray" size={18} color={Colors.accent} />
+                <Text style={styles.pickupBtnText}>Log a pickup for the lab</Text>
+              </TouchableOpacity>
+            );
+          }
+          if (item.type === 'returns') {
+            return <ReturningSection returns={returns} dropping={dropping} onDropAll={dropAllAtLab} />;
           }
           if (item.type === 'section') {
             return <Text style={styles.sectionTitle}>{item.title}</Text>;
@@ -521,7 +672,7 @@ export default function JobQueueScreen() {
             : card;
         }}
         ListFooterComponent={
-          sections.length === 0 ? (
+          sections.length === 0 && returns.length === 0 ? (
             <View style={styles.empty}>
               <View style={styles.emptyIcon}>
                 <IconSymbol name="tray" size={28} color={Colors.accent} />
@@ -539,6 +690,12 @@ export default function JobQueueScreen() {
         caseIds={delivering?.jobs.map((j) => j.caseId) ?? []}
         onCancel={() => setDelivering(null)}
         onConfirm={confirmGroupDelivery}
+      />
+      <LogPickupModal
+        visible={showLogPickup}
+        suggestedOfficeId={arrivedAt}
+        onClose={() => setShowLogPickup(false)}
+        onLogged={loadReturns}
       />
     </View>
   );
@@ -725,6 +882,83 @@ const styles = StyleSheet.create({
   },
   groupRailLast: {
     marginBottom: Spacing.sm,
+  },
+  pickupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    height: 46,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.accentBorder,
+    backgroundColor: Colors.accentBg,
+  },
+  pickupBtnText: {
+    fontFamily: Fonts.semibold,
+    color: Colors.accent,
+    fontSize: FontSize.sm,
+  },
+  returnsWrap: {
+    gap: Spacing.sm + 2,
+  },
+  returnCard: {
+    backgroundColor: Colors.card,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    gap: 6,
+  },
+  returnCardInCar: {
+    borderColor: Colors.accentBorder,
+  },
+  returnTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  returnTitle: {
+    fontFamily: Fonts.semibold,
+    color: Colors.text,
+    fontSize: FontSize.md,
+    flexShrink: 1,
+  },
+  returnNumber: {
+    fontFamily: Fonts.semibold,
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    flexShrink: 0,
+  },
+  returnCases: {
+    fontFamily: Fonts.medium,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+  },
+  returnNote: {
+    fontFamily: Fonts.regular,
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    fontStyle: 'italic',
+  },
+  returnFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  returnStatus: {
+    fontFamily: Fonts.semibold,
+    color: Colors.textSecondary,
+    fontSize: FontSize.xs,
+    flexShrink: 1,
+  },
+  returnTime: {
+    fontFamily: Fonts.regular,
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    marginLeft: 'auto',
   },
   sectionTitle: {
     fontFamily: Fonts.semibold,

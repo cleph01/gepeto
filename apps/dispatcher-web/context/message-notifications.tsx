@@ -42,9 +42,19 @@ interface DriverActivity {
   at: string;
 }
 
+/** Open returning cases (sidebar badge, dashboard tile). */
+export interface ReturnsSummary {
+  withDriver: number;
+  withDriverCases: number;
+  atLab: number;
+  atLabCases: number;
+}
+
+const EMPTY_RETURNS: ReturnsSummary = { withDriver: 0, withDriverCases: 0, atLab: 0, atLabCases: 0 };
+
 interface Toast {
   key: string;
-  kind: "message" | DriverActivity["kind"];
+  kind: "message" | "return" | DriverActivity["kind"];
   jobId: string | null; // null = summary toast for a burst of messages
   title: string;
   body: string;
@@ -72,6 +82,10 @@ interface MessageNotificationsContextType {
   jobsChangedAt: number;
   /** Bumped when a message lands on a job, so an open thread can reload at once. */
   messageArrived: { jobId: string; at: number } | null;
+  /** Open returning cases, kept live for the sidebar badge and dashboard. */
+  returnsSummary: ReturnsSummary;
+  /** Bumped whenever a return is logged, dropped off or checked in. */
+  returnsChangedAt: number;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
 }
@@ -89,6 +103,8 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   clearPendingHistory: () => {},
   jobsChangedAt: 0,
   messageArrived: null,
+  returnsSummary: EMPTY_RETURNS,
+  returnsChangedAt: 0,
   soundEnabled: true,
   setSoundEnabled: () => {},
 });
@@ -186,6 +202,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const [pendingHistoryJobId, setPendingHistoryJobId] = useState<string | null>(null);
   const [jobsChangedAt, setJobsChangedAt] = useState(0);
   const [messageArrived, setMessageArrived] = useState<{ jobId: string; at: number } | null>(null);
+  const [returnsSummary, setReturnsSummary] = useState<ReturnsSummary>(EMPTY_RETURNS);
+  const [returnsChangedAt, setReturnsChangedAt] = useState(0);
   // Safe to read localStorage on first render: AppShell's Guard only mounts this
   // provider client-side, after auth has loaded.
   const [soundEnabled, setSoundEnabledState] = useState(
@@ -306,10 +324,58 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (soundRef.current) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
+  const loadReturnsSummary = useCallback(async () => {
+    if (!session || !isDispatcher) return;
+    try {
+      const res = await apiFetch<ApiResponse<ReturnsSummary>>("/api/returns/summary");
+      if (res.data) setReturnsSummary(res.data);
+    } catch {
+      // Keep the last counts; the next poll retries.
+    }
+  }, [session, isDispatcher, apiFetch]);
+
+  // A driver logged or dropped off returning cases: badge, chime and a notice.
+  const onReturnChanged = useCallback(async (payload: { returnId?: string; change?: string; count?: number }) => {
+    setReturnsChangedAt(Date.now());
+    loadReturnsSummary();
+    if (payload.change === "dropped") {
+      const n = payload.count ?? 1;
+      pushToasts([{
+        key: `return-dropped-${Date.now()}`,
+        kind: "return",
+        jobId: null,
+        title: `${n} return${n === 1 ? "" : "s"} dropped at the lab`,
+        body: "Waiting for check-in.",
+        color: "#854F0B",
+      }]);
+      if (soundRef.current) playChime();
+      return;
+    }
+    if (payload.change !== "logged" || !payload.returnId) return;
+    try {
+      // Broadcasts carry only ids; read the return back for the notice.
+      const res = await apiFetch<ApiResponse<{ id: string; caseCount: number; officeName: string | null; driverName: string | null; note: string | null; caseNumbers: string[] }[]>>("/api/returns?status=open");
+      const r = res.data?.find((x) => x.id === payload.returnId);
+      if (!r) return;
+      pushToasts([{
+        key: `return-${r.id}`,
+        kind: "return",
+        jobId: null,
+        title: `${r.driverName ?? "A driver"} is bringing back ${r.caseCount} case${r.caseCount === 1 ? "" : "s"}`,
+        body: [r.officeName ?? "From an office", r.caseNumbers.length ? r.caseNumbers.join(", ") : null, r.note].filter(Boolean).join(" · "),
+        color: "#185FA5",
+      }]);
+      if (soundRef.current) playChime();
+    } catch {
+      // The badge still updated.
+    }
+  }, [apiFetch, loadReturnsSummary, pushToasts]);
+
   const pollAll = useCallback(() => {
     poll();
     pollActivity();
-  }, [poll, pollActivity]);
+    loadReturnsSummary();
+  }, [poll, pollActivity, loadReturnsSummary]);
 
   // Realtime: any change to the lab's jobs re-checks driver activity right away and
   // tells open job lists to reload. Polling above still covers a dropped socket.
@@ -335,11 +401,15 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         if (jobId) setMessageArrived({ jobId, at: Date.now() });
         poll();
       })
+      // Server broadcast when a driver logs, drops off, or dispatch checks in a return.
+      .on("broadcast", { event: "return_changed" }, ({ payload }) => {
+        onReturnChanged((payload ?? {}) as { returnId?: string; change?: string; count?: number });
+      })
       .subscribe();
     return () => {
       supabaseBrowser.removeChannel(channel);
     };
-  }, [labId, pollActivity, poll]);
+  }, [labId, pollActivity, poll, onReturnChanged]);
 
   useEffect(() => {
     if (!session) return;
@@ -394,7 +464,9 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if ((t.kind === "rejected" || t.kind === "delivered") && t.jobId) {
+    if (t.kind === "return") {
+      if (pathname !== "/returns") router.push("/returns");
+    } else if ((t.kind === "rejected" || t.kind === "delivered") && t.jobId) {
       setPendingHistoryJobId(t.jobId);
       if (pathname !== "/jobs") router.push("/jobs");
     } else if (t.jobId) openThread(t.jobId);
@@ -416,6 +488,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         clearPendingHistory,
         jobsChangedAt,
         messageArrived,
+        returnsSummary,
+        returnsChangedAt,
         soundEnabled,
         setSoundEnabled,
       }}
@@ -469,6 +543,11 @@ function ToastStack({
               <>
                 <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
                 <path d="M4 4l4 4M8 4L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </>
+            ) : t.kind === "return" ? (
+              <>
+                <rect x="1.5" y="4" width="9" height="6.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M4.5 2.5L3 4M7.5 2.5L9 4M4 7.25h4M5.5 5.75L4 7.25l1.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
               </>
             ) : t.kind === "accepted" || t.kind === "delivered" ? (
               <>

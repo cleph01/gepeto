@@ -9,8 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
+import { ReturnPickupFields } from '@/components/return-pickup-fields';
+import { EMPTY_RETURN, type ReturnDraft } from '@/lib/returns';
 
 // Proof of delivery for several jobs at one office: the recipient's name is
 // entered once and saved on every job. Same look as the single-job sheet.
@@ -25,23 +28,25 @@ export function GroupDeliveryModal({
   officeName: string;
   caseIds: string[];
   onCancel: () => void;
-  onConfirm: (recipientName: string) => Promise<void>;
+  onConfirm: (recipientName: string, returnDraft: ReturnDraft) => Promise<void>;
 }) {
   const [name, setName] = useState('');
+  const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
   const [submitting, setSubmitting] = useState(false);
 
   const confirm = async () => {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
-    await onConfirm(name.trim());
+    await onConfirm(name.trim(), returnDraft);
     setSubmitting(false);
     setName('');
+    setReturnDraft(EMPTY_RETURN);
   };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
       <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <View style={styles.heading}>
               <Text style={styles.eyebrow}>{officeName}</Text>
@@ -81,6 +86,8 @@ export function GroupDeliveryModal({
             />
           </View>
 
+          <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} />
+
           <TouchableOpacity
             style={[styles.confirmBtn, (!name.trim() || submitting) && styles.confirmBtnDisabled]}
             onPress={confirm}
@@ -92,7 +99,7 @@ export function GroupDeliveryModal({
               ? <ActivityIndicator color={Colors.successInk} />
               : <Text style={styles.confirmText}>Confirm {caseIds.length} deliveries</Text>}
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -100,7 +107,7 @@ export function GroupDeliveryModal({
 
 const styles = StyleSheet.create({
   kav: { flex: 1, backgroundColor: Colors.bg },
-  container: { flex: 1, padding: Spacing.xl, gap: Spacing.xl },
+  container: { flexGrow: 1, padding: Spacing.xl, gap: Spacing.xl },
   header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingTop: Spacing.md },
   heading: { gap: 4, flexShrink: 1 },
   eyebrow: {

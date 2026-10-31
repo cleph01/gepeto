@@ -35,6 +35,8 @@ import {
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { forgetJob } from '@/components/job-alerts';
 import { STEPS, dueInfo } from '@/lib/jobs';
+import { EMPTY_RETURN, logReturn, type ReturnDraft } from '@/lib/returns';
+import { ReturnPickupFields } from '@/components/return-pickup-fields';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
   picked_up:  'in_transit',
@@ -83,6 +85,7 @@ export default function JobDetailScreen() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showPod, setShowPod] = useState(false);
   const [recipientName, setRecipientName] = useState('');
+  const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
   const [submittingPod, setSubmittingPod] = useState(false);
 
   // Set nav title to case ID
@@ -192,6 +195,7 @@ export default function JobDetailScreen() {
 
     if (job.status === 'arrived') {
       setRecipientName('');
+      setReturnDraft(EMPTY_RETURN);
       setShowPod(true);
       return;
     }
@@ -217,10 +221,17 @@ export default function JobDetailScreen() {
         timestamp: new Date().toISOString(),
       },
     });
-    setSubmittingPod(false);
     if (res.data) {
+      // Cases picked up at the door for the lab, logged against this delivery.
+      const returnError = await logReturn(returnDraft, job.officeId, job.id);
+      setSubmittingPod(false);
       setJob(res.data);
       setShowPod(false);
+      if (returnError) {
+        Alert.alert('Delivery saved, but the return wasn\'t logged', `${returnError} Use "Log a pickup" on the Jobs tab to add it.`);
+      }
+    } else {
+      setSubmittingPod(false);
     }
   };
 
@@ -466,7 +477,7 @@ export default function JobDetailScreen() {
           style={styles.podKav}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={styles.podContainer}>
+          <ScrollView contentContainerStyle={styles.podContainer} keyboardShouldPersistTaps="handled">
             <View style={styles.podHeader}>
               <View style={styles.podHeading}>
                 <Text style={styles.eyebrow}>{job.caseId}</Text>
@@ -503,6 +514,8 @@ export default function JobDetailScreen() {
               />
             </View>
 
+            <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} />
+
             <TouchableOpacity
               style={[
                 styles.podConfirmBtn,
@@ -518,7 +531,7 @@ export default function JobDetailScreen() {
                 : <Text style={styles.podConfirmText}>Confirm delivery</Text>
               }
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
@@ -894,7 +907,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   podContainer: {
-    flex: 1,
+    flexGrow: 1,
     padding: Spacing.xl,
     gap: Spacing.xl,
   },
