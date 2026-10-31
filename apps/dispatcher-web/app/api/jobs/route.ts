@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { notifyOffices } from "@/lib/realtime";
 import { geocodeAddress } from "@/lib/geocode";
 import { sendStatJobAlert, getDispatcherEmails, getDashboardUrl } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -134,6 +135,7 @@ export async function POST(request: NextRequest) {
       )
       .first();
 
+    await notifyOffices([created?.officeId], "jobs");
     return Response.json({ data: created, error: null }, { status: 201 });
   } catch (err) {
     if (err instanceof Response) return err;

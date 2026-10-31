@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { notifyDriver, notifyLab } from "@/lib/realtime";
+import { notifyDriver, notifyLab, notifyOffices } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -79,6 +79,7 @@ export async function PATCH(
     // A driver moved their job along: refresh the dispatch dashboard.
     if (user.role === "driver" && job.status !== status) {
       await notifyLab(user.labId, "job_changed", { jobId: id });
+      await notifyOffices([job.officeId], "jobs");
     }
 
     // Return the same joined shape as GET /api/jobs so the jobs list can re-render the row

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { notifyLab } from "@/lib/realtime";
+import { notifyLab, notifyOffices } from "@/lib/realtime";
 import { returnsQuery } from "@/lib/returns";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -95,6 +95,7 @@ export async function POST(
     });
 
     await notifyLab(user.labId, "return_changed", { returnId: id, change: "checked_in" });
+    await notifyOffices([ret.officeId], "pickups");
     const row = await returnsQuery(user.labId).where("r.id", id).first();
     return Response.json({ data: row, error: null });
   } catch (err) {

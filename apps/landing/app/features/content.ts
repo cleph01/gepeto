@@ -138,6 +138,7 @@ export const SECTIONS: Section[] = [
         title: "Tracking without the phone calls",
         features: [
           { title: "A private tracking link", body: "Each office gets its own link. No account or password needed: open it to see every case on its way, with its status." },
+          { title: "Updates live", body: "No refresh button. The moment a driver is assigned, picks up, or arrives, or the lab sends a message, the tracking page shows it." },
           { title: "Grouped by driver", body: "Cases are organized under the driver bringing them, with one live map per driver that shows how close they are. Each case shows what's in the box, any handling notes like Fragile or Keep cool, and a simple At the lab, On the way, Arrived tracker." },
           { title: "A map only when it matters", body: "A driver's location appears once they're actually carrying your cases, not before." },
           { title: "One conversation per driver", body: "Message the lab and your driver about all of their cases in one place, with a badge for what's new since you last looked. Pick which case you mean with a tap." },

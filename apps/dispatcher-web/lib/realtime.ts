@@ -1,3 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const db = require("@gepeto/db");
+
 // Server-to-driver-app messages over Supabase Realtime broadcast.
 //
 // Used where postgres_changes can't reach the driver: once a job is taken off
@@ -22,6 +25,25 @@ export async function notifyDriverPickups(driverId: string, event: string, paylo
 // (postgres_changes alone proved unreliable for the dispatcher's session.)
 export async function notifyLab(labId: string, event: string, payload: Record<string, unknown>) {
   await broadcast(`lab:${labId}`, event, payload);
+}
+
+/** What an office's tracking page should reload. */
+export type OfficeChange = "jobs" | "messages" | "pickups" | "location";
+
+// Lab-to-office: the public tracking page listens on `office:<tracking token>`.
+// The token is the page's secret, so only someone with the link can listen.
+// The payload says only what kind of thing changed; the page reloads it
+// through its normal token-checked endpoints.
+export async function notifyOffices(officeIds: (string | null | undefined)[], what: OfficeChange) {
+  const ids = [...new Set(officeIds.filter((id): id is string => !!id))];
+  if (ids.length === 0) return;
+  try {
+    const rows: { trackingToken: string }[] = await db("offices").whereIn("id", ids).select("tracking_token");
+    await Promise.all(rows.map((r) => broadcast(`office:${r.trackingToken}`, "changed", { what })));
+  } catch (err) {
+    // Best effort, like every broadcast: the page also polls.
+    console.error("[notifyOffices]", err);
+  }
 }
 
 async function broadcast(topic: string, event: string, payload: Record<string, unknown>) {

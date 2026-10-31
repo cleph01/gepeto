@@ -38,7 +38,7 @@ function rangeFor(preset: Preset, customFrom: string, customTo: string): [Date, 
   return to > from ? [from, to] : null;
 }
 
-export default function DeliveredView({ token }: { token: string }) {
+export default function DeliveredView({ token, refreshKey = 0 }: { token: string; refreshKey?: number }) {
   const [preset, setPreset] = useState<Preset>("7");
   const [customFrom, setCustomFrom] = useState(() => dayInput(addDays(new Date(), -30)));
   const [customTo, setCustomTo] = useState(() => dayInput(new Date()));
@@ -69,7 +69,7 @@ export default function DeliveredView({ token }: { token: string }) {
       })
       .catch(() => { if (!cancelled) setError("Couldn't load deliveries. Check your connection."); });
     return () => { cancelled = true; };
-  }, [token, rangeKey]);
+  }, [token, rangeKey, refreshKey]);
 
   // Group by the local day each case was delivered.
   const days: { label: string; rows: Delivery[] }[] = [];

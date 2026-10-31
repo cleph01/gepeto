@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { notifyLab } from "@/lib/realtime";
+import { notifyLab, notifyOffices } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -83,6 +83,7 @@ export async function POST(
 
     // Dashboards in this lab refresh unread badges and any open thread right away.
     await notifyLab(user.labId, "message", { jobId: id });
+    await notifyOffices([job.officeId], "messages");
 
     return Response.json({ data: message, error: null }, { status: 201 });
   } catch (err) {

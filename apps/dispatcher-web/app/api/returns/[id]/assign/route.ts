@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { notifyDriverPickups, notifyLab } from "@/lib/realtime";
+import { notifyDriverPickups, notifyLab, notifyOffices } from "@/lib/realtime";
 import { returnsQuery } from "@/lib/returns";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -61,6 +61,7 @@ export async function POST(
     });
 
     await notifyLab(user.labId, "return_changed", { returnId: id, change: "assigned" });
+    await notifyOffices([ret.officeId], "pickups");
     if (driverId) await notifyDriverPickups(driverId, "pickup_assigned", { returnId: id });
     if (ret.driverId) await notifyDriverPickups(ret.driverId, "pickup_removed", { returnId: id });
 

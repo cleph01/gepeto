@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 import JobMap from "./job-map";
 import { ChatIcon, ConversationModal, unreadForJobs, type Message } from "./messages";
 import DeliveredView from "./delivered-view";
@@ -125,6 +126,8 @@ export default function TrackingView({
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [tab, setTab] = useState<"active" | "delivered">("active");
   const [requesting, setRequesting] = useState(false);
+  // Bumped on live job changes so the Delivered tab refetches too.
+  const [deliveredVersion, setDeliveredVersion] = useState(0);
   // Bumped when a conversation is read, so unread badges (kept in localStorage) re-render.
   const [, setSeenTick] = useState(0);
 
@@ -170,8 +173,56 @@ export default function TrackingView({
   }, [refresh]);
 
   const jobIds = data.jobs.map((j) => j.id).join(",");
+
+  // Live updates: the lab's server signals `office:<token>` whenever something
+  // on this page changes (driver assigned or reassigned, status steps, new or
+  // edited cases, messages, pickups, driver location). The signal only says
+  // what kind of thing changed; we reload it through the usual endpoints.
+  // Bursts (a status step plus a location ping) collapse into one reload.
+  const jobIdsRef = useRef(jobIds);
+  useEffect(() => {
+    jobIdsRef.current = jobIds;
+  }, [jobIds]);
+  useEffect(() => {
+    const sb = supabaseBrowser();
+    if (!sb) return;
+    const pending = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      const what = new Set(pending);
+      pending.clear();
+      if (what.has("jobs") || what.has("pickups") || what.has("location")) refresh();
+      if (what.has("jobs")) setDeliveredVersion((v) => v + 1);
+      if (what.has("messages")) loadMessages(jobIdsRef.current ? jobIdsRef.current.split(",") : []);
+    };
+    const topic = `office:${token}`;
+    for (const c of sb.getChannels()) {
+      if (c.topic === `realtime:${topic}`) sb.removeChannel(c);
+    }
+    const channel = sb
+      .channel(topic)
+      .on("broadcast", { event: "changed" }, ({ payload }) => {
+        pending.add(String((payload as { what?: string })?.what ?? "jobs"));
+        if (!timer) timer = setTimeout(flush, 400);
+      })
+      .subscribe();
+    // Coming back to a tab that sat in the background: catch up right away.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      refresh();
+      loadMessages(jobIdsRef.current ? jobIdsRef.current.split(",") : []);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      sb.removeChannel(channel);
+    };
+  }, [token, refresh, loadMessages]);
   useEffect(() => {
     const ids = jobIds ? jobIds.split(",") : [];
+    // loadMessages only sets state after its fetches resolve.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMessages(ids);
     const id = setInterval(() => loadMessages(ids), 30_000);
@@ -318,7 +369,7 @@ export default function TrackingView({
             </div>
           )
         ) : (
-          <DeliveredView token={token} />
+          <DeliveredView token={token} refreshKey={deliveredVersion} />
         )}
       </main>
 

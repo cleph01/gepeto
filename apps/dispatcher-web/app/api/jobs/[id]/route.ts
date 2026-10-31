@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { notifyDriver } from "@/lib/realtime";
+import { notifyDriver, notifyOffices } from "@/lib/realtime";
 import { geocodeAddress } from "@/lib/geocode";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -196,6 +196,8 @@ export async function PATCH(
       )
       .first();
 
+    // Both offices when a job moved from one to the other.
+    await notifyOffices([job.officeId, updates.office_id as string | undefined], "jobs");
     return Response.json({ data: updated, error: null });
   } catch (err) {
     if (err instanceof Response) return err;

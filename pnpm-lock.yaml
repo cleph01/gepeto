@@ -230,6 +230,9 @@ importers:
       '@gepeto/types':
         specifier: workspace:^
         version: link:../../packages/types
+      '@supabase/supabase-js':
+        specifier: ^2.49.4
+        version: 2.103.0
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
@@ -7602,7 +7605,7 @@ snapshots:
       tinyglobby: 0.2.15
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.72.1(eslint@9.39.1(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.1(jiti@2.6.1))
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.50.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.2))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.1(jiti@2.6.1))
     transitivePeerDependencies:
       - supports-color
 

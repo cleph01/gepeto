@@ -148,6 +148,15 @@ CRON_SECRET=
 ```env
 # Transaction pooler (port 6543), not 5432 — see docs/database-connections.md
 DATABASE_URL=postgresql://postgres.<project>:<password>@aws-1-us-east-1.pooler.supabase.com:6543/postgres
+
+# Server-side broadcasts: alert the lab's dashboard (messages, pickup
+# requests) and push live updates to other open copies of the tracking page
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+
+# Browser: the tracking page listens for live updates on office:<tracking token>
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ```
 
 ---

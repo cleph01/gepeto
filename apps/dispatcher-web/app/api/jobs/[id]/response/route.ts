@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { notifyLab } from "@/lib/realtime";
+import { notifyLab, notifyOffices } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -67,6 +67,7 @@ export async function PATCH(
     });
 
     await notifyLab(user.labId, "job_changed", { jobId: id });
+    await notifyOffices([job.officeId], "jobs");
 
     return Response.json({ data: updated, error: null });
   } catch (err) {

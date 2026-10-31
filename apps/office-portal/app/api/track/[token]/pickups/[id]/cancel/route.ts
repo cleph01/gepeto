@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { notifyLab } from "@/lib/realtime";
+import { notifyLab, notifyOfficePage } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -35,6 +35,7 @@ export async function POST(
     }
 
     await notifyLab(office.labId, "return_changed", { returnId: id, change: "cancelled" });
+    await notifyOfficePage(token, "pickups");
     return Response.json({ data: { ok: true }, error: null });
   } catch (err) {
     console.error("[POST /api/track/[token]/pickups/[id]/cancel]", err);

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { notifyOffices } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -38,6 +39,12 @@ export async function PATCH(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const carrying: { officeId: string }[] = await db("jobs")
+      .where({ driver_id: user.driverId, lab_id: user.labId })
+      .whereIn("status", ["picked_up", "in_transit", "arrived"])
+      .distinct("office_id");
+    await notifyOffices(carrying.map((j) => j.officeId), "location");
 
     return Response.json({ data: { location }, error: null });
   } catch (err) {
