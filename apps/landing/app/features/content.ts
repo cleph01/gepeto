@@ -35,6 +35,18 @@ export const SECTIONS: Section[] = [
           { title: "Upgrade to STAT at any time", body: "Make a job STAT, or back to standard, whenever priorities shift, not just when it's created." },
           { title: "Guardrails built in", body: "A job can't move past Pending without a driver, and a delivered job can't be reassigned. Your board stays honest." },
           { title: "Due times on every job", body: "Every job carries an expected delivery time, and late jobs are flagged in red." },
+          { title: "Fewer trips, automatically", body: "When you assign a job, Gepeto points out drivers already headed to the same office, so cases can go out together." },
+        ],
+      },
+      {
+        id: "dispatch-returns",
+        title: "Nothing lost on the way back",
+        features: [
+          { title: "Every returning case tracked", body: "Remakes, adjustments and new work a driver picks up at an office get their own return number and show up for you the moment the driver logs them, before they reach your door." },
+          { title: "Check in at the front desk in seconds", body: "Confirm how many cases arrived, give the return your lab's case number, and link it to the delivery it came back from. Gepeto suggests the likely match." },
+          { title: "Count mismatches caught", body: "If fewer cases arrive than the driver logged, you see it at check-in, and the difference is recorded in the return's history." },
+          { title: "Returns at a glance", body: "A dashboard tile and a sidebar badge show what's waiting to be checked in and what's still with drivers, updated live." },
+          { title: "History for every return", body: "When it was picked up, dropped off and checked in, and by whom." },
         ],
       },
       {
@@ -42,7 +54,7 @@ export const SECTIONS: Section[] = [
         title: "A full paper trail",
         features: [
           { title: "Per-job history", body: "Every status change and every edit (case number, office, due time, driver, priority) with who made it and when, including driver rejections. Settle \"what happened to this case?\" in seconds." },
-          { title: "A dashboard that fits on one screen", body: "Active jobs, deliveries today, pending work and unread messages up top. Jobs and drivers scroll in their own panels with the live map alongside." },
+          { title: "A dashboard that fits on one screen", body: "Active jobs, pending work, returning cases and unread messages up top, with today's deliveries one click away. Jobs and drivers scroll in their own panels with the live map alongside." },
         ],
       },
     ],
@@ -81,6 +93,15 @@ export const SECTIONS: Section[] = [
         features: [
           { title: "Jobs grouped by office", body: "Several cases going to the same office appear as one stop, with the earliest due time and a single Navigate button." },
           { title: "One tap for the whole stop", body: "\"Mark all 3 picked up\" at the lab, \"Complete all 3 deliveries\" at the door. The recipient's name is entered once and saved as proof of delivery on every case." },
+        ],
+      },
+      {
+        id: "driver-returns",
+        title: "Bringing cases back",
+        features: [
+          { title: "Log returns at the door", body: "Completing a delivery asks \"Bringing anything back to the lab?\" Tap Yes, set the number of cases, and add case numbers or a note if you like. The lab sees it right away." },
+          { title: "Pickups without a delivery", body: "Log cases collected from any office, even when you weren't dropping anything off." },
+          { title: "One tap at the lab", body: "\"Dropped off\" tells the front desk your returns are waiting, and you can see when they've been checked in." },
         ],
       },
       {
