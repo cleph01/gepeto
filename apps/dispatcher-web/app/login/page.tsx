@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useAuth } from "@/context/auth";
+import { useEffect, useState } from "react";
+import { SESSION_EXPIRED_KEY, useAuth } from "@/context/auth";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -9,6 +9,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
+  const [expired, setExpired]   = useState(false);
+
+  // Landed here because the session ran out (see expireSession in context/auth).
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(SESSION_EXPIRED_KEY)) {
+        sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setExpired(true);
+      }
+    } catch {}
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +97,22 @@ export default function LoginPage() {
               Sign in to your dispatcher account.
             </p>
           </div>
+
+          {expired && !error && (
+            <div
+              role="status"
+              style={{
+                background: "rgba(133,79,11,0.08)",
+                border: "1px solid rgba(133,79,11,0.25)",
+                borderRadius: 8,
+                padding: "9px 12px",
+                fontSize: 13,
+                color: "#854F0B",
+              }}
+            >
+              Your session expired. Please sign in again.
+            </div>
+          )}
 
           {error && (
             <div
