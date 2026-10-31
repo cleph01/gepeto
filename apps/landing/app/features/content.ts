@@ -139,7 +139,7 @@ export const SECTIONS: Section[] = [
           { title: "Grouped by driver", body: "Cases are organized under the driver bringing them, with one live map per driver that shows how close they are. Each case shows what's in the box, any handling notes like Fragile or Keep cool, and a simple At the lab, On the way, Arrived tracker." },
           { title: "A map only when it matters", body: "A driver's location appears once they're actually carrying your cases, not before." },
           { title: "One conversation per driver", body: "Message the lab and your driver about all of their cases in one place, with a badge for what's new since you last looked. Pick which case you mean with a tap." },
-          { title: "Call the lab in one tap", body: "The lab's phone number sits at the top of the tracking page." },
+          { title: "Call the lab in one tap", body: "The lab's number sits at the top of the tracking page: tap it on a phone, or read it off and dial from the front desk." },
           { title: "Delivery history on demand", body: "A Delivered tab keeps past deliveries out of the way until you need them. Filter by today, the last 7, 30 or 90 days, or any dates you choose, and see who signed for each case." },
           { title: "Private conversations", body: "If a case is moved to a different office, the new office never sees messages from the previous one." },
         ],

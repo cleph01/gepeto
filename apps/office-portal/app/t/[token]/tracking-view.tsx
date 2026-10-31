@@ -221,18 +221,23 @@ export default function TrackingView({
           </div>
         </div>
         {office.labPhone && (
+          // The number is shown, not just linked: on a desktop the office will
+          // usually dial it from a desk phone, and tel: links only help on mobile.
           <a
             href={`tel:${office.labPhone.replace(/[^\d+]/g, "")}`}
+            aria-label={`Call the lab at ${office.labPhone}`}
             style={{
-              flexShrink: 0, display: "flex", alignItems: "center", gap: 6, textDecoration: "none",
-              fontSize: 12.5, fontWeight: 600, color: "#185FA5", border: "1px solid #C0D9F0",
-              borderRadius: 8, padding: "6px 10px", background: "#fff",
+              flexShrink: 0, display: "flex", alignItems: "center", gap: 8, textDecoration: "none",
+              color: "#185FA5", border: "1px solid #C0D9F0", borderRadius: 8, padding: "5px 11px 5px 9px", background: "#fff",
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
               <path d="M5.5 2.5L4 2 2.5 3.5c-.5 4 5 9.5 9 9l1.5-1.5-.5-1.5-2.5-1-1.25 1.25c-1.25-.5-2.75-2-3.25-3.25L6.75 5.25 5.5 2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
-            Call the lab
+            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 500, color: "#5F5E5A" }}>Call the lab</span>
+              <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", userSelect: "all" }}>{office.labPhone}</span>
+            </span>
           </a>
         )}
       </header>
