@@ -105,16 +105,100 @@ function DueText({ job, fontSize = 12 }: { job: Job; fontSize?: number }) {
 
 type FilterTab = "all" | JobStatus;
 
+// ─── Same-office hint ─────────────────────────────────────────────────────────
+// When assigning, point out drivers already carrying jobs to the same office,
+// so cases can go out on one trip (the driver app groups them into one stop).
+
+const ON_A_TRIP: JobStatus[] = ["assigned", "picked_up", "in_transit", "arrived"];
+
+type Trip = { driverId: string; driverName: string; waiting: number; underway: number };
+
+/** Drivers with active jobs to this office, most jobs first. */
+function tripsToOffice(jobs: Job[], officeId: string, excludeJobId?: string): Trip[] {
+  const byDriver = new Map<string, Trip>();
+  for (const j of jobs) {
+    if (j.officeId !== officeId || !j.driverId || j.id === excludeJobId || !ON_A_TRIP.includes(j.status)) continue;
+    const trip = byDriver.get(j.driverId) ?? { driverId: j.driverId, driverName: j.driver ?? "A driver", waiting: 0, underway: 0 };
+    // Not picked up yet = easy to bundle; already picked up = they'd need to come back.
+    if (j.status === "assigned") trip.waiting++;
+    else trip.underway++;
+    byDriver.set(j.driverId, trip);
+  }
+  return [...byDriver.values()].sort((a, b) => b.waiting + b.underway - (a.waiting + a.underway));
+}
+
+function tripCountLabel(t: Trip) {
+  const n = t.waiting + t.underway;
+  return `${n} job${n === 1 ? "" : "s"} to this office`;
+}
+
+function tripDetail(t: Trip) {
+  const parts = [];
+  if (t.waiting) parts.push(`${t.waiting} not picked up yet`);
+  if (t.underway) parts.push(`${t.underway} already picked up`);
+  return parts.join(", ");
+}
+
+function SameOfficeHint({
+  trips,
+  selectedDriverId,
+  onPick,
+}: {
+  trips: Trip[];
+  selectedDriverId: string | null;
+  onPick?: (driverId: string) => void;
+}) {
+  if (trips.length === 0) return null;
+  const chosen = trips.find((t) => t.driverId === selectedDriverId);
+  if (chosen) {
+    return (
+      <div style={{ ...hintBox, background: "rgba(59,109,17,0.08)", borderColor: "rgba(59,109,17,0.25)", color: "#2F5A0C" }}>
+        <span>
+          <strong>Same trip.</strong> {chosen.driverName} already has {tripCountLabel(chosen)} ({tripDetail(chosen)})
+          {chosen.waiting === 0 ? ", so they'd need to come back to the lab for this one." : "."}
+        </span>
+      </div>
+    );
+  }
+  const best = trips[0];
+  return (
+    <div style={{ ...hintBox, background: "rgba(24,95,165,0.07)", borderColor: "rgba(24,95,165,0.22)", color: "#124B87" }}>
+      <span>
+        <strong>{best.driverName}</strong> already has {tripCountLabel(best)} ({tripDetail(best)}).
+        {trips.length > 1 && ` ${trips.length - 1} other driver${trips.length > 2 ? "s are" : " is"} headed there too.`}
+      </span>
+      {onPick && (
+        <button
+          type="button"
+          onClick={() => onPick(best.driverId)}
+          style={{
+            flexShrink: 0, border: "1px solid rgba(24,95,165,0.35)", background: "#fff", color: "#185FA5",
+            borderRadius: 7, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Assign to {best.driverName.split(" ")[0]}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const hintBox: React.CSSProperties = {
+  marginTop: 8, padding: "9px 11px", borderRadius: 8, border: "1px solid",
+  fontSize: 12, lineHeight: 1.45, display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between",
+};
+
 // ─── New Job Modal ────────────────────────────────────────────────────────────
 
 interface NewJobModalProps {
   onClose: () => void;
   offices: OfficeOption[];
   drivers: DriverOption[];
+  jobs: Job[];
   onSave: (data: { caseId: string; officeId: string; driverId: string | null; deliveryAddress: string; priority: JobPriority; itemDescription: string; flags: ItemFlag[]; scheduledAt: string | null }) => void;
 }
 
-function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
+function NewJobModal({ onClose, offices, drivers, jobs, onSave }: NewJobModalProps) {
   const [caseId, setCaseId]         = useState("");
   const [officeId, setOfficeId]     = useState("");
   const [driverId, setDriverId]     = useState<string | null>(null);
@@ -123,6 +207,7 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
   const [flags, setFlags]           = useState<ItemFlag[]>([]);
   const [scheduledAt, setScheduledAt] = useState("");
   const [errors, setErrors]         = useState<Record<string, string>>({});
+  const trips = officeId ? tripsToOffice(jobs, officeId) : [];
 
   const toggleFlag = (f: ItemFlag) =>
     setFlags((prev) => prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]);
@@ -249,10 +334,12 @@ function NewJobModal({ onClose, offices, drivers, onSave }: NewJobModalProps) {
               onBlur={(e) => blurStyle(e, false)}
             >
               <option value="">Unassigned</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
+              {drivers.map((d) => {
+                const trip = trips.find((t) => t.driverId === d.id);
+                return <option key={d.id} value={d.id}>{d.name}{trip ? ` · ${tripCountLabel(trip)}` : ""}</option>;
+              })}
             </select>
+            <SameOfficeHint trips={trips} selectedDriverId={driverId} onPick={setDriverId} />
           </div>
 
           {/* Priority */}
@@ -716,12 +803,14 @@ const CAN_UNASSIGN: JobStatus[] = ["pending", "assigned"];
 function AssignModal({
   job,
   drivers,
+  jobs,
   onClose,
   onSave,
   error,
 }: {
   job: Job;
   drivers: DriverOption[];
+  jobs: Job[];
   onClose: () => void;
   onSave: (changes: { driverId: string | null; priority: JobPriority }) => Promise<void>;
   error?: string | null;
@@ -731,6 +820,7 @@ function AssignModal({
   const [saving, setSaving] = useState(false);
   const delivered = job.status === "delivered";
   const canUnassign = CAN_UNASSIGN.includes(job.status);
+  const trips = delivered ? [] : tripsToOffice(jobs, job.officeId, job.id);
 
   const save = async () => {
     setSaving(true);
@@ -791,10 +881,12 @@ function AssignModal({
               onBlur={(e) => blurStyle(e, false)}
             >
               <option value="" disabled={!canUnassign && !!job.driverId}>Unassigned</option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
+              {drivers.map((d) => {
+                const trip = trips.find((t) => t.driverId === d.id);
+                return <option key={d.id} value={d.id}>{d.name}{trip ? ` · ${tripCountLabel(trip)}` : ""}</option>;
+              })}
             </select>
+            <SameOfficeHint trips={trips} selectedDriverId={driverId || null} onPick={setDriverId} />
             <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9a9a9a", lineHeight: 1.4 }}>
               {delivered
                 ? "This job has been delivered, so its driver can't change."
@@ -2026,7 +2118,7 @@ export default function JobsPage() {
 
       {/* Modals */}
       {showNewJob && (
-        <NewJobModal onClose={() => setShowNewJob(false)} onSave={onCreateJob} offices={offices} drivers={drivers} />
+        <NewJobModal onClose={() => setShowNewJob(false)} onSave={onCreateJob} offices={offices} drivers={drivers} jobs={jobs} />
       )}
       {statusJob && (
         <StatusModal
@@ -2050,6 +2142,7 @@ export default function JobsPage() {
         <AssignModal
           job={assignJob}
           drivers={drivers}
+          jobs={jobs}
           onClose={() => setAssignJob(null)}
           onSave={(changes) => onSaveAssignment(assignJob.id, changes)}
           error={assignError}
