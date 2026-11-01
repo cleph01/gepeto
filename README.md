@@ -141,6 +141,10 @@ NEXT_PUBLIC_TRACKING_BASE_URL=http://localhost:3001
 
 # Cron security (set the same value in Vercel project settings)
 CRON_SECRET=
+
+# Billing (Stripe). Prices are found by lookup key, not ID; see "Billing" below.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
 ```
 
 ### `apps/office-portal/.env.local`
@@ -160,6 +164,32 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ```
 
 ---
+
+## Billing
+
+Plans: Starter $99 (2 active drivers), Growth $199 (5), Pro $349 (12); annual is
+10x monthly; extra drivers $25/mo ($20 on Pro); 30-day trial with no card;
+founding-lab code `FOUNDINGLAB` (50% off for 12 months, 10 uses). The same
+numbers live in three places that must match: the public page
+(`apps/landing/app/pricing/plans.ts`), enforcement (`apps/dispatcher-web/lib/plans.ts`)
+and Stripe.
+
+Create or update the Stripe products, prices (by lookup key, e.g. `growth_month`)
+and the founding-lab code with:
+
+```bash
+cd apps/dispatcher-web
+STRIPE_SECRET_KEY=sk_test_... node scripts/stripe-setup.mjs          # test mode
+STRIPE_SECRET_KEY=sk_live_... node scripts/stripe-setup.mjs --live   # live mode
+```
+
+The webhook (`/api/stripe/webhook`) needs these events:
+`checkout.session.completed`, `customer.subscription.created`,
+`customer.subscription.updated`, `customer.subscription.deleted`.
+Enable the Customer Portal (plan switching between the three products, card
+updates, cancellation) for Settings → Plan & billing → Manage billing.
+
+Labs with no plan (created before billing) have no driver limit.
 
 ## Deployment
 

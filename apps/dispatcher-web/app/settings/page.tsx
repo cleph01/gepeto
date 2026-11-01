@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useMessageNotifications } from "@/context/message-notifications";
+import BillingSection from "@/components/billing-section";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,9 @@ export default function SettingsPage() {
   const { apiFetch, session } = useAuth();
   const { soundEnabled, setSoundEnabled } = useMessageNotifications();
 
-  const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications">("profile");
+  const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications" | "billing">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("section") === "billing" ? "billing" : "profile"
+  );
 
   const emptyLab: LabInfo = { labName: "", address: "", city: "", state: "", zip: "", phone: "", timezone: "America/Los_Angeles", operatingHoursStart: "07:00", operatingHoursEnd: "18:00" };
   const [lab, setLab]           = useState<LabInfo>(emptyLab);
@@ -209,7 +212,7 @@ export default function SettingsPage() {
 
   // ── Layout ──────────────────────────────────────────────────────────────────
 
-  const sections: { key: "profile" | "lab" | "team" | "notifications"; label: string; icon: React.ReactNode }[] = [
+  const sections: { key: "profile" | "lab" | "team" | "notifications" | "billing"; label: string; icon: React.ReactNode }[] = [
     {
       key: "profile",
       label: "Profile",
@@ -250,6 +253,16 @@ export default function SettingsPage() {
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
           <path d="M8 2a4 4 0 00-4 4v3l-1 1.5h10L12 9V6a4 4 0 00-4-4z" stroke="currentColor" strokeWidth="1.25" fill="none" strokeLinejoin="round" />
           <path d="M6.5 12.5a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      key: "billing",
+      label: "Plan & billing",
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.25" fill="none" />
+          <path d="M1.5 6.5h13M4 10h3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
         </svg>
       ),
     },
@@ -648,6 +661,8 @@ export default function SettingsPage() {
           )}
 
           {/* ── Notifications ── */}
+          {activeSection === "billing" && <BillingSection isMobile={isMobile} />}
+
           {activeSection === "notifications" && (
             <>
             <div style={{

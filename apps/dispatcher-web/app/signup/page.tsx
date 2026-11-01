@@ -2,12 +2,31 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { PLANS, TRIAL_DAYS, isInterval, isPlanId, type BillingInterval, type PlanId } from "@/lib/plans";
+
+// Display prices (Stripe holds the real ones; see lib/plans.ts).
+const PRICE: Record<PlanId, { month: number; year: number }> = {
+  starter: { month: 99, year: 990 },
+  growth: { month: 199, year: 1990 },
+  pro: { month: 349, year: 3490 },
+};
+
+// Coming from the pricing page: /signup?plan=growth&interval=year
+function initialChoice(): { plan: PlanId; interval: BillingInterval } {
+  if (typeof window === "undefined") return { plan: "growth", interval: "month" };
+  const q = new URLSearchParams(window.location.search);
+  const plan = q.get("plan");
+  const interval = q.get("interval");
+  return { plan: isPlanId(plan) ? plan : "growth", interval: isInterval(interval) ? interval : "month" };
+}
 
 export default function SignupPage() {
   const [labName, setLabName]   = useState("");
   const [email, setEmail]       = useState("");
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [plan, setPlan]         = useState<PlanId>(() => initialChoice().plan);
+  const [interval, setInterval] = useState<BillingInterval>(() => initialChoice().interval);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +38,7 @@ export default function SignupPage() {
       res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ labName: labName.trim(), email: email.trim() }),
+        body: JSON.stringify({ labName: labName.trim(), email: email.trim(), plan, interval }),
       });
     } catch {
       // Network failure (offline, DNS, etc.) — fetch itself threw, no response at all.
@@ -87,8 +106,44 @@ export default function SignupPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: "24px 28px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
           <p style={{ margin: "0 0 4px", fontSize: 13, color: "#5F5E5A", lineHeight: 1.5 }}>
-            Set up your lab in 2 minutes. No credit card required during your 14-day trial.
+            Set up your lab in 2 minutes. {TRIAL_DAYS}-day free trial, no credit card required. Have a founding-lab code? Enter it on the next page.
           </p>
+
+          {/* Plan */}
+          <div>
+            <span style={{ fontSize: 12, fontWeight: 500, color: "#3a3a3a", display: "block", marginBottom: 6 }}>Plan</span>
+            <div role="radiogroup" aria-label="Plan" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              {(Object.keys(PLANS) as PlanId[]).map((id) => {
+                const on = plan === id;
+                const price = interval === "year" ? Math.round(PRICE[id].year / 12) : PRICE[id].month;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setPlan(id)}
+                    style={{
+                      textAlign: "left", padding: "8px 9px", borderRadius: 8, cursor: "pointer",
+                      border: `1.5px solid ${on ? "#185FA5" : "rgba(0,0,0,0.12)"}`, background: on ? "#EBF2FA" : "#fff",
+                    }}
+                  >
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: on ? "#185FA5" : "#1a1a1a" }}>{PLANS[id].name}</div>
+                    <div style={{ fontSize: 12, color: "#3a3a3a" }}>${price}<span style={{ color: "#9a9a9a" }}>/mo</span></div>
+                    <div style={{ fontSize: 10.5, color: "#9a9a9a" }}>{PLANS[id].drivers} drivers</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 12, color: "#3a3a3a" }}>
+              {(["month", "year"] as BillingInterval[]).map((iv) => (
+                <label key={iv} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+                  <input type="radio" name="interval" checked={interval === iv} onChange={() => setInterval(iv)} />
+                  {iv === "month" ? "Monthly" : <>Annual <span style={{ color: "#3B6D11", fontWeight: 600 }}>2 months free</span></>}
+                </label>
+              ))}
+            </div>
+          </div>
 
           {error && (
             <div style={{ background: "rgba(163,45,45,0.07)", border: "1px solid rgba(163,45,45,0.2)", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#A32D2D" }}>
@@ -133,7 +188,7 @@ export default function SignupPage() {
             disabled={loading}
             style={{ marginTop: 4, background: loading ? "#5F8FBF" : "#185FA5", color: "white", border: "none", borderRadius: 8, padding: "10px", fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", letterSpacing: "-0.01em" }}
           >
-            {loading ? "Redirecting to payment…" : "Start Free Trial →"}
+            {loading ? "Setting up your trial…" : `Start ${TRIAL_DAYS}-day free trial →`}
           </button>
 
           <p style={{ margin: 0, textAlign: "center", fontSize: 12.5, color: "#9a9a9a" }}>

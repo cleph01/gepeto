@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { sendDriverOffDutyAlert, getDispatcherEmails, getDashboardUrl } from "@/lib/email";
+import { checkDriverRoom } from "@/lib/billing";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -33,6 +34,15 @@ export async function PATCH(
         { data: null, error: { code: "BAD_REQUEST", message: "No valid fields to update" } },
         { status: 400 }
       );
+    }
+
+    // Bringing a driver back from Off Duty takes an active spot on the plan.
+    if (updates.status && updates.status !== "off_duty") {
+      const current = await db("drivers").where({ id, lab_id: user.labId }).select("status").first();
+      if (current?.status === "off_duty") {
+        const blocked = await checkDriverRoom(user.labId);
+        if (blocked) return blocked;
+      }
     }
 
     const [driver] = await db("drivers")

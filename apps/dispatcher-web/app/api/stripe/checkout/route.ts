@@ -1,9 +1,12 @@
 import Stripe from "stripe";
 import type { NextRequest } from "next/server";
+import { TRIAL_DAYS, isInterval, isPlanId, planLookupKey } from "@/lib/plans";
 
 // POST /api/stripe/checkout
 // Creates a Stripe Checkout Session for a new lab subscription.
-// Body: { email: string; labName: string }
+// Body: { email: string; labName: string; plan?: "starter"|"growth"|"pro"; interval?: "month"|"year" }
+// The trial needs no card (the website promises that); if none is added by
+// the end of the trial, the subscription cancels instead of billing.
 // Returns: { url: string } — the Stripe hosted checkout URL
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +20,10 @@ export async function POST(request: NextRequest) {
       apiVersion: "2026-03-25.dahlia",
     });
 
-    const { email, labName } = await request.json();
+    const body = await request.json();
+    const { email, labName } = body;
+    const plan = isPlanId(body.plan) ? body.plan : "growth";
+    const interval = isInterval(body.interval) ? body.interval : "month";
 
     if (!email?.trim() || !labName?.trim()) {
       return Response.json(
@@ -28,17 +34,29 @@ export async function POST(request: NextRequest) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+    const lookupKey = planLookupKey(plan, interval);
+    const price = (await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 })).data[0];
+    if (!price) {
+      console.error("[checkout] no Stripe price for", lookupKey, "- run scripts/stripe-setup.mjs");
+      return Response.json(
+        { data: null, error: { code: "NOT_CONFIGURED", message: "That plan isn't available yet. Please contact us." } },
+        { status: 503 }
+      );
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      payment_method_types: ["card"],
       customer_email: email.trim(),
-      line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
+      line_items: [{ price: price.id, quantity: 1 }],
+      payment_method_collection: "if_required",
+      allow_promotion_codes: true,
       subscription_data: {
-        trial_period_days: 14,
-        metadata: { email: email.trim(), labName: labName.trim() },
+        trial_period_days: TRIAL_DAYS,
+        trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
+        metadata: { email: email.trim(), labName: labName.trim(), plan, interval },
       },
       // Metadata on the session so the webhook can access it directly
-      metadata: { email: email.trim(), labName: labName.trim() },
+      metadata: { email: email.trim(), labName: labName.trim(), plan, interval },
       success_url: `${appUrl}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/signup`,
     });

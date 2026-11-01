@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getDashboardUrl } from "@/lib/email";
+import { checkDriverRoom } from "@/lib/billing";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -71,6 +72,12 @@ export async function POST(request: NextRequest) {
         { data: null, error: { code: "BAD_REQUEST", message: "name, phone, and email are required" } },
         { status: 400 }
       );
+    }
+
+    // Adding an active driver takes a spot on the plan (Off Duty ones don't).
+    if ((status ?? "available") !== "off_duty") {
+      const blocked = await checkDriverRoom(user.labId);
+      if (blocked) return blocked;
     }
 
     // 1. Create DB row first so we have the driver ID for app_metadata
