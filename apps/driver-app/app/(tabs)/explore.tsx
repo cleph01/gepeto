@@ -13,10 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/auth';
 import {
+  chooseNavApp,
   clearNavPreference,
   getNavPreference,
   NavApp,
-  navigate,
 } from '@/lib/navigation';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -37,10 +37,8 @@ export default function SettingsScreen() {
   }, []);
 
   const handleChangeNav = async () => {
-    // Trigger the picker — choice gets saved to AsyncStorage automatically
-    await navigate({ address: 'test', lat: undefined, lng: undefined });
-    const updated = await getNavPreference();
-    setNavPref(updated);
+    const chosen = await chooseNavApp();
+    if (chosen) setNavPref(chosen);
   };
 
   const handleClearNav = () => {

@@ -6,7 +6,7 @@ import JobMap from "./job-map";
 import { ChatIcon, ConversationModal, unreadForJobs, type Message } from "./messages";
 import DeliveredView from "./delivered-view";
 import { BoxIcon, PickupsSection, RequestPickupModal, type Pickup } from "./pickups";
-import { itemsLine, timeAgo, type Item } from "./format";
+import { itemsLine, locationFreshness, timeAgo, type Item } from "./format";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +26,11 @@ interface TrackingJob {
   driverId: string | null;
   driverName: string | null;
   /** Only sent once this driver is carrying one of the office's cases (lib/tracking.ts). */
-  driverLocation: { lat: number; lng: number } | null;
+  driverLocation: DriverLocation | null;
 }
+
+/** updatedAt: when the driver's phone last sent it (absent on very old rows). */
+type DriverLocation = { lat: number; lng: number; updatedAt?: string };
 
 interface Office {
   id: string;
@@ -69,7 +72,7 @@ const sameAddress = (a: string, b: string) =>
 interface DriverGroup {
   key: string;
   driverName: string | null; // null = no driver yet
-  driverLocation: { lat: number; lng: number } | null;
+  driverLocation: DriverLocation | null;
   jobs: TrackingJob[];
 }
 
@@ -410,6 +413,16 @@ function DriverCard({
   unread: number;
   onOpenMessages: () => void;
 }) {
+  // Re-check every 30s so "last seen 3 min ago" counts up without new data.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const loc = group.driverLocation;
+  const freshness = loc ? locationFreshness(loc.updatedAt, now) : "gone";
+  const seen = loc?.updatedAt ? timeAgo(loc.updatedAt) : "";
+
   // Map points: where this driver's cases are headed (normally just the office).
   const destinations = [
     ...new Map(
@@ -467,10 +480,26 @@ function DriverCard({
         </button>
       </div>
 
-      {/* One map per driver, only once they're on the way (location is withheld before that) */}
-      {group.driverName && group.driverLocation && (
+      {/* One map per driver, only once they're on the way (location is withheld
+          before that), and only while the location is recent enough to trust. */}
+      {group.driverName && loc && freshness !== "gone" && (
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-          <JobMap driverName={group.driverName} driverLocation={group.driverLocation} destinations={destinations} />
+          <JobMap driverName={group.driverName} driverLocation={loc} destinations={destinations} freshness={freshness} />
+          <div style={{
+            padding: "7px 16px", fontSize: 12, lineHeight: 1.45,
+            color: freshness === "stale" ? "#854F0B" : "#5F5E5A",
+            background: freshness === "stale" ? "#FFF8EC" : "#FAFBFD",
+            borderTop: "1px solid rgba(0,0,0,0.05)",
+          }}>
+            {freshness === "live" && <><span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#3B6D11", marginRight: 6, verticalAlign: 1 }} />Live · updated {seen}</>}
+            {freshness === "recent" && <>Last seen {seen}</>}
+            {freshness === "stale" && <>Last known location, {seen}. Their phone may be off signal. Call the lab for an update.</>}
+          </div>
+        </div>
+      )}
+      {group.driverName && loc && freshness === "gone" && group.jobs.some((j) => ON_THE_WAY.includes(j.status)) && (
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", padding: "9px 16px", fontSize: 12.5, color: "#5F5E5A", background: "#FAFBFD" }}>
+          Live location isn&apos;t available right now. Your cases are still on the way; call the lab if you need an update.
         </div>
       )}
 

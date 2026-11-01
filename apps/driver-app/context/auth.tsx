@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { stopBackgroundLocation } from '@/lib/background-location';
 
 interface AuthContextType {
   session: Session | null;
@@ -41,6 +42,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Stop sharing location before the session (and its token) goes away.
+    await stopBackgroundLocation();
     await supabase.auth.signOut();
   };
 

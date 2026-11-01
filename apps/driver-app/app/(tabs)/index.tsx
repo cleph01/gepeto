@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -379,6 +380,7 @@ function StatTile({ label, value, highlight, valueColor }: { label: string; valu
 
 type Row =
   | { type: 'stats' }
+  | { type: 'locationHint' }
   | { type: 'section'; title: string }
   | { type: 'group'; key: string; jobs: QueueJob[] }
   | { type: 'job'; job: QueueJob; inGroup?: boolean; lastInGroup?: boolean }
@@ -616,7 +618,7 @@ export default function JobQueueScreen() {
 
   // Track location whenever the driver has at least one active job
   const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
-  useLocationTracking(hasActiveJob);
+  const { backgroundAllowed } = useLocationTracking(hasActiveJob);
 
   // Active sections group jobs going to the same office, so they can go out on one trip.
   const sections = [
@@ -640,6 +642,7 @@ export default function JobQueueScreen() {
 
   const flatData: Row[] = [
     { type: 'stats' },
+    ...(hasActiveJob && backgroundAllowed === false ? [{ type: 'locationHint' } as Row] : []),
     { type: 'pickup' },
     ...[...activeSections, null, ...doneSections].flatMap((s): Row[] => s === null ? returningRows : [
       { type: 'section', title: s.title },
@@ -700,6 +703,27 @@ export default function JobQueueScreen() {
         renderItem={({ item }) => {
           if (item.type === 'stats') {
             return <StatsRow jobs={jobs} />;
+          }
+          if (item.type === 'locationHint') {
+            // Without "Always", the lab and office lose sight of the driver
+            // as soon as they switch to their maps app.
+            return (
+              <TouchableOpacity
+                style={styles.locationHint}
+                onPress={() => Linking.openSettings()}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityHint="Opens Settings to allow location all the time"
+              >
+                <IconSymbol name="exclamationmark.triangle" size={18} color={Colors.warning} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.locationHintTitle}>Your location stops when you leave Gepeto</Text>
+                  <Text style={styles.locationHintBody}>
+                    So the lab and office can follow you while you navigate, set Location to “Always”. Tap to open Settings.
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
           }
           if (item.type === 'pickup') {
             return (
@@ -972,6 +996,28 @@ const styles = StyleSheet.create({
   },
   groupRailLast: {
     marginBottom: Spacing.sm,
+  },
+  locationHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.warningBorder,
+    backgroundColor: Colors.warningBg,
+  },
+  locationHintTitle: {
+    fontFamily: Fonts.semibold,
+    color: Colors.warningText,
+    fontSize: FontSize.sm,
+  },
+  locationHintBody: {
+    fontFamily: Fonts.regular,
+    color: Colors.warningText,
+    fontSize: FontSize.sm,
+    lineHeight: 19,
+    marginTop: 2,
   },
   pickupBtn: {
     flexDirection: 'row',

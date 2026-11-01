@@ -56,6 +56,16 @@
           "photosPermission": false,
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Gepeto shares your location with your lab and the office you're delivering to while you have deliveries on board.",
+          "locationAlwaysAndWhenInUsePermission": "Choose \"Always\" so your lab and the office can still see where you are while you navigate in another app or lock your phone. Gepeto only shares your location while you have deliveries on board.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
       ]
     ],
     "experiments": {

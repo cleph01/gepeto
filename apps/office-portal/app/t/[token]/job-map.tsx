@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { Freshness } from "./format";
 
 type LatLng = { lat: number; lng: number };
 
@@ -9,12 +10,14 @@ interface JobMapProps {
   driverLocation: LatLng;
   /** Delivery points for this driver's cases (usually just the office). */
   destinations: LatLng[];
+  /** How recent the driver's location is: the dot fades, then turns gray. */
+  freshness: Freshness;
 }
 
 // One map per driver on the public office tracking page: the driver plus where
 // their cases for this office are headed, zoomed to fit both. A scoped-down
 // version of dispatcher-web's fleet-wide LiveMap.
-export default function JobMap({ driverName, driverLocation, destinations }: JobMapProps) {
+export default function JobMap({ driverName, driverLocation, destinations, freshness }: JobMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
@@ -33,7 +36,7 @@ export default function JobMap({ driverName, driverLocation, destinations }: Job
       }).addTo(map);
 
       mapRef.current = { map, L, driverMarker: null as unknown, destMarkers: [] as unknown[] };
-      renderMarkers(mapRef.current, driverName, driverLocation, destinations);
+      renderMarkers(mapRef.current, driverName, driverLocation, destinations, freshness);
     });
 
     return () => {
@@ -48,10 +51,10 @@ export default function JobMap({ driverName, driverLocation, destinations }: Job
 
   // Re-render only when a position actually changes (polling hands us new
   // objects every 30s), so the map doesn't snap back while someone pans it.
-  const key = JSON.stringify([driverLocation, destinations]);
+  const key = JSON.stringify([driverLocation.lat, driverLocation.lng, destinations, freshness]);
   useEffect(() => {
     if (!mapRef.current) return;
-    renderMarkers(mapRef.current, driverName, driverLocation, destinations);
+    renderMarkers(mapRef.current, driverName, driverLocation, destinations, freshness);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driverName, key]);
 
@@ -68,7 +71,8 @@ function renderMarkers(
   ref: { map: any; L: any; driverMarker: any; destMarkers: any[] },
   driverName: string,
   driverLocation: LatLng,
-  destinations: LatLng[]
+  destinations: LatLng[],
+  freshness: Freshness
 ) {
   const { map, L } = ref;
   const points: [number, number][] = [[driverLocation.lat, driverLocation.lng]];
@@ -80,8 +84,10 @@ function renderMarkers(
     html: `
       <div style="
         width:30px;height:30px;border-radius:50%;
-        background:#185FA5;border:2.5px solid white;
-        box-shadow:0 2px 6px rgba(0,0,0,0.35);
+        background:${freshness === "stale" ? "#8A9099" : "#185FA5"};border:2.5px solid white;
+        opacity:${freshness === "recent" ? 0.6 : 1};
+        box-shadow:0 2px 6px rgba(0,0,0,0.35)${freshness === "stale" ? ",0 0 0 4px rgba(138,144,153,0.25)" : ""};
+        outline:${freshness === "stale" ? "2px dashed #8A9099" : "none"};outline-offset:3px;
         display:flex;align-items:center;justify-content:center;
         font-size:10px;font-weight:600;color:white;font-family:sans-serif;
       ">${initials}</div>`,
@@ -90,7 +96,7 @@ function renderMarkers(
   });
   ref.driverMarker = L.marker([driverLocation.lat, driverLocation.lng], { icon: driverIcon })
     .addTo(map)
-    .bindPopup(`<strong>${driverName.replace(/[<>&]/g, "")}</strong><br>your driver`);
+    .bindPopup(`<strong>${driverName.replace(/[<>&]/g, "")}</strong><br>${freshness === "live" ? "your driver" : "last known location"}`);
 
   ref.destMarkers.forEach((m) => m.remove());
   const destIcon = L.divIcon({

@@ -1,4 +1,6 @@
 import 'react-native-url-polyfill/auto';
+// Registers the background location task before anything else runs.
+import '@/lib/background-location';
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';

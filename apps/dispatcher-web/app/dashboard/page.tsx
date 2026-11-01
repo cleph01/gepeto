@@ -17,7 +17,7 @@ type ApiJob = {
   createdAt: string; updatedAt: string; deliveryLat: number | null; deliveryLng: number | null;
 };
 type ApiDriver = {
-  id: string; name: string; status: string; activeJobs: number; currentLocation: { lat: number; lng: number } | null;
+  id: string; name: string; status: string; activeJobs: number; currentLocation: { lat: number; lng: number; updatedAt?: string } | null;
 };
 
 // Active Jobs columns. Office and Driver flex (Office gets the most room); the
@@ -393,6 +393,7 @@ export default function DashboardPage() {
                 </div>
               }>
                 <LiveMap
+                  now={now}
                   drivers={drivers}
                   jobs={activeJobs.map((j) => ({
                     id: j.id,

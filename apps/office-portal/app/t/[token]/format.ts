@@ -32,3 +32,20 @@ export function timeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
+
+export type Freshness = "live" | "recent" | "stale" | "gone";
+
+// How much to trust a driver's last location. The driver app sends one about
+// every 30s; a gap means they're off signal or their phone stopped sharing.
+//   live    under 2 min      normal dot
+//   recent  2–10 min         faded dot, "last seen"
+//   stale   10 min – 2 hrs   gray dot, "last known location" + call the lab
+//   gone    over 2 hrs, or no time recorded: don't show a map at all
+export function locationFreshness(updatedAt: string | undefined, now = Date.now()): Freshness {
+  if (!updatedAt) return "gone";
+  const mins = (now - new Date(updatedAt).getTime()) / 60000;
+  if (mins < 2) return "live";
+  if (mins < 10) return "recent";
+  if (mins < 120) return "stale";
+  return "gone";
+}

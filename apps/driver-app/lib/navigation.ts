@@ -14,7 +14,6 @@ export interface NavDestination {
 interface NavOption {
   label: string;
   app: NavApp;
-  scheme: string;
 }
 
 function buildUrl(app: NavApp, dest: NavDestination): string {
@@ -45,77 +44,71 @@ function buildUrl(app: NavApp, dest: NavDestination): string {
   }
 }
 
-async function open(app: NavApp, dest: NavDestination): Promise<void> {
-  const url = buildUrl(app, dest);
-  const canOpen = await Linking.canOpenURL(url).catch(() => false);
-  if (canOpen) {
-    await Linking.openURL(url);
-  } else {
-    // Fallback to Google Maps web
-    const encoded = encodeURIComponent(dest.address);
-    await Linking.openURL(
-      `https://www.google.com/maps/dir/?api=1&destination=${encoded}`
-    );
+// Web links that open the app when it's installed (iOS universal links,
+// Android app links) and the website when it isn't.
+function webUrl(app: NavApp, dest: NavDestination): string {
+  const { address, lat, lng } = dest;
+  const coords = lat != null && lng != null ? `${lat},${lng}` : null;
+  const encoded = encodeURIComponent(address);
+  if (app === 'waze') {
+    return coords ? `https://waze.com/ul?ll=${coords}&navigate=yes` : `https://waze.com/ul?q=${encoded}&navigate=yes`;
   }
+  return `https://www.google.com/maps/dir/?api=1&destination=${coords ?? encoded}&travelmode=driving`;
 }
 
-async function getAvailableOptions(): Promise<NavOption[]> {
-  const candidates: NavOption[] = Platform.OS === 'ios'
+async function open(app: NavApp, dest: NavDestination): Promise<void> {
+  const url = buildUrl(app, dest);
+  // canOpenURL is false when the app isn't installed, and also when the build
+  // can't ask (Expo Go doesn't declare Google Maps' scheme), so fall back to
+  // the web link rather than hiding the app.
+  const canOpen = await Linking.canOpenURL(url).catch(() => false);
+  await Linking.openURL(canOpen ? url : webUrl(app, dest));
+}
+
+// Every choice is always offered: an app that isn't installed opens on the web.
+function getOptions(): NavOption[] {
+  return Platform.OS === 'ios'
     ? [
-        { label: 'Apple Maps',   app: 'apple_maps',      scheme: 'maps://'             },
-        { label: 'Google Maps',  app: 'google_maps',     scheme: 'comgooglemaps://'    },
-        { label: 'Waze',         app: 'waze',            scheme: 'waze://'             },
+        { label: 'Apple Maps',   app: 'apple_maps' },
+        { label: 'Google Maps',  app: 'google_maps' },
+        { label: 'Waze',         app: 'waze' },
       ]
     : [
-        { label: 'Default Maps', app: 'system_default',  scheme: 'geo:'                },
-        { label: 'Google Maps',  app: 'google_maps',     scheme: 'google.navigation:q='},
-        { label: 'Waze',         app: 'waze',            scheme: 'waze://'             },
+        { label: 'Google Maps',  app: 'google_maps' },
+        { label: 'Waze',         app: 'waze' },
+        { label: 'Default Maps', app: 'system_default' },
       ];
-
-  const available: NavOption[] = [];
-  for (const option of candidates) {
-    const can = await Linking.canOpenURL(option.scheme).catch(() => false);
-    if (can) available.push(option);
-  }
-
-  // Always guarantee at least the system default
-  if (available.length === 0) {
-    available.push(
-      Platform.OS === 'ios'
-        ? { label: 'Apple Maps', app: 'apple_maps', scheme: 'maps://' }
-        : { label: 'Default Maps', app: 'system_default', scheme: 'geo:' }
-    );
-  }
-
-  return available;
 }
 
 function showPicker(
   options: NavOption[],
-  onSelect: (app: NavApp) => void
+  onSelect: (app: NavApp) => void,
+  message = 'Your choice will be saved for next time',
+  onCancel: () => void = () => {}
 ): void {
   if (Platform.OS === 'ios') {
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title: 'Open navigation in…',
-        message: 'Your choice will be saved for next time',
+        message,
         options: [...options.map((o) => o.label), 'Cancel'],
         cancelButtonIndex: options.length,
       },
       (index) => {
         if (index < options.length) onSelect(options[index].app);
+        else onCancel();
       }
     );
   } else {
     Alert.alert(
       'Open navigation in…',
-      'Your choice will be saved for next time',
+      message,
       [
         ...options.map((option) => ({
           text: option.label,
           onPress: () => onSelect(option.app),
         })),
-        { text: 'Cancel', style: 'cancel' as const },
+        { text: 'Cancel', style: 'cancel' as const, onPress: onCancel },
       ]
     );
   }
@@ -128,15 +121,7 @@ export async function navigate(dest: NavDestination): Promise<void> {
     return;
   }
 
-  const options = await getAvailableOptions();
-
-  if (options.length === 1) {
-    await AsyncStorage.setItem(NAV_PREF_KEY, options[0].app);
-    await open(options[0].app, dest);
-    return;
-  }
-
-  showPicker(options, async (chosen) => {
+  showPicker(getOptions(), async (chosen) => {
     await AsyncStorage.setItem(NAV_PREF_KEY, chosen);
     await open(chosen, dest);
   });
@@ -146,11 +131,19 @@ export async function getNavPreference(): Promise<NavApp | null> {
   return (await AsyncStorage.getItem(NAV_PREF_KEY)) as NavApp | null;
 }
 
-export async function changeNavPreference(dest: NavDestination): Promise<void> {
-  const options = await getAvailableOptions();
-  showPicker(options, async (chosen) => {
-    await AsyncStorage.setItem(NAV_PREF_KEY, chosen);
-    await open(chosen, dest);
+// Settings → Maps app: pick and save, without starting a trip. Resolves to
+// the new choice, or null if the driver cancelled.
+export function chooseNavApp(): Promise<NavApp | null> {
+  return new Promise((resolve) => {
+    showPicker(
+      getOptions(),
+      async (chosen) => {
+        await AsyncStorage.setItem(NAV_PREF_KEY, chosen);
+        resolve(chosen);
+      },
+      'Used every time you tap Navigate',
+      () => resolve(null)
+    );
   });
 }
 
