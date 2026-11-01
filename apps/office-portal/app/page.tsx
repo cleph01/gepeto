@@ -11,13 +11,11 @@ export default function HomePage() {
     }}>
       <div style={{ textAlign: "center", maxWidth: 420 }}>
         <div style={{
-          width: 48, height: 48, background: "#185FA5", borderRadius: 12,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          margin: "0 auto 20px",
+          width: 56, height: 56, background: "#fff", borderRadius: 13, padding: 5, boxSizing: "border-box",
+          border: "1px solid rgba(0,0,0,0.08)", margin: "0 auto 20px",
         }}>
-          <svg width="26" height="26" viewBox="0 0 18 18" fill="none">
-            <path d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z" fill="white" />
-          </svg>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/gepeto-icon.png" alt="Gepeto" style={{ width: "100%", height: "100%" }} />
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: "#1a1a1a", margin: "0 0 10px", letterSpacing: "-0.02em" }}>
           Gepeto Delivery Tracker
