@@ -73,6 +73,23 @@ const navLinks = [
   },
 ];
 
+// The orbital Gepeto icon, framed like the login page's (white tile, hairline border).
+function GepetoMark({ size }: { size: number }) {
+  return (
+    <div
+      style={{
+        width: size, height: size, flexShrink: 0, background: "#fff",
+        border: "1px solid rgba(0,0,0,0.08)", borderRadius: Math.round(size * 0.24),
+        padding: Math.max(2, Math.round(size * 0.08)), boxSizing: "border-box",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/gepeto-icon.png" alt="Gepeto" style={{ width: "100%", height: "100%" }} />
+    </div>
+  );
+}
+
 // ── Shared nav content ────────────────────────────────────────────────────────
 
 function NavContent({
@@ -89,19 +106,7 @@ function NavContent({
       {/* Logo */}
       <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              width: 32, height: 32, background: "#185FA5", borderRadius: 8,
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path
-                d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z"
-                fill="white" opacity="0.95"
-              />
-            </svg>
-          </div>
+          <GepetoMark size={36} />
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, color: "#185FA5", letterSpacing: "-0.01em", lineHeight: 1.2 }}>
               Gepeto
@@ -240,11 +245,7 @@ export default function Sidebar() {
           </button>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 28, height: 28, background: "#185FA5", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
-                <path d="M9 2C7.2 2 5.5 2.9 4.5 4.3c-.7 1-1 2.1-.8 3.3l1 5.8c.2 1 1 1.6 1.9 1.6.8 0 1.5-.5 1.8-1.2L9 11.5l1.6 2.3c.3.7 1 1.2 1.8 1.2.9 0 1.7-.6 1.9-1.6l1-5.8c.2-1.2-.1-2.3-.8-3.3C13.5 2.9 11.8 2 10 2H9z" fill="white" />
-              </svg>
-            </div>
+            <GepetoMark size={30} />
             <span style={{ fontSize: 15, fontWeight: 600, color: "#185FA5", letterSpacing: "-0.01em" }}>
               Gepeto
             </span>
