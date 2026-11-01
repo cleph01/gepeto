@@ -706,8 +706,8 @@ function CTASection() {
             <br /> lab&apos;s delivery operations?
           </h2>
           <p className="text-white/50 text-base mb-10 leading-relaxed">
-            Join the labs already running on Gepeto. Get started free — no
-            credit card required.
+            Join the labs already running on Gepeto. Try it free for 30 days —
+            cancel any time before then and you pay nothing.
           </p>
         </div>
 

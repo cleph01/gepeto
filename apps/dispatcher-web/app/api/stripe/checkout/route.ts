@@ -5,8 +5,9 @@ import { TRIAL_DAYS, isInterval, isPlanId, planLookupKey } from "@/lib/plans";
 // POST /api/stripe/checkout
 // Creates a Stripe Checkout Session for a new lab subscription.
 // Body: { email: string; labName: string; plan?: "starter"|"growth"|"pro"; interval?: "month"|"year" }
-// The trial needs no card (the website promises that); if none is added by
-// the end of the trial, the subscription cancels instead of billing.
+// A card is required up front but not charged until the trial ends. If the
+// card is removed during the trial (Customer Portal), the subscription cancels
+// at the end of the trial instead of billing.
 // Returns: { url: string } — the Stripe hosted checkout URL
 export async function POST(request: NextRequest) {
   try {
@@ -48,7 +49,6 @@ export async function POST(request: NextRequest) {
       mode: "subscription",
       customer_email: email.trim(),
       line_items: [{ price: price.id, quantity: 1 }],
-      payment_method_collection: "if_required",
       allow_promotion_codes: true,
       subscription_data: {
         trial_period_days: TRIAL_DAYS,

@@ -106,7 +106,7 @@ export default function SignupPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: "24px 28px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
           <p style={{ margin: "0 0 4px", fontSize: 13, color: "#5F5E5A", lineHeight: 1.5 }}>
-            Set up your lab in 2 minutes. {TRIAL_DAYS}-day free trial, no credit card required. Have a founding-lab code? Enter it on the next page.
+            Set up your lab in 2 minutes. {TRIAL_DAYS}-day free trial: you add a card, but you aren&apos;t charged until the trial ends. Have a founding-lab code? Enter it on the next page.
           </p>
 
           {/* Plan */}

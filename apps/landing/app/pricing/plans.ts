@@ -90,7 +90,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "How does the free trial work?",
-    a: `You get ${TRIAL_DAYS} days with everything in your plan and no credit card required. Add a card any time before the trial ends to keep going; if you don't, the trial simply ends.`,
+    a: `You get ${TRIAL_DAYS} days with everything in your plan. You add a card when you sign up, but nothing is charged until day ${TRIAL_DAYS + 1}, and we email you a reminder before then. Cancel any time during the trial in Settings and you pay nothing.`,
   },
   {
     q: "Can I change plans later?",

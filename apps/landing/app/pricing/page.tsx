@@ -8,7 +8,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 export const metadata: Metadata = {
   title: "Pricing — Gepeto",
-  description: `Simple per-lab pricing for Gepeto, from $${PLANS[0].monthly}/month. Free for your dental offices. ${TRIAL_DAYS}-day free trial, no credit card required.`,
+  description: `Simple per-lab pricing for Gepeto, from $${PLANS[0].monthly}/month. Free for your dental offices. ${TRIAL_DAYS}-day free trial.`,
 };
 
 export default function PricingPage() {
@@ -46,7 +46,7 @@ export default function PricingPage() {
           </h1>
           <p className="mt-5 text-base sm:text-lg text-white/65 max-w-2xl mx-auto leading-relaxed">
             Pick a plan by how many drivers you run. Every plan includes the whole of Gepeto, and every
-            plan starts with a {TRIAL_DAYS}-day free trial, no credit card required.
+            plan starts with a {TRIAL_DAYS}-day free trial. Nothing is charged until it ends.
           </p>
         </div>
       </section>
@@ -138,7 +138,7 @@ export default function PricingPage() {
       <section className="bg-hero text-white">
         <div className="max-w-3xl mx-auto px-5 sm:px-8 py-16 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Try Gepeto free for {TRIAL_DAYS} days</h2>
-          <p className="mt-3 text-white/60">No credit card required. Set up your offices and drivers in an afternoon.</p>
+          <p className="mt-3 text-white/60">Cancel any time during the trial and you pay nothing. Set up your offices and drivers in an afternoon.</p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a href={`${APP_URL}/signup?plan=growth&interval=month`} className="px-7 py-3.5 bg-white text-gray-900 hover:bg-gray-100 text-sm font-semibold rounded-xl transition-colors">
               Start free trial →

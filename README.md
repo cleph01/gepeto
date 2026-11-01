@@ -168,7 +168,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 ## Billing
 
 Plans: Starter $99 (2 active drivers), Growth $199 (5), Pro $349 (12); annual is
-10x monthly; extra drivers $25/mo ($20 on Pro); 30-day trial with no card;
+10x monthly; extra drivers $25/mo ($20 on Pro); 30-day trial (card required, charged when the trial ends);
 founding-lab code `FOUNDINGLAB` (50% off for 12 months, 10 uses). The same
 numbers live in three places that must match: the public page
 (`apps/landing/app/pricing/plans.ts`), enforcement (`apps/dispatcher-web/lib/plans.ts`)

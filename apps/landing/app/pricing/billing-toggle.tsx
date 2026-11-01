@@ -100,7 +100,7 @@ function PlanCard({ plan, annual }: { plan: Plan; annual: boolean }) {
       >
         Start {TRIAL_DAYS}-day free trial
       </a>
-      <p className="mt-2 text-center text-xs text-gray-400">No credit card required</p>
+      <p className="mt-2 text-center text-xs text-gray-400">Nothing charged for {TRIAL_DAYS} days</p>
     </div>
   );
 }
