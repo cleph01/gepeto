@@ -220,6 +220,7 @@ const NAV_LINKS: [string, string][] = [
   ["#problem", "Problem"],
   ["#how-it-works", "How it works"],
   ["#features", "Features"],
+  ["/pricing", "Pricing"],
   ["/features", "Why Gepeto"],
 ];
 
@@ -263,8 +264,8 @@ function Nav({ scrolled }: { scrolled: boolean }) {
                 key={href}
                 href={href}
                 className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  // "Why Gepeto" is a page, not a section of this one: outline it.
-                  href.startsWith("/")
+                  // "Why Gepeto" is the in-depth page: outline it.
+                  href === "/features"
                     ? scrolled
                       ? "ml-1 border border-gray-300 text-gray-800 hover:border-gray-400 hover:bg-gray-50"
                       : "ml-1 border border-white/30 text-white hover:border-white/60 hover:bg-white/8"
@@ -432,6 +433,9 @@ function Hero() {
             className="text-sm text-white/35 hover:text-white/55 transition-colors"
           >
             Need a walk-through first? Schedule a demo →
+          </a>
+          <a href="/pricing" className="text-sm text-white/55 hover:text-white transition-colors">
+            Plans from $99/month · 30-day free trial · <span className="underline underline-offset-2">See pricing</span>
           </a>
         </div>
       </div>
@@ -772,6 +776,9 @@ function Footer() {
           </a>
           <a href="/features" className="hover:text-white/50 transition-colors">
             Why Gepeto
+          </a>
+          <a href="/pricing" className="hover:text-white/50 transition-colors">
+            Pricing
           </a>
           <a href="/privacy" className="hover:text-white/50 transition-colors">
             Privacy
