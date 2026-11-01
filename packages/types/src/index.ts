@@ -26,9 +26,7 @@ export interface JobItem {
 }
 
 export interface ProofOfDelivery {
-  photoUrl: string;
   recipientName: string;
-  signatureUrl: string;
   timestamp: string; // ISO 8601
 }
 
@@ -45,6 +43,10 @@ export interface Job {
   pickupAddress: string;
   deliveryAddress: string;
   proofOfDelivery: ProofOfDelivery | null;
+  /** Delivery photo in storage; view it through GET /api/jobs/[id]/pod-photo. */
+  podPhotoPath: string | null;
+  /** When the nightly cleanup removed the photo (lab's keep time passed). */
+  podPhotoDeletedAt: string | null;
   scheduledAt: string | null; // ISO 8601 — optional expected delivery time
   createdAt: string;
   updatedAt: string;

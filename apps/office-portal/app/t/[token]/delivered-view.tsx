@@ -11,6 +11,8 @@ interface Delivery {
   deliveredAt: string;
   driverName: string | null;
   receivedBy: string | null;
+  hasPhoto: boolean;
+  photoDeletedAt: string | null;
 }
 
 type Preset = "today" | "7" | "30" | "90" | "custom";
@@ -46,6 +48,7 @@ export default function DeliveredView({ token, refreshKey = 0 }: { token: string
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedKey, setLoadedKey] = useState("");
+  const [photoFor, setPhotoFor] = useState<Delivery | null>(null);
 
   const range = rangeFor(preset, customFrom, customTo);
   const rangeKey = range ? `${range[0].toISOString()}|${range[1].toISOString()}` : "";
@@ -144,6 +147,16 @@ export default function DeliveredView({ token, refreshKey = 0 }: { token: string
                             {d.receivedBy ? <>Received by <strong style={{ fontWeight: 600, color: "#3a3a3a" }}>{d.receivedBy}</strong></> : "Delivered"}
                             {d.driverName && <> · driver {d.driverName}</>}
                           </div>
+                          {d.hasPhoto ? (
+                            <button
+                              onClick={() => setPhotoFor(d)}
+                              style={{ marginTop: 5, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, color: "#185FA5" }}
+                            >
+                              View drop-off photo
+                            </button>
+                          ) : d.photoDeletedAt ? (
+                            <div style={{ fontSize: 11.5, color: "#9a9a9a", marginTop: 4 }}>Photo removed after the lab&apos;s keep time</div>
+                          ) : null}
                         </div>
                         <div style={{ flexShrink: 0, textAlign: "right", fontSize: 12, color: "#5F5E5A", whiteSpace: "nowrap" }}>
                           {new Date(d.deliveredAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -155,6 +168,51 @@ export default function DeliveredView({ token, refreshKey = 0 }: { token: string
               </section>
             ))}
           </div>
+        )}
+      </div>
+      {photoFor && <PhotoModal token={token} delivery={photoFor} onClose={() => setPhotoFor(null)} />}
+    </div>
+  );
+}
+
+// The drop-off photo, full width. The image URL redirects to a short-lived
+// signed link, so it's fetched fresh each time this opens.
+function PhotoModal({ token, delivery, onClose }: { token: string; delivery: Delivery; onClose: () => void }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 5000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+    >
+      <div role="dialog" aria-label={`Drop-off photo for ${delivery.caseId}`} style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 560, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+          <div>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: "#1a1a1a", fontFamily: "ui-monospace, monospace" }}>{delivery.caseId}</div>
+            <div style={{ fontSize: 12, color: "#5F5E5A", marginTop: 2 }}>
+              Delivered {new Date(delivery.deliveredAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              {delivery.receivedBy && <> · received by {delivery.receivedBy}</>}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", color: "#9a9a9a", padding: 6, display: "flex" }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+          </button>
+        </div>
+        {failed ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", fontSize: 13, color: "#A32D2D" }}>Couldn&apos;t load the photo.</div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/track/${token}/photo/${delivery.id}`}
+            alt={`Drop-off photo for ${delivery.caseId}`}
+            onError={() => setFailed(true)}
+            style={{ display: "block", width: "100%", maxHeight: "70vh", objectFit: "contain", background: "#F0F2F5" }}
+          />
         )}
       </div>
     </div>

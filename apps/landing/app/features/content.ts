@@ -94,7 +94,7 @@ export const SECTIONS: Section[] = [
         title: "One trip, several cases",
         features: [
           { title: "Jobs grouped by office", body: "Several cases going to the same office appear as one stop, with the earliest due time and a single Navigate button." },
-          { title: "One tap for the whole stop", body: "\"Mark all 3 picked up\" at the lab, \"Complete all 3 deliveries\" at the door. The recipient's name is entered once and saved as proof of delivery on every case." },
+          { title: "One tap for the whole stop", body: "\"Mark all 3 picked up\" at the lab, \"Complete all 3 deliveries\" at the door. The recipient's name and one drop-off photo are saved as proof of delivery on every case." },
         ],
       },
       {
@@ -121,7 +121,7 @@ export const SECTIONS: Section[] = [
         id: "driver-records",
         title: "Simple, honest record keeping",
         features: [
-          { title: "Proof of delivery", body: "Every delivery records who received it and when." },
+          { title: "Proof of delivery", body: "Every delivery records who received it and when, with a photo of the drop-off. Photos are kept 90 days, or longer if your lab chooses (up to 2 years)." },
           { title: "History tab", body: "Every delivery and every job you turned down in the last 30 days, grouped by day, with older history a tap away." },
           { title: "Accept or reject in one tap", body: "With a confirmation, so nothing is turned down by accident." },
         ],

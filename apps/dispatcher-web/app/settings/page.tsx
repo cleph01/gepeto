@@ -5,6 +5,7 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useMessageNotifications } from "@/context/message-notifications";
 import BillingSection from "@/components/billing-section";
+import DeliveryPhotosSection from "@/components/delivery-photos-section";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ export default function SettingsPage() {
   const { apiFetch, session } = useAuth();
   const { soundEnabled, setSoundEnabled } = useMessageNotifications();
 
-  const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications" | "billing">(() =>
+  const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications" | "delivery" | "billing">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("section") === "billing" ? "billing" : "profile"
   );
 
@@ -212,7 +213,7 @@ export default function SettingsPage() {
 
   // ── Layout ──────────────────────────────────────────────────────────────────
 
-  const sections: { key: "profile" | "lab" | "team" | "notifications" | "billing"; label: string; icon: React.ReactNode }[] = [
+  const sections: { key: "profile" | "lab" | "team" | "notifications" | "delivery" | "billing"; label: string; icon: React.ReactNode }[] = [
     {
       key: "profile",
       label: "Profile",
@@ -253,6 +254,16 @@ export default function SettingsPage() {
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
           <path d="M8 2a4 4 0 00-4 4v3l-1 1.5h10L12 9V6a4 4 0 00-4-4z" stroke="currentColor" strokeWidth="1.25" fill="none" strokeLinejoin="round" />
           <path d="M6.5 12.5a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      key: "delivery",
+      label: "Proof of delivery",
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+          <path d="M2 5.5A1.5 1.5 0 013.5 4h1.6l1-1.5h3.8l1 1.5h1.6A1.5 1.5 0 0114 5.5v6a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-6z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+          <circle cx="8" cy="8.5" r="2.25" stroke="currentColor" strokeWidth="1.25" />
         </svg>
       ),
     },
@@ -661,6 +672,8 @@ export default function SettingsPage() {
           )}
 
           {/* ── Notifications ── */}
+          {activeSection === "delivery" && <DeliveryPhotosSection isMobile={isMobile} />}
+
           {activeSection === "billing" && <BillingSection isMobile={isMobile} />}
 
           {activeSection === "notifications" && (

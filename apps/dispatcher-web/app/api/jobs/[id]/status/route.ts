@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { notifyDriver, notifyLab, notifyOffices } from "@/lib/realtime";
+import { isLabPhotoPath, podPhotoSettings } from "@/lib/pod-photos";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -9,6 +10,9 @@ const VALID_STATUSES = ["pending", "assigned", "picked_up", "in_transit", "arriv
 // PATCH /api/jobs/[id]/status
 // Driver advances the job status through its lifecycle; dispatchers can set
 // any status on jobs in their lab. Every change is logged to job_status_events.
+// Delivering takes proofOfDelivery { recipientName, timestamp, photoPath? };
+// photoPath comes from POST /api/driver/pod-photo, and is required of drivers
+// when the lab has "Require a photo" on.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -51,9 +55,33 @@ export async function PATCH(
     const updates: Record<string, unknown> = { status };
 
     if (status === "delivered") {
+      const photoPath = proofOfDelivery?.photoPath;
+      if (photoPath !== undefined && photoPath !== null && !isLabPhotoPath(user.labId, photoPath)) {
+        return Response.json(
+          { data: null, error: { code: "BAD_REQUEST", message: "That photo couldn't be attached. Retake it and try again." } },
+          { status: 400 }
+        );
+      }
+      if (user.role === "driver" && !photoPath) {
+        const lab = await db("labs").where({ id: user.labId }).first("settings");
+        if (podPhotoSettings(lab?.settings).required) {
+          return Response.json(
+            { data: null, error: { code: "PHOTO_REQUIRED", message: "Your lab asks for a photo of every drop-off. Take one to finish." } },
+            { status: 400 }
+          );
+        }
+      }
+
       updates.delivered_at = new Date().toISOString();
       if (proofOfDelivery) {
-        updates.proof_of_delivery = JSON.stringify(proofOfDelivery);
+        updates.proof_of_delivery = JSON.stringify({
+          recipientName: proofOfDelivery.recipientName,
+          timestamp: proofOfDelivery.timestamp,
+        });
+      }
+      if (photoPath) {
+        updates.pod_photo_path = photoPath;
+        updates.pod_photo_deleted_at = null;
       }
     }
 

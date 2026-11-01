@@ -8,7 +8,8 @@ const MAX_ROWS = 300;
 // GET /api/track/[token]/delivered?from=<ISO>&to=<ISO>
 // Public (token is the secret). This office's delivered cases with
 // delivered_at in [from, to), newest first. The page's Delivered tab calls it
-// with the office's local day boundaries.
+// with the office's local day boundaries. hasPhoto rows have a drop-off photo
+// at /api/track/[token]/photo/[jobId].
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
@@ -45,7 +46,9 @@ export async function GET(
         "jobs.items",
         "jobs.delivered_at as deliveredAt",
         "drivers.name as driverName",
-        db.raw("jobs.proof_of_delivery->>'recipientName' as received_by")
+        db.raw("jobs.proof_of_delivery->>'recipientName' as received_by"),
+        db.raw("(jobs.pod_photo_path is not null) as has_photo"),
+        "jobs.pod_photo_deleted_at as photoDeletedAt"
       );
 
     return Response.json({

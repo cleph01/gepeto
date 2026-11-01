@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/alerts",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/pod-photos",
+      "schedule": "0 9 * * *"
     }
   ]
 }

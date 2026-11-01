@@ -38,6 +38,11 @@ interface Job {
   updatedAt: string;
   /** Expected delivery time (ISO). Older jobs created before it was required may have none. */
   scheduledAt: string | null;
+  deliveredAt: string | null;
+  recipientName: string | null;
+  hasPhoto: boolean;
+  /** Set when the nightly cleanup removed the photo after the lab's keep time. */
+  photoDeletedAt: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1214,6 +1219,60 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
 
 // ─── Job Detail Row ───────────────────────────────────────────────────────────
 
+// Who received a delivered job, and the drop-off photo if the driver took one.
+// The photo link is signed for 5 minutes, fetched when this is shown.
+function ProofOfDelivery({ job }: { job: Job }) {
+  const { apiFetch } = useAuth();
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  useEffect(() => {
+    if (!job.hasPhoto) return;
+    apiFetch<ApiResponse<{ url: string | null }>>(`/api/jobs/${job.id}/pod-photo`)
+      .then((res) => { if (res.data?.url) setPhotoUrl(res.data.url); else setPhotoFailed(true); })
+      .catch(() => setPhotoFailed(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id, job.hasPhoto]);
+
+  const when = job.deliveredAt
+    ? new Date(job.deliveredAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : null;
+
+  return (
+    <div>
+      <p style={{ margin: "0 0 3px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        Proof of Delivery
+      </p>
+      <p style={{ margin: 0, fontSize: 12.5, color: "#3a3a3a", lineHeight: 1.4 }}>
+        {job.recipientName ? <>Received by <strong style={{ fontWeight: 500 }}>{job.recipientName}</strong></> : "No recipient recorded"}
+        {when && <span style={{ color: "#5F5E5A" }}> · {when}</span>}
+      </p>
+      {job.hasPhoto ? (
+        photoUrl ? (
+          <a href={photoUrl} target="_blank" rel="noreferrer" title="Open the full photo" style={{ display: "inline-block", marginTop: 6 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoUrl}
+              alt={`Delivery photo for ${job.caseId}`}
+              style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)", display: "block" }}
+            />
+          </a>
+        ) : (
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: photoFailed ? "#A32D2D" : "#9a9a9a" }}>
+            {photoFailed ? "Couldn't load the photo." : "Loading photo…"}
+          </p>
+        )
+      ) : job.photoDeletedAt ? (
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9a9a9a" }}>
+          Photo removed {new Date(job.photoDeletedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} (your keep time in Settings)
+        </p>
+      ) : (
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9a9a9a" }}>No photo</p>
+      )}
+    </div>
+  );
+}
+
 function JobDetailRow({
   job,
   onCopyLink,
@@ -1239,6 +1298,11 @@ function JobDetailRow({
         gap: 16,
       }}
     >
+      {job.status === "delivered" && (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <ProofOfDelivery job={job} />
+        </div>
+      )}
       <div>
         <p style={{ margin: "0 0 3px", fontSize: 10.5, fontWeight: 500, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
           Expected Delivery
@@ -1435,6 +1499,11 @@ function HistoryModal({ job, onClose }: { job: Job; onClose: () => void }) {
         </div>
 
         <div style={{ padding: "14px 20px 20px", overflowY: "auto" }}>
+          {job.status === "delivered" && (
+            <div style={{ paddingBottom: 14, marginBottom: 14, borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+              <ProofOfDelivery job={job} />
+            </div>
+          )}
           {failed ? (
             <span style={{ fontSize: 12.5, color: "#A32D2D" }}>Couldn&apos;t load history.</span>
           ) : events === null ? (
@@ -1760,6 +1829,8 @@ type ApiJobFull = {
   id: string; caseId: string; officeName: string; officeId: string; officeTrackingToken: string | null; driverName: string | null; driverId: string | null;
   priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
   deliveryAddress: string; createdAt: string; updatedAt: string; scheduledAt: string | null;
+  deliveredAt: string | null; proofOfDelivery: { recipientName?: string } | null;
+  podPhotoPath: string | null; podPhotoDeletedAt: string | null;
 };
 
 function mapJob(j: ApiJobFull): Job {
@@ -1779,6 +1850,10 @@ function mapJob(j: ApiJobFull): Job {
     createdAt: new Date(j.createdAt).toLocaleString(),
     updatedAt: timeAgo(j.updatedAt),
     scheduledAt: j.scheduledAt,
+    deliveredAt: j.deliveredAt,
+    recipientName: j.proofOfDelivery?.recipientName ?? null,
+    hasPhoto: !!j.podPhotoPath,
+    photoDeletedAt: j.podPhotoDeletedAt,
   };
 }
 

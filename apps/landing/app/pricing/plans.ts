@@ -82,7 +82,7 @@ export const COMPARE: { label: string; values: [string, string, string] }[] = [
 export const FAQ: { q: string; a: string }[] = [
   {
     q: "What counts as a driver?",
-    a: "Anyone who can sign in to the Gepeto driver app for your lab. Deactivated drivers don't count, so seasonal or part-time drivers only count while they're active.",
+    a: "Anyone working in the Gepeto driver app for your lab. Drivers set to Off Duty don't count, so seasonal or part-time drivers only count while they're active.",
   },
   {
     q: "Do our dental offices pay anything?",
@@ -102,7 +102,11 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Do you store patient information?",
-    a: "No. Gepeto is built around case numbers and products, not patients, so patient names and health details stay in your lab and practice systems.",
+    a: "No. Gepeto is built around case numbers and products, not patients, so patient names and health details stay in your lab and practice systems. Drivers are asked to photograph the drop-off, not labels or paperwork.",
+  },
+  {
+    q: "How long do you keep delivery photos?",
+    a: "90 days after delivery, then they're deleted automatically. Your lab can keep them longer (6 months, 1 year or 2 years) in Settings. Who received each case, and when, stays on the record either way.",
   },
   {
     q: "We have several locations. How does that work?",

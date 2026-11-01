@@ -524,7 +524,7 @@ const steps = [
     number: "02",
     role: "Driver",
     title: "Pick up & deliver",
-    body: "Driver gets a push notification, navigates their stops, then captures a photo and signature at drop-off.",
+    body: "Driver gets a push notification, navigates their stops, then records who received it and snaps a photo at drop-off.",
   },
   {
     number: "03",
@@ -603,7 +603,7 @@ const features = [
   {
     icon: <CameraIcon />,
     title: "Proof of Delivery",
-    body: "Photo capture and recipient signature at every drop-off, stored securely in the cloud.",
+    body: "Recipient name, time and a drop-off photo at every delivery. Photos are kept 90 days, or up to 2 years if your lab chooses.",
   },
   {
     icon: <ZapIcon />,

@@ -37,6 +37,8 @@ import { forgetJob } from '@/components/job-alerts';
 import { STEPS, dueInfo } from '@/lib/jobs';
 import { EMPTY_RETURN, draftForPickup, findPickupRequest, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
+import { PodPhotoField } from '@/components/pod-photo-field';
+import { isPodPhotoRequired, uploadPodPhoto } from '@/lib/pod-photo';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
   picked_up:  'in_transit',
@@ -48,7 +50,7 @@ const NEXT_ACTION: Partial<Record<JobStatus, { label: string; hint: string }>> =
   assigned:   { label: 'Mark picked up',    hint: 'Tap once the case is in your hands.' },
   picked_up:  { label: 'Mark en route',     hint: 'Tap when you start driving to the office.' },
   in_transit: { label: 'Mark arrived',      hint: 'Tap when you reach the office.' },
-  arrived:    { label: 'Complete delivery', hint: "You'll enter who received it." },
+  arrived:    { label: 'Complete delivery', hint: "You'll enter who received it and can add a photo." },
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -88,6 +90,8 @@ export default function JobDetailScreen() {
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
   const [pickupRequest, setPickupRequest] = useState<ReturnCase | null>(null);
   const [submittingPod, setSubmittingPod] = useState(false);
+  const [podPhoto, setPodPhoto] = useState<string | null>(null);
+  const [photoRequired, setPhotoRequired] = useState(false);
 
   // Set nav title to case ID
   const caseId = job?.caseId;
@@ -198,7 +202,9 @@ export default function JobDetailScreen() {
       setRecipientName('');
       setReturnDraft(EMPTY_RETURN);
       setPickupRequest(null);
+      setPodPhoto(null);
       setShowPod(true);
+      isPodPhotoRequired().then(setPhotoRequired);
       // If the office asked for a pickup, arrive with the return pre-filled.
       const officeId = job.officeId;
       findPickupRequest(officeId).then((request) => {
@@ -220,14 +226,25 @@ export default function JobDetailScreen() {
   };
 
   const handleConfirmDelivery = async () => {
-    if (!job || !recipientName.trim()) return;
+    if (!job || !recipientName.trim() || (photoRequired && !podPhoto)) return;
     setSubmittingPod(true);
+    let photoPath: string | undefined;
+    if (podPhoto) {
+      const uploaded = await uploadPodPhoto(podPhoto);
+      if ('error' in uploaded) {
+        setSubmittingPod(false);
+        Alert.alert("Photo didn't upload", `${uploaded.error} The delivery isn't marked yet.`);
+        return;
+      }
+      photoPath = uploaded.path;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, {
       status: 'delivered',
       proofOfDelivery: {
         recipientName: recipientName.trim(),
         timestamp: new Date().toISOString(),
+        photoPath,
       },
     });
     if (res.data) {
@@ -241,6 +258,8 @@ export default function JobDetailScreen() {
       }
     } else {
       setSubmittingPod(false);
+      if (res.error?.code === 'PHOTO_REQUIRED') setPhotoRequired(true);
+      Alert.alert("Couldn't complete the delivery", res.error?.message ?? 'Try again.');
     }
   };
 
@@ -503,7 +522,7 @@ export default function JobDetailScreen() {
             </View>
 
             <Text style={styles.podSubtitle}>
-              Who received it? Their name is saved as proof of delivery.
+              Who received it? Their name, and a photo if you take one, are saved as proof of delivery.
             </Text>
 
             <View style={styles.podField}>
@@ -523,15 +542,17 @@ export default function JobDetailScreen() {
               />
             </View>
 
+            <PodPhotoField uri={podPhoto} onChange={setPodPhoto} required={photoRequired} />
+
             <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} request={pickupRequest} />
 
             <TouchableOpacity
               style={[
                 styles.podConfirmBtn,
-                (!recipientName.trim() || submittingPod) && styles.podConfirmBtnDisabled,
+                (!recipientName.trim() || (photoRequired && !podPhoto) || submittingPod) && styles.podConfirmBtnDisabled,
               ]}
               onPress={handleConfirmDelivery}
-              disabled={!recipientName.trim() || submittingPod}
+              disabled={!recipientName.trim() || (photoRequired && !podPhoto) || submittingPod}
               activeOpacity={0.85}
               accessibilityRole="button"
             >

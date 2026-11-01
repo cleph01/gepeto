@@ -597,14 +597,14 @@ export default function JobQueueScreen() {
     );
   };
 
-  const confirmGroupDelivery = async (recipientName: string, returnDraft: ReturnDraft) => {
+  const confirmGroupDelivery = async (recipientName: string, returnDraft: ReturnDraft, photoPath?: string) => {
     if (!delivering) return;
     const { key, jobs: toDeliver } = delivering;
     setDelivering(null);
     const timestamp = new Date().toISOString();
     await applyToJobs(key, toDeliver, () => ({
       status: 'delivered',
-      proofOfDelivery: { recipientName, timestamp },
+      proofOfDelivery: { recipientName, timestamp, photoPath },
     }));
     // One return for the stop, linked to the first delivery in the group.
     const returnError = await logReturn(returnDraft, toDeliver[0].officeId, toDeliver[0].id);

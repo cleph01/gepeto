@@ -10,13 +10,17 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
+import { PodPhotoField } from '@/components/pod-photo-field';
+import { isPodPhotoRequired, uploadPodPhoto } from '@/lib/pod-photo';
 import { EMPTY_RETURN, draftForPickup, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 
 // Proof of delivery for several jobs at one office: the recipient's name is
-// entered once and saved on every job. Same look as the single-job sheet.
+// entered once and saved on every job, and so is one photo of the drop-off.
+// Same look as the single-job sheet.
 export function GroupDeliveryModal({
   visible,
   officeName,
@@ -31,19 +35,33 @@ export function GroupDeliveryModal({
   /** The office's open pickup request, if any: the return arrives pre-filled. */
   pickupRequest?: ReturnCase | null;
   onCancel: () => void;
-  onConfirm: (recipientName: string, returnDraft: ReturnDraft) => Promise<void>;
+  onConfirm: (recipientName: string, returnDraft: ReturnDraft, photoPath?: string) => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
   const [submitting, setSubmitting] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoRequired, setPhotoRequired] = useState(false);
+  const ready = !!name.trim() && (!photoRequired || !!photo);
 
   const confirm = async () => {
-    if (!name.trim() || submitting) return;
+    if (!ready || submitting) return;
     setSubmitting(true);
-    await onConfirm(name.trim(), returnDraft);
+    let photoPath: string | undefined;
+    if (photo) {
+      const uploaded = await uploadPodPhoto(photo);
+      if ('error' in uploaded) {
+        setSubmitting(false);
+        Alert.alert("Photo didn't upload", `${uploaded.error} The deliveries aren't marked yet.`);
+        return;
+      }
+      photoPath = uploaded.path;
+    }
+    await onConfirm(name.trim(), returnDraft, photoPath);
     setSubmitting(false);
     setName('');
     setReturnDraft(EMPTY_RETURN);
+    setPhoto(null);
   };
 
   return (
@@ -52,7 +70,11 @@ export function GroupDeliveryModal({
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onCancel}
-      onShow={() => setReturnDraft(pickupRequest ? draftForPickup(pickupRequest) : EMPTY_RETURN)}
+      onShow={() => {
+        setReturnDraft(pickupRequest ? draftForPickup(pickupRequest) : EMPTY_RETURN);
+        setPhoto(null);
+        isPodPhotoRequired().then(setPhotoRequired);
+      }}
     >
       <KeyboardAvoidingView style={styles.kav} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -75,7 +97,7 @@ export function GroupDeliveryModal({
           </View>
 
           <Text style={styles.subtitle}>
-            Who received them? Their name is saved as proof of delivery on every case above.
+            Who received them? Their name, and a photo if you take one, are saved as proof of delivery on every case above.
           </Text>
 
           <View style={styles.field}>
@@ -95,12 +117,14 @@ export function GroupDeliveryModal({
             />
           </View>
 
+          <PodPhotoField uri={photo} onChange={setPhoto} required={photoRequired} />
+
           <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} request={pickupRequest} />
 
           <TouchableOpacity
-            style={[styles.confirmBtn, (!name.trim() || submitting) && styles.confirmBtnDisabled]}
+            style={[styles.confirmBtn, (!ready || submitting) && styles.confirmBtnDisabled]}
             onPress={confirm}
-            disabled={!name.trim() || submitting}
+            disabled={!ready || submitting}
             activeOpacity={0.85}
             accessibilityRole="button"
           >
