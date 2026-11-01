@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/auth";
 import { UnreadBadge, useMessageNotifications } from "@/context/message-notifications";
+import { SearchIcon, SearchTrigger, useSearch } from "@/context/search";
 
 const navLinks = [
   {
@@ -73,6 +74,24 @@ const navLinks = [
   },
 ];
 
+// Phone top bar: opens global search (same width as the menu button, so the
+// logo stays centred).
+function MobileSearchButton() {
+  const { open } = useSearch();
+  return (
+    <button
+      onClick={open}
+      aria-label="Search"
+      style={{
+        width: 32, height: 32, background: "none", border: "none", cursor: "pointer", borderRadius: 7,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <SearchIcon size={18} />
+    </button>
+  );
+}
+
 // The orbital Gepeto icon, framed like the login page's (white tile, hairline border).
 function GepetoMark({ size }: { size: number }) {
   return (
@@ -116,6 +135,10 @@ function NavContent({
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ padding: "12px 10px 0" }}>
+        <SearchTrigger width="100%" compact />
       </div>
 
       {/* Nav links */}
@@ -251,8 +274,7 @@ export default function Sidebar() {
             </span>
           </div>
 
-          {/* Right side placeholder — keeps logo centred visually */}
-          <div style={{ width: 32 }} />
+          <MobileSearchButton />
         </header>
 
         {/* Backdrop */}

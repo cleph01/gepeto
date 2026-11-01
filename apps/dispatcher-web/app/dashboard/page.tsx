@@ -5,6 +5,7 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useRealtimeDashboard } from "@/hooks/use-realtime-dashboard";
 import { useMessageNotifications } from "@/context/message-notifications";
+import { SearchTrigger } from "@/context/search";
 import { useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
 
@@ -124,24 +125,7 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Search */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              background: "#F8F9FB",
-              border: "1px solid rgba(0,0,0,0.10)",
-              borderRadius: 7,
-              padding: "5px 10px",
-              width: 200,
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ opacity: 0.4, flexShrink: 0 }}>
-              <circle cx="5.5" cy="5.5" r="4" stroke="#1a1a1a" strokeWidth="1.3" />
-              <path d="M8.5 8.5L11 11" stroke="#1a1a1a" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-            <span style={{ fontSize: 12.5, color: "#9a9a9a", fontWeight: 400 }}>Search jobs, drivers…</span>
-          </div>
+          <SearchTrigger width={220} />
           {/* New Job button */}
           <button
             style={{

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
+import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
 import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
 import { UnreadBadge, useMessageNotifications } from "@/context/message-notifications";
@@ -1800,6 +1801,13 @@ export default function JobsPage() {
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
   const [expandedId, setExpandedId]   = useState<string | null>(null);
+  const { target: searchTarget } = useSearch();
+  // Picked from global search: make sure the job is visible and open.
+  useEffect(() => {
+    if (searchTarget?.kind !== "job") return;
+    setFilter("all");
+    setExpandedId(searchTarget.id);
+  }, [searchTarget]);
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
   const {
     unreadByJob, pendingOpenJobId, clearPendingOpen,
@@ -2079,8 +2087,8 @@ export default function JobsPage() {
           ) : bp === "mobile" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {filtered.map((job) => (
+                <div key={job.id} id={`search-job-${job.id}`}>
                 <JobCard
-                  key={job.id}
                   job={job}
                   onUpdateStatus={() => setStatusJob(job)}
                   onEditAssignment={() => openAssign(job)}
@@ -2091,12 +2099,13 @@ export default function JobsPage() {
                   linkCopied={copiedJobId === job.id}
                   unread={unreadByJob[job.id] ?? 0}
                 />
+                </div>
               ))}
             </div>
           ) : (
             filtered.map((job, i) => (
+              <div key={job.id} id={`search-job-${job.id}`}>
               <JobRow
-                key={job.id}
                 job={job}
                 bp={bp}
                 isLast={i === filtered.length - 1}
@@ -2111,6 +2120,7 @@ export default function JobsPage() {
                 linkCopied={copiedJobId === job.id}
                 unread={unreadByJob[job.id] ?? 0}
               />
+              </div>
             ))
           )}
         </div>

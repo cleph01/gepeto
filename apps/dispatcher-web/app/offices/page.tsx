@@ -104,11 +104,12 @@ export default function OfficesPage() {
           }}>
             {!loaded && [0, 1, 2].map((i) => <OfficeCardSkeleton key={i} />)}
             {offices.map((office) => (
-              <OfficeCard
-                key={office.id}
-                office={office}
-                onEdit={() => { setEditOffice(office); setShowModal(true); }}
-              />
+              <div key={office.id} id={`search-office-${office.id}`} style={{ borderRadius: 12 }}>
+                <OfficeCard
+                  office={office}
+                  onEdit={() => { setEditOffice(office); setShowModal(true); }}
+                />
+              </div>
             ))}
           </div>
         )}

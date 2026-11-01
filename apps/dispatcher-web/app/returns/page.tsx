@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useMessageNotifications } from "@/context/message-notifications";
+import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,6 +72,12 @@ export default function ReturnsPage() {
   const [checkedIn, setCheckedIn] = useState<ReturnCase[] | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<Filter>("open");
+  const { target: searchTarget } = useSearch();
+  // Picked from global search: switch to a filter that shows that return.
+  useEffect(() => {
+    if (searchTarget?.kind !== "return") return;
+    setFilter(searchTarget.status === "checked_in" ? "checked_in" : "open");
+  }, [searchTarget]);
   const [checkInFor, setCheckInFor] = useState<ReturnCase | null>(null);
   const [historyFor, setHistoryFor] = useState<ReturnCase | null>(null);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
@@ -199,8 +206,8 @@ export default function ReturnsPage() {
             </div>
           ) : (
             ordered.map((r, i) => (
+              <div key={r.id} id={`search-return-${r.id}`}>
               <ReturnRow
-                key={r.id}
                 r={r}
                 isMobile={isMobile}
                 isLast={i === ordered.length - 1}
@@ -211,6 +218,7 @@ export default function ReturnsPage() {
                 onCancel={() => cancelPickup(r)}
                 error={rowError?.id === r.id ? rowError.message : null}
               />
+              </div>
             ))
           )}
         </div>

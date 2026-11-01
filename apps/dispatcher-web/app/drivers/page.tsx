@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
+import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -344,6 +345,13 @@ export default function DriversPage() {
   const [modalDriver, setModalDriver]   = useState<Partial<Driver> | null | "new">(null);
   const [deactivating, setDeactivating] = useState<Driver | null>(null);
   const [filter, setFilter]             = useState<DriverStatus | "all">("all");
+  const { target: searchTarget } = useSearch();
+  // Picked from global search: show every driver so the match is on screen.
+  useEffect(() => {
+    if (searchTarget?.kind !== "driver") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFilter("all");
+  }, [searchTarget]);
 
   useEffect(() => {
     if (!session) return;
@@ -560,8 +568,8 @@ export default function DriversPage() {
           ) : bp === "mobile" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {filtered.map((driver, i) => (
+                <div key={driver.id} id={`search-driver-${driver.id}`}>
                 <DriverCard
-                  key={driver.id}
                   driver={driver}
                   index={i}
                   onEdit={() => setModalDriver(driver)}
@@ -570,12 +578,13 @@ export default function DriversPage() {
                   onResend={() => onResend(driver)}
                   resend={resendState[driver.id]}
                 />
+                </div>
               ))}
             </div>
           ) : (
             filtered.map((driver, i) => (
+              <div key={driver.id} id={`search-driver-${driver.id}`}>
               <DriverRow
-                key={driver.id}
                 driver={driver}
                 bp={bp}
                 index={i}
@@ -586,6 +595,7 @@ export default function DriversPage() {
                 onResend={() => onResend(driver)}
                 resend={resendState[driver.id]}
               />
+              </div>
             ))
           )}
         </div>

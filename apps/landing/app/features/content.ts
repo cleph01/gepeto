@@ -29,6 +29,7 @@ export const SECTIONS: Section[] = [
         id: "dispatch-control",
         title: "Fast, mistake-proof dispatching",
         features: [
+          { title: "Find anything in seconds", body: "One search on every page (⌘K). Type a case number however it's written, a return number, an office, a driver or an item, and jump straight to it, including jobs from months ago." },
           { title: "Fix anything with a click", body: "Click a job's case number, office or due time to change it. Every change is logged, and the driver is alerted when it affects their route or timing." },
           { title: "Redirect a delivery mid-trip", body: "Change a job's office even after pickup. The delivery address updates and the driver gets a clear \"Delivery changed\" alert." },
           { title: "Reassign in two clicks", body: "Click a driver's name on any job to hand it to someone else. The new driver is asked to accept it fresh." },
