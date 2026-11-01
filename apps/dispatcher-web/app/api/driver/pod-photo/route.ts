@@ -3,7 +3,8 @@ import { requireAuth } from "@/lib/auth";
 import { MAX_POD_PHOTO_BYTES, uploadPodPhoto } from "@/lib/pod-photos";
 
 // POST /api/driver/pod-photo
-// Multipart form with one JPEG field "photo" (the app resizes it first).
+// Body: the JPEG itself (Content-Type: image/jpeg; what the driver app sends),
+// or a multipart form with one field "photo". The app resizes it first.
 // Returns { path }, which the app then sends as proofOfDelivery.photoPath
 // when it marks the job delivered. Uploading alone attaches it to nothing.
 export async function POST(request: NextRequest) {
@@ -16,8 +17,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const form = await request.formData();
-    const photo = form.get("photo");
+    const photo = (request.headers.get("content-type") ?? "").startsWith("image/jpeg")
+      ? await request.blob()
+      : (await request.formData()).get("photo");
     if (!(photo instanceof Blob) || photo.size === 0) {
       return Response.json(
         { data: null, error: { code: "BAD_REQUEST", message: "Attach a photo." } },

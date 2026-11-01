@@ -38,7 +38,7 @@ import { STEPS, dueInfo } from '@/lib/jobs';
 import { EMPTY_RETURN, draftForPickup, findPickupRequest, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
 import { PodPhotoField } from '@/components/pod-photo-field';
-import { isPodPhotoRequired, uploadPodPhoto } from '@/lib/pod-photo';
+import { isPodPhotoRequired, uploadPodPhoto, type PodPhoto } from '@/lib/pod-photo';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
   picked_up:  'in_transit',
@@ -90,7 +90,7 @@ export default function JobDetailScreen() {
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
   const [pickupRequest, setPickupRequest] = useState<ReturnCase | null>(null);
   const [submittingPod, setSubmittingPod] = useState(false);
-  const [podPhoto, setPodPhoto] = useState<string | null>(null);
+  const [podPhoto, setPodPhoto] = useState<PodPhoto | null>(null);
   const [photoRequired, setPhotoRequired] = useState(false);
 
   // Set nav title to case ID
@@ -542,7 +542,7 @@ export default function JobDetailScreen() {
               />
             </View>
 
-            <PodPhotoField uri={podPhoto} onChange={setPodPhoto} required={photoRequired} />
+            <PodPhotoField photo={podPhoto} onChange={setPodPhoto} required={photoRequired} />
 
             <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} request={pickupRequest} />
 

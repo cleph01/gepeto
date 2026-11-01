@@ -15,7 +15,7 @@ import {
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
 import { PodPhotoField } from '@/components/pod-photo-field';
-import { isPodPhotoRequired, uploadPodPhoto } from '@/lib/pod-photo';
+import { isPodPhotoRequired, uploadPodPhoto, type PodPhoto } from '@/lib/pod-photo';
 import { EMPTY_RETURN, draftForPickup, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 
 // Proof of delivery for several jobs at one office: the recipient's name is
@@ -40,7 +40,7 @@ export function GroupDeliveryModal({
   const [name, setName] = useState('');
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
   const [submitting, setSubmitting] = useState(false);
-  const [photo, setPhoto] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<PodPhoto | null>(null);
   const [photoRequired, setPhotoRequired] = useState(false);
   const ready = !!name.trim() && (!photoRequired || !!photo);
 
@@ -117,7 +117,7 @@ export function GroupDeliveryModal({
             />
           </View>
 
-          <PodPhotoField uri={photo} onChange={setPhoto} required={photoRequired} />
+          <PodPhotoField photo={photo} onChange={setPhoto} required={photoRequired} />
 
           <ReturnPickupFields value={returnDraft} onChange={setReturnDraft} request={pickupRequest} />
 

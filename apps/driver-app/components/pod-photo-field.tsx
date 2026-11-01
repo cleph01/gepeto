@@ -4,18 +4,18 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { takePodPhoto } from '@/lib/pod-photo';
+import { takePodPhoto, type PodPhoto } from '@/lib/pod-photo';
 
 // The photo step in the delivery sheets: take, preview, retake or remove.
 // Holds only the local photo; the sheet uploads it when the driver confirms.
 // The hint keeps paperwork (and the patient names on it) out of the picture.
 export function PodPhotoField({
-  uri,
+  photo,
   onChange,
   required,
 }: {
-  uri: string | null;
-  onChange: (uri: string | null) => void;
+  photo: PodPhoto | null;
+  onChange: (photo: PodPhoto | null) => void;
   required: boolean;
 }) {
   const [opening, setOpening] = useState(false);
@@ -44,9 +44,9 @@ export function PodPhotoField({
         Show the drop-off: the box on the front desk or in the office. Keep labels and paperwork out of the shot.
       </Text>
 
-      {uri ? (
+      {photo ? (
         <View style={styles.preview}>
-          <Image source={{ uri }} style={styles.image} contentFit="cover" accessibilityLabel="Delivery photo" />
+          <Image source={{ uri: photo.uri }} style={styles.image} contentFit="cover" accessibilityLabel="Delivery photo" />
           <View style={styles.previewActions}>
             <TouchableOpacity style={styles.secondaryBtn} onPress={take} disabled={opening} activeOpacity={0.7} accessibilityRole="button">
               {opening ? <ActivityIndicator color={Colors.accent} /> : <Text style={styles.secondaryText}>Retake</Text>}
