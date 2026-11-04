@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { usePathname, useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
 import { useAuth } from "@/context/auth";
+import { setFaviconBadge } from "@/lib/favicon-badge";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 // Polling, not Supabase realtime: realtime on `messages` would need RLS
@@ -14,6 +15,11 @@ const POLL_MS = 10_000;
 const TOAST_MS = 7_000;
 const MAX_TOASTS = 3;
 const SOUND_KEY = "gepeto.messageSound";
+const DESKTOP_NOTIFY_KEY = "gepeto.desktopNotifications";
+const FOCUSED_TAB_KEY = "gepeto.focusedTab";
+
+/** "unsupported" covers phones, where page notifications don't work without a service worker. */
+export type DesktopNotificationStatus = NotificationPermission | "unsupported";
 
 interface UnreadMessage {
   // camelCased by @gepeto/db
@@ -62,6 +68,13 @@ interface Toast {
   jobId: string | null; // null = summary toast for a burst of messages
   title: string;
   body: string;
+  /**
+   * Body of the desktop notification. These can show on lock screens and shared
+   * monitors, so never put message text or free-form notes here.
+   */
+  notifyBody: string;
+  /** Same across tabs, so each tab's copy replaces the last. Defaults to `key`. */
+  notifyTag?: string;
   color: string;
 }
 
@@ -92,6 +105,10 @@ interface MessageNotificationsContextType {
   returnsChangedAt: number;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
+  desktopNotificationStatus: DesktopNotificationStatus;
+  desktopNotificationsEnabled: boolean;
+  /** Asks the browser for permission if needed, so call it from a click. */
+  setDesktopNotificationsEnabled: (v: boolean) => void;
 }
 
 const MessageNotificationsContext = createContext<MessageNotificationsContextType>({
@@ -111,6 +128,9 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   returnsChangedAt: 0,
   soundEnabled: true,
   setSoundEnabled: () => {},
+  desktopNotificationStatus: "unsupported",
+  desktopNotificationsEnabled: false,
+  setDesktopNotificationsEnabled: () => {},
 });
 
 const ROLE_COLOR = { office: "#854F0B", driver: "#3B6D11" } as const;
@@ -126,6 +146,7 @@ function toastFor(m: UnreadMessage): Toast {
     jobId: m.jobId,
     title: `${who} · ${m.caseId}`,
     body: m.body,
+    notifyBody: "New message",
     color: ROLE_COLOR[m.senderRole],
   };
 }
@@ -144,6 +165,7 @@ function toastForActivity(a: DriverActivity): Toast {
     jobId: a.jobId,
     title: `${a.driverName ?? "A driver"} ${t.verb} ${a.caseId}`,
     body: t.body,
+    notifyBody: t.body,
     color: t.color,
   };
 }
@@ -183,6 +205,60 @@ function playChime() {
   });
 }
 
+// ── Desktop notifications ─────────────────────────────────────────────────────
+// Page notifications: they work while the app is open in any tab, with no server
+// side. Reaching a closed browser would take Web Push and a service worker.
+
+function readNotificationStatus(): DesktopNotificationStatus {
+  if (typeof window === "undefined" || !("Notification" in window) || /Android/i.test(navigator.userAgent)) {
+    return "unsupported";
+  }
+  return Notification.permission;
+}
+
+/** Whether the person has left this tab: another tab or app has their attention. */
+function isAway() {
+  return document.hidden || !document.hasFocus();
+}
+
+// With the app open in two tabs, the one in the background shouldn't send alerts
+// about what the person is looking at in the other. The focused tab records its id
+// and renews it on every poll, so a crashed tab can't silence the others for long.
+const tabId = Math.random().toString(36).slice(2);
+const FOCUS_EXPIRES_MS = POLL_MS * 3;
+
+function claimFocus() {
+  if (!isAway()) localStorage.setItem(FOCUSED_TAB_KEY, `${tabId}:${Date.now()}`);
+}
+
+function releaseFocus() {
+  if (localStorage.getItem(FOCUSED_TAB_KEY)?.startsWith(`${tabId}:`)) localStorage.removeItem(FOCUSED_TAB_KEY);
+}
+
+function anotherTabFocused() {
+  const [id, at] = (localStorage.getItem(FOCUSED_TAB_KEY) ?? "").split(":");
+  return Boolean(id) && id !== tabId && Date.now() - Number(at) < FOCUS_EXPIRES_MS;
+}
+
+// Holds a reference to open notifications: a browser can drop the click handler
+// of one that has been garbage collected.
+const openNotifications = new Set<Notification>();
+
+function showNotification(title: string, body: string, tag: string, onClick?: () => void) {
+  try {
+    const n = new Notification(title, { body, tag, icon: "/gepeto-icon.png", silent: true }); // the app plays its own chime
+    openNotifications.add(n);
+    n.onclose = () => openNotifications.delete(n);
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      onClick?.();
+    };
+  } catch {
+    // Some browsers refuse page notifications. The toast and chime still happen.
+  }
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function MessageNotificationsProvider({ children }: { children: React.ReactNode }) {
@@ -214,12 +290,23 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     () => typeof window === "undefined" || localStorage.getItem(SOUND_KEY) !== "off"
   );
 
+  const [desktopNotificationStatus, setDesktopNotificationStatus] = useState(readNotificationStatus);
+  const [desktopNotificationsWanted, setDesktopNotificationsWanted] = useState(
+    () => typeof window === "undefined" || localStorage.getItem(DESKTOP_NOTIFY_KEY) !== "off"
+  );
+  const desktopNotificationsEnabled = desktopNotificationsWanted && desktopNotificationStatus === "granted";
+
   const seenIds = useRef<Set<string>>(new Set());
   const primed = useRef(false); // first poll only records what's already unread — no toast storm on page load
   const seenActivity = useRef<Set<string>>(new Set());
   const activityPrimed = useRef(false);
   const activeThread = useRef<string | null>(null);
   const soundRef = useRef(soundEnabled);
+  const desktopNotifyRef = useRef(desktopNotificationsWanted);
+  // The newest message an open thread showed while the person was away. It counts
+  // as read once they come back, not before.
+  const deferredRead = useRef<{ jobId: string; upTo: string } | null>(null);
+  const openFromToastRef = useRef<(t: Toast) => void>(() => {});
 
   const setSoundEnabled = useCallback((v: boolean) => {
     setSoundEnabledState(v);
@@ -229,6 +316,20 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       unlockAudio();
       playChime(); // preview
     }
+  }, []);
+
+  const setDesktopNotificationsEnabled = useCallback(async (v: boolean) => {
+    if (readNotificationStatus() === "unsupported") return;
+    if (v && Notification.permission !== "granted") {
+      const permission = await Notification.requestPermission();
+      setDesktopNotificationStatus(permission);
+      if (permission !== "granted") return;
+    }
+    setDesktopNotificationsWanted(v);
+    desktopNotifyRef.current = v;
+    localStorage.setItem(DESKTOP_NOTIFY_KEY, v ? "on" : "off");
+    // A preview, so anyone whose computer is blocking them finds out now.
+    if (v) showNotification("Desktop notifications are on", "Gepeto will alert you here when you're on another tab or app.", "gepeto-notifications-on");
   }, []);
 
   useEffect(() => {
@@ -247,6 +348,11 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const pushToasts = useCallback((incoming: Toast[]) => {
     setToasts((prev) => [...incoming, ...prev].slice(0, MAX_TOASTS));
     for (const t of incoming) setTimeout(() => dismissToast(t.key), TOAST_MS);
+    if (desktopNotifyRef.current && isAway() && !anotherTabFocused() && readNotificationStatus() === "granted") {
+      for (const t of incoming) {
+        showNotification(t.title, t.notifyBody, t.notifyTag ?? t.key, () => openFromToastRef.current(t));
+      }
+    }
   }, [dismissToast]);
 
   const poll = useCallback(async () => {
@@ -260,8 +366,9 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (!res.data) return;
 
     const { byJob, recent } = res.data;
-    // The open thread is being read live — don't badge it.
-    const active = activeThread.current;
+    // The open thread is being read live, so don't badge it, unless the person
+    // has gone to another tab or app and can't see it.
+    const active = isAway() ? null : activeThread.current;
     if (active) delete byJob[active];
     setUnreadByJob(byJob);
     setRecentJobIds(recent.map((m) => m.jobId));
@@ -283,6 +390,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         jobId: null,
         title: `${toToast.length} new messages`,
         body: "Open Jobs to read them.",
+        notifyBody: "Open Jobs to read them.",
         color: "#185FA5",
       }]);
     } else {
@@ -350,6 +458,9 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         jobId: null,
         title: `${n} return${n === 1 ? "" : "s"} dropped at the lab`,
         body: "Waiting for check-in.",
+        notifyBody: "Waiting for check-in.",
+        // This broadcast has no return id; the time ties together each tab's copy.
+        notifyTag: `return-dropped-${n}-${Math.floor(Date.now() / 10_000)}`,
         color: "#854F0B",
       }]);
       if (soundRef.current) playChime();
@@ -369,6 +480,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
           jobId: null,
           title: `${r.officeName ?? "An office"} requested a pickup · ${r.caseCount} case${r.caseCount === 1 ? "" : "s"}`,
           body: [ready, r.note, "Assign a driver in Returning Cases."].filter(Boolean).join(" · "),
+          notifyBody: `${ready} · Assign a driver in Returning Cases.`,
           color: "#854F0B",
         }]);
         if (soundRef.current) playChime();
@@ -389,6 +501,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         jobId: null,
         title: `${r.driverName ?? "A driver"} is bringing back ${r.caseCount} case${r.caseCount === 1 ? "" : "s"}`,
         body: [r.officeName ?? "From an office", r.caseNumbers.length ? r.caseNumbers.join(", ") : null, r.note].filter(Boolean).join(" · "),
+        notifyBody: [r.officeName ?? "From an office", r.caseNumbers.length ? r.caseNumbers.join(", ") : null].filter(Boolean).join(" · "),
         color: "#185FA5",
       }]);
       if (soundRef.current) playChime();
@@ -442,7 +555,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     // pollAll() only sets state after awaiting the fetch, not synchronously.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     pollAll();
-    const id = setInterval(pollAll, POLL_MS);
+    const id = setInterval(() => {
+      claimFocus();
+      pollAll();
+    }, POLL_MS);
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       pollAll();
@@ -460,9 +576,15 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   useEffect(() => {
     if (baseTitle.current === null) baseTitle.current = document.title.replace(/^\(\d+\)\s*/, "");
     document.title = totalUnread > 0 ? `(${totalUnread}) ${baseTitle.current}` : baseTitle.current;
+    setFaviconBadge(totalUnread);
   }, [totalUnread, pathname]);
 
   const markRead = useCallback((jobId: string, upTo: string) => {
+    if (isAway()) {
+      deferredRead.current = { jobId, upTo };
+      return;
+    }
+    deferredRead.current = null;
     setUnreadByJob((prev) => {
       if (!prev[jobId]) return prev;
       const next = { ...prev };
@@ -477,8 +599,39 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const setActiveThread = useCallback((jobId: string | null) => {
     activeThread.current = jobId;
+    if (deferredRead.current?.jobId !== jobId) deferredRead.current = null;
     if (jobId) setToasts((prev) => prev.filter((t) => t.jobId !== jobId));
   }, []);
+
+  // Tracks whether this tab has the person's attention. Coming back settles what
+  // happened in an open thread while they were away.
+  useEffect(() => {
+    const onReturn = () => {
+      claimFocus();
+      setDesktopNotificationStatus(readNotificationStatus()); // they may have changed it in the browser
+      if (isAway()) return;
+      const deferred = deferredRead.current;
+      if (deferred) markRead(deferred.jobId, deferred.upTo);
+      const active = activeThread.current;
+      if (active) setToasts((prev) => prev.filter((t) => t.jobId !== active));
+    };
+    const onVisibility = () => {
+      if (document.hidden) releaseFocus();
+      else onReturn();
+    };
+    claimFocus();
+    window.addEventListener("focus", onReturn);
+    window.addEventListener("blur", releaseFocus);
+    window.addEventListener("pagehide", releaseFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      releaseFocus();
+      window.removeEventListener("focus", onReturn);
+      window.removeEventListener("blur", releaseFocus);
+      window.removeEventListener("pagehide", releaseFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [markRead]);
 
   const clearPendingOpen = useCallback(() => setPendingOpenJobId(null), []);
   const clearPendingHistory = useCallback(() => setPendingHistoryJobId(null), []);
@@ -498,6 +651,9 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     } else if (t.jobId) openThread(t.jobId);
     else if (pathname !== "/jobs") router.push("/jobs");
   };
+  useEffect(() => {
+    openFromToastRef.current = openFromToast;
+  });
 
   return (
     <MessageNotificationsContext.Provider
@@ -518,6 +674,9 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         returnsChangedAt,
         soundEnabled,
         setSoundEnabled,
+        desktopNotificationStatus,
+        desktopNotificationsEnabled,
+        setDesktopNotificationsEnabled,
       }}
     >
       {children}

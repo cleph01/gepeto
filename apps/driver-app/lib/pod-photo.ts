@@ -51,6 +51,16 @@ export async function uploadPodPhoto(photo: PodPhoto): Promise<{ path: string } 
   }
 }
 
+/** A saved delivery photo: a short-lived link, or why there isn't one. */
+export type DeliveryPhoto = { url: string | null; expired: boolean };
+
+// Throws when it can't be checked (no signal, server error).
+export async function fetchDeliveryPhoto(jobId: string): Promise<DeliveryPhoto> {
+  const res = await apiGet<DeliveryPhoto>(`/api/jobs/${jobId}/pod-photo`);
+  if (!res.data) throw new Error(res.error?.message ?? "Couldn't load the photo.");
+  return res.data;
+}
+
 // Whether this driver's lab asks for a photo on every delivery.
 export async function isPodPhotoRequired(): Promise<boolean> {
   const res = await apiGet<{ podPhotoRequired: boolean }>('/api/driver/settings').catch(() => null);

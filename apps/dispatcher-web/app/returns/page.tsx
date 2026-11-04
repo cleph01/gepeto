@@ -6,6 +6,7 @@ import { useAuth } from "@/context/auth";
 import { useMessageNotifications } from "@/context/message-notifications";
 import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
+import { GroupDivider, SortHeader, byRank, byText, groupRows, sortRows, useSort, type Comparators } from "@/lib/sorting";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,21 @@ interface ReturnCase {
 }
 
 type Filter = "open" | "requested" | "with_driver" | "at_lab" | "checked_in";
+
+// Sortable headers. Status follows what the front desk does first: requests,
+// then check-ins, then cases still with drivers. Cases: most first.
+const SORT_KEYS = ["number", "office", "driver", "cases", "status"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+const RETURN_SORTS: Comparators<ReturnCase, SortKey> = {
+  number: (a, b) => a.number - b.number,
+  office: byText((r) => r.officeName),
+  driver: byText((r) => r.driverName),
+  cases:  (a, b) => b.caseCount - a.caseCount,
+  status: byRank((r) => r.status, ["requested", "at_lab", "with_driver", "checked_in", "cancelled"]),
+};
+const HEADERS: [string, SortKey | undefined][] = [
+  ["Return", "number"], ["Office", "office"], ["Driver", "driver"], ["Cases", "cases"], ["Status", "status"], ["", undefined],
+];
 
 interface DriverOption {
   id: string;
@@ -72,6 +88,7 @@ export default function ReturnsPage() {
   const [checkedIn, setCheckedIn] = useState<ReturnCase[] | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<Filter>("open");
+  const { sort, toggle: toggleSort } = useSort<SortKey>("gepeto.sort.returns", SORT_KEYS);
   const { target: searchTarget } = useSearch();
   // Picked from global search: switch to a filter that shows that return.
   useEffect(() => {
@@ -143,7 +160,13 @@ export default function ReturnsPage() {
   // What the front desk acts on first: pickups with no driver, then check-ins.
   const priority = (r: ReturnCase) =>
     r.status === "requested" && !r.driverId ? 0 : r.status === "at_lab" ? 1 : r.status === "requested" ? 2 : 3;
-  const ordered = [...shown].sort((a, b) => priority(a) - priority(b));
+  const ordered = sort ? sortRows(shown, sort, RETURN_SORTS, (a, b) => priority(a) - priority(b))
+    : [...shown].sort((a, b) => priority(a) - priority(b));
+  // Sorted by office or driver: thin dividers between the groups.
+  const groupBy = sort?.key === "office" ? (r: ReturnCase) => r.officeName || "Unknown office"
+    : sort?.key === "driver" ? (r: ReturnCase) => r.driverName || "No driver yet"
+    : null;
+  const groups = groupBy ? groupRows(ordered, groupBy) : [{ label: "", rows: ordered }];
 
   const { requested, unassigned, withDriver, withDriverCases, atLab, atLabCases } = returnsSummary;
 
@@ -188,8 +211,8 @@ export default function ReturnsPage() {
         }}>
           {!isMobile && (
             <div style={{ ...rowGrid, padding: "8px 16px", background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-              {["Return", "Office", "Driver", "Cases", "Status", ""].map((c) => (
-                <span key={c} style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}>{c}</span>
+              {HEADERS.map(([label, key], i) => (
+                <SortHeader key={i} label={label} sortKey={key} sort={sort} onToggle={toggleSort} />
               ))}
             </div>
           )}
@@ -205,12 +228,15 @@ export default function ReturnsPage() {
                   : "Nothing here right now."}
             </div>
           ) : (
-            ordered.map((r, i) => (
+            groups.map((g) => (
+              <div key={g.label || "all"}>
+              {groupBy && <GroupDivider label={g.label} count={g.rows.length} noun="return" />}
+              {g.rows.map((r) => (
               <div key={r.id} id={`search-return-${r.id}`}>
               <ReturnRow
                 r={r}
                 isMobile={isMobile}
-                isLast={i === ordered.length - 1}
+                isLast={r === ordered[ordered.length - 1]}
                 onCheckIn={() => setCheckInFor(r)}
                 onHistory={() => setHistoryFor(r)}
                 drivers={drivers}
@@ -218,6 +244,8 @@ export default function ReturnsPage() {
                 onCancel={() => cancelPickup(r)}
                 error={rowError?.id === r.id ? rowError.message : null}
               />
+              </div>
+              ))}
               </div>
             ))
           )}

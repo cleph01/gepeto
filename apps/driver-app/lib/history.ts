@@ -11,7 +11,8 @@ export type HistoryEntry = {
   priority: JobPriority;
   items: JobItem[];
   at: string;
-  hasProof: boolean;
+  /** The driver can still view this delivery's photo (7 days after delivery). */
+  hasPhoto: boolean;
 };
 
 export type HistoryPage = { entries: HistoryEntry[]; nextBefore: string | null };

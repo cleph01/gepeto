@@ -33,11 +33,18 @@ function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => vo
             </View>
           )}
         </View>
-        <View style={[styles.kindBadge, rejected ? styles.kindRejected : styles.kindDelivered]}>
-          <IconSymbol name={rejected ? 'xmark' : 'checkmark'} size={12} color={rejected ? Colors.danger : Colors.success} />
-          <Text style={[styles.kindText, { color: rejected ? Colors.danger : Colors.success }]}>
-            {rejected ? 'Rejected' : 'Delivered'}
-          </Text>
+        <View style={styles.cardHeaderRight}>
+          {entry.hasPhoto && (
+            <View accessible accessibilityLabel="Includes a delivery photo">
+              <IconSymbol name="camera" size={16} color={Colors.textSecondary} />
+            </View>
+          )}
+          <View style={[styles.kindBadge, rejected ? styles.kindRejected : styles.kindDelivered]}>
+            <IconSymbol name={rejected ? 'xmark' : 'checkmark'} size={12} color={rejected ? Colors.danger : Colors.success} />
+            <Text style={[styles.kindText, { color: rejected ? Colors.danger : Colors.success }]}>
+              {rejected ? 'Rejected' : 'Delivered'}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -53,15 +60,7 @@ function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => vo
         <Text style={styles.itemsSummary} numberOfLines={1}>
           {items.length === 1 ? items[0].description : `${items.length} items`}
         </Text>
-        <View style={styles.footerRight}>
-          {entry.hasProof && (
-            <View style={styles.proofRow}>
-              <IconSymbol name="camera" size={14} color={Colors.textSecondary} />
-              <Text style={styles.proof}>Proof</Text>
-            </View>
-          )}
-          <Text style={styles.time}>{timeLabel(entry.at)}</Text>
-        </View>
+        <Text style={styles.time}>{timeLabel(entry.at)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -227,6 +226,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexShrink: 1 },
+  cardHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexShrink: 0 },
   caseId: { color: Colors.textSecondary, fontSize: FontSize.sm, fontFamily: Fonts.semibold, flexShrink: 1 },
   statBadge: { backgroundColor: Colors.stat, borderRadius: Radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
   statBadgeText: { color: Colors.statText, fontSize: FontSize.xs, fontFamily: Fonts.bold, letterSpacing: 0.6 },
@@ -239,7 +239,6 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   itemsSummary: { fontFamily: Fonts.regular, color: Colors.textMuted, fontSize: FontSize.xs, flexShrink: 1 },
-  proof: { color: Colors.textSecondary, fontSize: FontSize.xs, fontFamily: Fonts.medium },
   empty: { alignItems: 'center', paddingTop: 80, gap: Spacing.sm, paddingHorizontal: Spacing.xl },
   emptyIcon: {
     width: 56,
@@ -250,9 +249,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
-  proofRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  footerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flexShrink: 0 },
-  time: { fontFamily: Fonts.medium, color: Colors.textSecondary, fontSize: FontSize.xs },
+  time: { flexShrink: 0, fontFamily: Fonts.medium, color: Colors.textSecondary, fontSize: FontSize.xs },
   emptyTitle: { color: Colors.text, fontSize: FontSize.lg, fontFamily: Fonts.semibold, textAlign: 'center' },
   emptySubtitle: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm, textAlign: 'center' },
   loadMore: {
