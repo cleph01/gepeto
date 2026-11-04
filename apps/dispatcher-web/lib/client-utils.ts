@@ -1,7 +1,7 @@
 "use client";
 
 // Base URL for office-portal tracking links. Prefer an explicit env var
-// (set this for real production domains, e.g. https://track.gepeto.com/t) —
+// (set this for real production domains, e.g. https://track.gepeto.delivery/t) —
 // falls back to the current hostname on port 3001, so links copied while
 // viewing dispatcher-web over Tailscale (http://100.101.195.96:3000) still
 // point somewhere the recipient can actually reach, instead of a hardcoded

@@ -31,7 +31,7 @@ export default function HomePage() {
           fontSize: 13,
           color: "#185FA5",
         }}>
-          Your link looks like: <strong>track.gepeto.com/t/…</strong>
+          Your link looks like: <strong>track.gepeto.delivery/t/…</strong>
         </div>
       </div>
     </div>

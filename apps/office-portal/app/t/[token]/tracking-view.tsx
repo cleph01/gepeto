@@ -274,7 +274,7 @@ export default function TrackingView({
               {office.labName}
             </div>
             <div style={{ fontSize: 10.5, color: "#5F5E5A", letterSpacing: "0.03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Delivery Tracker · updated {timeAgo(lastUpdated.toISOString())}
+              Updated {timeAgo(lastUpdated.toISOString())}
             </div>
           </div>
         </div>
@@ -364,7 +364,7 @@ export default function TrackingView({
             <div style={{ textAlign: "center", padding: "44px 24px", background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", marginBottom: 6 }}>Nothing on the way right now</div>
               <div style={{ fontSize: 13, color: "#5F5E5A", marginBottom: 14 }}>
-                New cases from {office.labName} will show up here as soon as they&apos;re dispatched.
+                {`New cases from ${office.labName} will show up here as soon as they're dispatched.`}
               </div>
               <button onClick={() => setTab("delivered")} style={{ fontSize: 13, fontWeight: 600, color: "#185FA5", background: "#EBF2FA", border: "1px solid #C0D9F0", borderRadius: 8, padding: "7px 14px", cursor: "pointer" }}>
                 See delivered cases
