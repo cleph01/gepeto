@@ -72,7 +72,10 @@ export default function SettingsPage() {
   const isMobile = bp === "mobile";
   const isDesktop = bp === "desktop";
   const { apiFetch, session } = useAuth();
-  const { soundEnabled, setSoundEnabled } = useMessageNotifications();
+  const {
+    soundEnabled, setSoundEnabled,
+    desktopNotificationStatus, desktopNotificationsEnabled, setDesktopNotificationsEnabled,
+  } = useMessageNotifications();
 
   const [activeSection, setActiveSection] = useState<"profile" | "lab" | "team" | "notifications" | "delivery" | "billing">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("section") === "billing" ? "billing" : "profile"
@@ -781,8 +784,27 @@ export default function SettingsPage() {
                   description="Play a chime when an office or driver sends a message"
                   checked={soundEnabled}
                   onChange={setSoundEnabled}
-                  last
                 />
+                <ToggleRow
+                  label="Desktop notifications"
+                  description={
+                    desktopNotificationStatus === "unsupported"
+                      ? "Not available in this browser. Use Chrome, Edge, Firefox or Safari on a computer."
+                      : desktopNotificationStatus === "denied"
+                        ? "Blocked for this site. Allow notifications in your browser's site settings, then come back to this page."
+                        : "Get an alert when you're on another tab or app. Shows who it's from and the case, not the message itself."
+                  }
+                  checked={desktopNotificationsEnabled}
+                  onChange={setDesktopNotificationsEnabled}
+                  disabled={desktopNotificationStatus === "unsupported" || desktopNotificationStatus === "denied"}
+                  last
+                >
+                  {desktopNotificationsEnabled && (
+                    <div style={{ fontSize: 12, color: "#5F5E5A" }}>
+                      Nothing showing up? Check that your computer&apos;s notification settings allow this browser. The app has to stay open in a tab.
+                    </div>
+                  )}
+                </ToggleRow>
               </div>
             </div>
             </>
@@ -1105,10 +1127,10 @@ function InfoBanner({ text }: { text: string }) {
 }
 
 function ToggleRow({
-  label, description, checked, onChange, children, last,
+  label, description, checked, onChange, children, last, disabled,
 }: {
   label: string; description: string; checked: boolean;
-  onChange: (v: boolean) => void; children?: React.ReactNode; last?: boolean;
+  onChange: (v: boolean) => void; children?: React.ReactNode; last?: boolean; disabled?: boolean;
 }) {
   return (
     <div style={{
@@ -1125,6 +1147,8 @@ function ToggleRow({
         <button
           role="switch"
           aria-checked={checked}
+          aria-label={label}
+          disabled={disabled}
           onClick={() => onChange(!checked)}
           style={{
             flexShrink: 0,
@@ -1133,7 +1157,8 @@ function ToggleRow({
             borderRadius: 11,
             background: checked ? "#185FA5" : "rgba(0,0,0,0.15)",
             border: "none",
-            cursor: "pointer",
+            cursor: disabled ? "not-allowed" : "pointer",
+            opacity: disabled ? 0.5 : 1,
             position: "relative",
             transition: "background 0.18s",
             outline: "none",
