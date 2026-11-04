@@ -32,6 +32,8 @@ export default function OfficesPage() {
   const [loaded, setLoaded]         = useState(false);
   const [showModal, setShowModal]   = useState(false);
   const [editOffice, setEditOffice] = useState<Office | null>(null);
+  // Just-created office: show its link and code so the handoff isn't missed.
+  const [added, setAdded]           = useState<Office | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -55,7 +57,10 @@ export default function OfficesPage() {
         method: "POST",
         body: JSON.stringify(draft),
       });
-      if (res.data) setOffices((prev) => [...prev, res.data!]);
+      if (res.data) {
+        setOffices((prev) => [...prev, res.data!]);
+        setAdded(res.data);
+      }
     }
     setShowModal(false);
     setEditOffice(null);
@@ -130,6 +135,8 @@ export default function OfficesPage() {
           onSave={onSave}
         />
       )}
+
+      {added && <OfficeAddedModal office={added} onClose={() => setAdded(null)} />}
     </div>
   );
 }
@@ -366,6 +373,78 @@ function AccessCodeSection({ office, onReset }: { office: Office; onReset: () =>
       <EmailCodeButton office={office} style={{ marginTop: 7 }} />
       <button onClick={onReset} style={resetButton}>Reset code</button>
     </div>
+  );
+}
+
+// ── Office added ──────────────────────────────────────────────────────────────
+// Nothing goes to the office on its own: the lab may not be ready to contact
+// them yet, and a mistyped address would send the code to a stranger.
+
+function CopyRow({ label, value, large }: { label: string; value: string; large?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+        <div style={{
+          flex: 1, minWidth: 0, background: "#F0F4F8", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 6, padding: "7px 10px",
+          fontFamily: "monospace", color: "#1a1a1a", wordBreak: "break-all",
+          fontSize: large ? 15 : 12, fontWeight: large ? 600 : 400, letterSpacing: large ? "0.06em" : 0,
+        }}>
+          {value}
+        </div>
+        <button
+          onClick={() => copyToClipboard(value).then((ok) => {
+            if (ok) {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }
+          })}
+          style={{
+            background: copied ? "#EBF5E9" : "#185FA5", color: copied ? "#3B6D11" : "white", border: "none", borderRadius: 6,
+            padding: "5px 12px", fontSize: 12, fontWeight: 500, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OfficeAddedModal({ office, onClose }: { office: Office; onClose: () => void }) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 100, backdropFilter: "blur(2px)" }} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${office.name} added`}
+        style={{
+          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 101,
+          background: "#FFFFFF", borderRadius: 12, boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+          width: "min(460px, calc(100vw - 32px))", maxHeight: "calc(100vh - 32px)", overflowY: "auto", padding: 20, boxSizing: "border-box",
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", marginBottom: 6 }}>{office.name} is added</div>
+        <p style={{ fontSize: 13, color: "#5F5E5A", lineHeight: 1.5, margin: "0 0 14px" }}>
+          To follow their deliveries, the office needs both of these. Nothing has been sent to them yet. You can always find these on the office&apos;s card.
+        </p>
+        <CopyRow label="Tracking Link" value={trackingUrl(office.trackingToken)} />
+        <CopyRow label="Access Code" value={office.accessCode ?? ""} large />
+        <EmailCodeButton office={office} />
+        <p style={{ fontSize: 12, color: "#5F5E5A", lineHeight: 1.5, margin: "8px 0 0" }}>
+          {office.email
+            ? "The email has the code only, not the link, so a forwarded email can't open the full view. Send the link separately."
+            : "Add an email address to this office to send the code from here."}
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button autoFocus onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 7, padding: "7px 16px", fontSize: 13, color: "#3a3a3a", cursor: "pointer" }}>
+            Done
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
