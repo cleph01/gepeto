@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import TrackingView from "./tracking-view";
-import { loadTracking } from "@/lib/tracking";
+import LockedView from "./locked-view";
+import { loadTrackingForRequest } from "@/lib/tracking";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -18,9 +19,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .select("offices.name", "labs.name as labName")
     .first();
 
-  if (!office) return { title: "Tracking" };
+  if (!office) return { title: "Tracking", robots: { index: false, follow: false } };
 
   return {
+    robots: { index: false, follow: false },
     title: `${office.name} — Delivery Tracker`,
     description: `Track your deliveries from ${office.labName}`,
   };
@@ -28,7 +30,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function TrackingPage({ params }: Props) {
   const { token } = await params;
-  const data = await loadTracking(token);
+  const data = await loadTrackingForRequest(token);
   if (!data) notFound();
+  if (data.locked) return <LockedView token={token} initial={data} />;
   return <TrackingView token={token} initial={data} />;
 }

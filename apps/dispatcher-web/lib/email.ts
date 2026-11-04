@@ -10,7 +10,9 @@ const FROM = "Gepeto <notifications@gepeto.delivery>";
 
 // ── Shared HTML wrapper ───────────────────────────────────────────────────────
 
-function layout(title: string, body: string) {
+const LAB_FOOTER = "Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.";
+
+function layout(title: string, body: string, footer = LAB_FOOTER) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -35,7 +37,7 @@ function layout(title: string, body: string) {
 
         <!-- Footer -->
         <tr><td style="background:#F8F9FB;border:1px solid rgba(0,0,0,0.08);border-top:none;border-radius:0 0 10px 10px;padding:14px 24px;text-align:center;">
-          <span style="font-size:11.5px;color:#9a9a9a;">Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.</span>
+          <span style="font-size:11.5px;color:#9a9a9a;">${footer}</span>
         </td></tr>
 
       </table>
@@ -185,6 +187,50 @@ export async function sendLateDeliveryAlert(to: string[], data: LateDeliveryData
     to,
     subject: `Late delivery — ${data.caseId} · ${data.labName}`,
     html: layout("Late Delivery Alert", body),
+  });
+}
+
+// ── Office access code ────────────────────────────────────────────────────────
+
+function escapeHtml(text: string) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export type OfficeAccessCodeData = {
+  officeName: string;
+  labName: string;
+  code: string;
+  replyTo: string[];
+};
+
+// Deliberately leaves out the tracking link: if both were in one email,
+// forwarding it would hand over full access.
+export async function sendOfficeAccessCode(to: string, data: OfficeAccessCodeData) {
+  const office = escapeHtml(data.officeName);
+  const lab = escapeHtml(data.labName);
+  const body = `
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
+      Your delivery tracking access code
+    </h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
+      ${lab} uses this code to protect ${office}'s delivery details. Share it with your staff.
+    </p>
+    <div style="text-align:center;background:#F0F4F8;border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:18px 16px;margin-bottom:20px;font-family:ui-monospace,Menlo,monospace;font-size:24px;font-weight:600;letter-spacing:0.08em;color:#1a1a1a;">
+      ${escapeHtml(data.code)}
+    </div>
+    <p style="margin:0 0 10px;font-size:13.5px;color:#3a3a3a;line-height:1.5;">
+      Open your office's tracking page and enter this code to see driver locations, messages, delivery history and photos, and to request pickups. Each device stays unlocked for 30 days.
+    </p>
+    <p style="margin:0;font-size:13.5px;color:#3a3a3a;line-height:1.5;">
+      Don't have the tracking page saved? Reply to this email and ${lab} will send it to you.
+    </p>`;
+
+  return getResend().emails.send({
+    from: FROM,
+    to,
+    replyTo: data.replyTo,
+    subject: `Tracking access code for ${data.officeName}`,
+    html: layout("Your access code", body, `Gepeto · Sent on behalf of ${lab}. Please keep this code within your office.`),
   });
 }
 

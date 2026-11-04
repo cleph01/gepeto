@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
+import { rateLimited, requireUnlocked } from "@/lib/access";
 import { notifyLab, notifyOfficePage } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
 const MAX_CASES = 99;
 const MAX_NOTE = 500;
-const MAX_OPEN_REQUESTS = 10; // the link is public; stop runaway submissions
+const MAX_OPEN_REQUESTS = 10; // stop runaway submissions
 const MAX_READY_AHEAD_DAYS = 7;
 
 // POST /api/track/[token]/pickups
@@ -18,10 +19,10 @@ export async function POST(
 ) {
   try {
     const { token } = await params;
-    const office = await db("offices").where("tracking_token", token).select("id", "lab_id").first();
-    if (!office) {
-      return Response.json({ data: null, error: { code: "NOT_FOUND", message: "Tracking link not found" } }, { status: 404 });
-    }
+    const office = await requireUnlocked(token);
+    if (office instanceof Response) return office;
+    const limited = await rateLimited(request, token, "pickup", 20, 60 * 60);
+    if (limited) return limited;
 
     const body = await request.json().catch(() => ({}));
     const caseCount = Number(body.caseCount);

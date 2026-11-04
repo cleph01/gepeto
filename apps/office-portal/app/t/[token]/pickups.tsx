@@ -16,7 +16,7 @@ export interface Pickup {
   readyAt: string | null;
   pickedUpAt: string | null;
   checkedInAt: string | null;
-  driverId: string | null;
+  hasDriver: boolean;
   driverName: string | null;
 }
 
@@ -91,7 +91,7 @@ export function PickupsSection({
       </div>
       {pickups.map((p) => {
         const st = progress(p);
-        const canCancel = p.status === "requested" && !p.driverId;
+        const canCancel = p.status === "requested" && !p.hasDriver;
         return (
           <div key={p.id} style={{ borderTop: "1px solid rgba(0,0,0,0.06)", padding: "11px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
             <div style={{ flex: 1, minWidth: 0 }}>

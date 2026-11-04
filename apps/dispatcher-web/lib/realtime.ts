@@ -46,6 +46,12 @@ export async function notifyOffices(officeIds: (string | null | undefined)[], wh
   }
 }
 
+// For a link that was just replaced: pages open on the old token get told to
+// reload, which lands them on the "link isn't working" screen.
+export async function notifyOldOfficeLink(token: string) {
+  await broadcast(`office:${token}`, "changed", { what: "jobs" });
+}
+
 async function broadcast(topic: string, event: string, payload: Record<string, unknown>) {
   try {
     const res = await fetch(`${process.env.SUPABASE_URL}/realtime/v1/api/broadcast`, {

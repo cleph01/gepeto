@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { OFFICE_COLUMNS, cleanEmail, ensureAccessCode, officeAccess, officeForLab } from "@/lib/office-access";
 import { randomUUID } from "crypto";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -19,8 +20,9 @@ export async function GET(request: NextRequest) {
     const offices = await db("offices")
       .where("lab_id", user.labId)
       .orderBy("name", "asc")
-      .select("id", "name", "address", "phone", "contact_name", "tracking_token");
-    return Response.json({ data: offices, error: null });
+      .select(OFFICE_COLUMNS);
+    const withCodes = await Promise.all(offices.map(ensureAccessCode));
+    return Response.json({ data: withCodes.map(officeForLab), error: null });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[GET /api/offices]", err);
@@ -45,10 +47,18 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { name, address, phone, contactName } = body;
+    const email = cleanEmail(body.email ?? null);
 
     if (!name || !address || !phone || !contactName) {
       return Response.json(
         { data: null, error: { code: "BAD_REQUEST", message: "name, address, phone, and contactName are required" } },
+        { status: 400 }
+      );
+    }
+
+    if (email === undefined) {
+      return Response.json(
+        { data: null, error: { code: "BAD_REQUEST", message: "That email address doesn't look right" } },
         { status: 400 }
       );
     }
@@ -60,11 +70,13 @@ export async function POST(request: NextRequest) {
         address,
         phone,
         contact_name:   contactName,
+        email,
         tracking_token: randomUUID(),
+        access_code_enc: officeAccess.encryptCode(officeAccess.generateCode()),
       })
-      .returning("*");
+      .returning(OFFICE_COLUMNS);
 
-    return Response.json({ data: office, error: null }, { status: 201 });
+    return Response.json({ data: officeForLab(office), error: null }, { status: 201 });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[POST /api/offices]", err);

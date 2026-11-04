@@ -1,17 +1,16 @@
 import type { NextRequest } from "next/server";
-import { loadTracking } from "@/lib/tracking";
+import { loadTrackingForRequest } from "@/lib/tracking";
 
 // GET /api/track/[token]
-// Public endpoint — token acts as the auth secret.
-// Returns the office, its active jobs (grouped client-side by driver) and the
-// last few deliveries. See lib/tracking.ts for what's withheld.
+// The link alone gets basic case status; with the access code session, the full
+// view. See lib/tracking.ts for what each one sends.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params;
-    const data = await loadTracking(token);
+    const data = await loadTrackingForRequest(token);
     if (!data) {
       return Response.json(
         { data: null, error: { code: "NOT_FOUND", message: "Tracking link not found" } },

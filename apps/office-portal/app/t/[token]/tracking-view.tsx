@@ -23,7 +23,8 @@ interface TrackingJob {
   items: Item[] | null;
   createdAt: string;
   updatedAt: string;
-  driverId: string | null;
+  /** Groups cases by driver; not the driver's real id (lib/tracking.ts). */
+  driverKey: string | null;
   driverName: string | null;
   /** Only sent once this driver is carrying one of the office's cases (lib/tracking.ts). */
   driverLocation: DriverLocation | null;
@@ -58,7 +59,7 @@ type Stage = { step: 1 | 2 | 3; label: string; bg: string; text: string; border:
 function stageOf(job: TrackingJob): Stage {
   if (job.status === "arrived") return { step: 3, label: "Arrived", bg: "#F0FAF0", text: "#3B6D11", border: "#C0E0C0" };
   if (job.status === "picked_up" || job.status === "in_transit") return { step: 2, label: "On the way", bg: "#EBF2FA", text: "#185FA5", border: "#C0D9F0" };
-  if (job.driverId) return { step: 1, label: "Driver assigned", bg: "#F5F5F3", text: "#3a3a3a", border: "#E2E2DE" };
+  if (job.driverKey) return { step: 1, label: "Driver assigned", bg: "#F5F5F3", text: "#3a3a3a", border: "#E2E2DE" };
   return { step: 1, label: "At the lab", bg: "#FFF8F0", text: "#854F0B", border: "#F5D9B5" };
 }
 
@@ -80,9 +81,9 @@ interface DriverGroup {
 function groupByDriver(jobs: TrackingJob[]): DriverGroup[] {
   const groups = new Map<string, DriverGroup>();
   for (const job of jobs) {
-    const key = job.driverId ?? "unassigned";
+    const key = job.driverKey ?? "unassigned";
     if (!groups.has(key)) {
-      groups.set(key, { key, driverName: job.driverId ? job.driverName : null, driverLocation: null, jobs: [] });
+      groups.set(key, { key, driverName: job.driverKey ? job.driverName : null, driverLocation: null, jobs: [] });
     }
     const g = groups.get(key)!;
     g.jobs.push(job);
@@ -137,8 +138,12 @@ export default function TrackingView({
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/track/${token}`);
+      // The link was replaced: reload onto the "link isn't working" screen.
+      if (res.status === 404) return window.location.reload();
       if (!res.ok) return;
       const json = await res.json();
+      // The code was reset: reload onto the code screen.
+      if (json.data?.locked) return window.location.reload();
       if (json.data) {
         setData(json.data);
         setLastUpdated(new Date());

@@ -13,8 +13,12 @@ interface Office {
   address: string;
   phone: string;
   contactName: string;
+  email: string | null;
   trackingToken: string;
+  accessCode: string | null;
 }
+
+type OfficeDraft = Pick<Office, "name" | "address" | "phone" | "contactName"> & { email: string };
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -36,7 +40,10 @@ export default function OfficesPage() {
     }).catch(() => {}).finally(() => setLoaded(true));
   }, [session]);
 
-  async function onSave(draft: Omit<Office, "id" | "trackingToken">, id?: string) {
+  const replaceOffice = (updated: Office) =>
+    setOffices((prev) => prev.map((o) => o.id === updated.id ? updated : o));
+
+  async function onSave(draft: OfficeDraft, id?: string) {
     if (id) {
       const res = await apiFetch<{ data: Office | null; error: null }>(`/api/offices/${id}`, {
         method: "PATCH",
@@ -108,6 +115,7 @@ export default function OfficesPage() {
                 <OfficeCard
                   office={office}
                   onEdit={() => { setEditOffice(office); setShowModal(true); }}
+                  onChanged={replaceOffice}
                 />
               </div>
             ))}
@@ -155,8 +163,9 @@ function OfficeCardSkeleton() {
   );
 }
 
-function OfficeCard({ office, onEdit }: { office: Office; onEdit: () => void }) {
+function OfficeCard({ office, onEdit, onChanged }: { office: Office; onEdit: () => void; onChanged: (o: Office) => void }) {
   const [copied, setCopied] = useState(false);
+  const [resetting, setResetting] = useState<"code" | "link" | null>(null);
   const url = trackingUrl(office.trackingToken);
 
   function copyLink() {
@@ -201,6 +210,7 @@ function OfficeCard({ office, onEdit }: { office: Office; onEdit: () => void }) 
         {/* Meta rows */}
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <MetaRow icon="person" text={office.contactName} />
+          {office.email && <MetaRow icon="email" text={office.email} />}
           <MetaRow icon="phone" text={office.phone} />
           <MetaRow icon="location" text={office.address} />
         </div>
@@ -251,15 +261,261 @@ function OfficeCard({ office, onEdit }: { office: Office; onEdit: () => void }) 
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
+        <button onClick={() => setResetting("link")} style={resetButton}>Reset link</button>
       </div>
+
+      <AccessCodeSection office={office} onReset={() => setResetting("code")} />
+
+      {resetting && (
+        <ResetModal
+          kind={resetting}
+          office={office}
+          onChanged={onChanged}
+          onClose={() => setResetting(null)}
+        />
+      )}
     </div>
+  );
+}
+
+const resetButton: React.CSSProperties = {
+  display: "block", marginTop: 8, padding: 0, background: "none", border: "none",
+  fontSize: 11.5, color: "#5F5E5A", textDecoration: "underline", cursor: "pointer",
+};
+
+// ── Access code ───────────────────────────────────────────────────────────────
+
+function EmailCodeButton({ office, style }: { office: Office; style?: React.CSSProperties }) {
+  const { apiFetch } = useAuth();
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setState("sending");
+    setError(null);
+    try {
+      // apiFetch resolves on error responses too; the failure is in the body.
+      const res = await apiFetch<{ data: unknown; error: { message: string } | null }>(`/api/offices/${office.id}/email-code`, { method: "POST" });
+      if (res.error) {
+        setError(res.error.message);
+        setState("idle");
+      } else {
+        setState("sent");
+      }
+    } catch {
+      setError("The email didn't send. Check your connection and try again.");
+      setState("idle");
+    }
+  }
+
+  return (
+    <div style={{ flex: 1, ...style }}>
+      <button
+        onClick={send}
+        disabled={!office.email || state !== "idle"}
+        title={office.email ? `Send the code to ${office.email}` : "Add an email address to this office first"}
+        style={{
+          width: "100%", background: "#FFFFFF", border: "1px solid #C0D9F0", borderRadius: 6, padding: "6px 10px",
+          fontSize: 12, fontWeight: 500, color: office.email ? "#185FA5" : "#9a9a9a",
+          cursor: office.email && state === "idle" ? "pointer" : "default",
+        }}
+      >
+        {state === "sent" ? "Emailed ✓" : state === "sending" ? "Sending…" : "Email to office"}
+      </button>
+      {error && <div role="alert" style={{ fontSize: 11.5, color: "#C53B0A", marginTop: 5, lineHeight: 1.4 }}>{error}</div>}
+    </div>
+  );
+}
+
+function AccessCodeSection({ office, onReset }: { office: Office; onReset: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  function copyCode() {
+    if (!office.accessCode) return;
+    copyToClipboard(office.accessCode).then((ok) => {
+      if (ok) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    });
+  }
+
+  return (
+    <div style={{ padding: "10px 16px 12px", borderTop: "1px solid rgba(0,0,0,0.06)", background: "#FAFAFA" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 7 }}>
+        Access Code
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <div style={{
+          flex: 1, background: "#F0F4F8", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 6,
+          padding: "5px 9px", fontSize: 13, fontWeight: 600, letterSpacing: "0.06em", color: "#1a1a1a", fontFamily: "monospace",
+        }}>
+          {office.accessCode ?? "—"}
+        </div>
+        <button
+          onClick={copyCode}
+          title="Copy code"
+          style={{
+            background: copied ? "#EBF5E9" : "#185FA5", color: copied ? "#3B6D11" : "white", border: "none",
+            borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 500, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <EmailCodeButton office={office} style={{ marginTop: 7 }} />
+      <button onClick={onReset} style={resetButton}>Reset code</button>
+    </div>
+  );
+}
+
+// ── Reset confirmation ────────────────────────────────────────────────────────
+// Both resets cut off people who may be relying on the page right now, so each
+// spells out exactly what happens. Cancel holds the focus, so a stray Enter or
+// double-click doesn't confirm.
+
+function ResetModal({
+  kind, office, onChanged, onClose,
+}: {
+  kind: "code" | "link";
+  office: Office;
+  onChanged: (o: Office) => void;
+  onClose: () => void;
+}) {
+  const { apiFetch } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<Office | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      // apiFetch resolves on error responses too; the failure is in the body.
+      const res = await apiFetch<{ data: Office | null; error: { message: string } | null }>(`/api/offices/${office.id}/reset-${kind}`, { method: "POST" });
+      if (res.data) {
+        onChanged(res.data);
+        setDone(res.data);
+      } else {
+        setError(res.error?.message ?? "That didn't work. Nothing was changed.");
+      }
+    } catch {
+      setError("Couldn't reach the server, so we can't confirm the reset. Reload the page to check before trying again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const newValue = done ? (kind === "code" ? done.accessCode ?? "" : trackingUrl(done.trackingToken)) : "";
+  const noun = kind === "code" ? "access code" : "tracking link";
+
+  return (
+    <>
+      <div onClick={busy ? undefined : onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 100, backdropFilter: "blur(2px)" }} />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={done ? `New ${noun}` : `Reset ${noun}`}
+        style={{
+          position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 101,
+          background: "#FFFFFF", borderRadius: 12, boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+          width: "min(460px, calc(100vw - 32px))", maxHeight: "calc(100vh - 32px)", overflowY: "auto", padding: 20, boxSizing: "border-box",
+        }}
+      >
+        {done ? (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", marginBottom: 6 }}>
+              {kind === "code" ? "New access code" : "New tracking link"} for {office.name}
+            </div>
+            <p style={{ fontSize: 13, color: "#5F5E5A", lineHeight: 1.5, margin: "0 0 12px" }}>
+              {kind === "code"
+                ? "The office is locked out of the full view until they have this code. It hasn't been sent to them yet."
+                : "The old link has stopped working. This one hasn't been sent to the office yet, so they can't get in until you send it."}
+            </p>
+            <div style={{
+              background: "#F0F4F8", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 6, padding: "9px 11px",
+              fontFamily: "monospace", color: "#1a1a1a", wordBreak: "break-all",
+              fontSize: kind === "code" ? 17 : 12.5, fontWeight: kind === "code" ? 600 : 400, letterSpacing: kind === "code" ? "0.06em" : 0,
+            }}>
+              {newValue}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <button
+                onClick={() => copyToClipboard(newValue).then((ok) => { if (ok) setCopied(true); })}
+                style={{ flex: 1, background: copied ? "#EBF5E9" : "#185FA5", color: copied ? "#3B6D11" : "white", border: "none", borderRadius: 7, padding: "8px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
+              >
+                {copied ? "Copied!" : kind === "code" ? "Copy code" : "Copy link"}
+              </button>
+              {kind === "code" && <EmailCodeButton office={done} />}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+              <button onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 7, padding: "7px 16px", fontSize: 13, color: "#3a3a3a", cursor: "pointer" }}>
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", marginBottom: 10 }}>
+              Reset the {noun} for {office.name}?
+            </div>
+            <div style={{ background: "#FFF4F0", border: "1px solid #F5C9B8", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 13, fontWeight: 500, color: "#A33208", lineHeight: 1.5 }}>
+              {kind === "code"
+                ? "This takes effect immediately and can't be undone. The current code stops working for everyone at this office."
+                : "This takes effect immediately and can't be undone. The current link stops working for everyone, including saved bookmarks."}
+            </div>
+            <ul style={{ margin: "0 0 14px", paddingLeft: 18, fontSize: 13, color: "#3a3a3a", lineHeight: 1.6 }}>
+              {kind === "code" ? (
+                <>
+                  <li>Every device at the office is signed out of the full view, even if the page is open right now.</li>
+                  <li>Until they enter the new code, they can&apos;t see driver locations, messages, photos or delivery history, or request pickups.</li>
+                  <li>The tracking link keeps working and still shows basic case status.</li>
+                  <li>You&apos;ll need to give the office the new code. It isn&apos;t sent automatically.</li>
+                </>
+              ) : (
+                <>
+                  <li>Anyone opening the old link sees a &quot;link isn&apos;t working&quot; page, with no case information at all.</li>
+                  <li>The office can&apos;t see anything until you send them the new link. It isn&apos;t sent automatically.</li>
+                  <li>The access code stays the same, but everyone has to enter it again on the new link.</li>
+                </>
+              )}
+            </ul>
+            {error && <div role="alert" style={{ fontSize: 12.5, color: "#C53B0A", marginBottom: 12 }}>{error}</div>}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                autoFocus
+                onClick={onClose}
+                disabled={busy}
+                style={{ background: "#185FA5", color: "white", border: "none", borderRadius: 7, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
+              >
+                Cancel, keep it
+              </button>
+              <button
+                onClick={confirm}
+                disabled={busy}
+                style={{ background: "#FFFFFF", color: "#C53B0A", border: "1px solid #C53B0A", borderRadius: 7, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}
+              >
+                {busy ? "Resetting…" : kind === "code" ? "Yes, reset the code" : "Yes, reset the link"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
 // ── Meta row ──────────────────────────────────────────────────────────────────
 
-function MetaRow({ icon, text }: { icon: "person" | "phone" | "location"; text: string }) {
+function MetaRow({ icon, text }: { icon: "person" | "phone" | "location" | "email"; text: string }) {
   const icons = {
+    email: (
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+        <rect x="1.5" y="3" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+        <path d="M2 4l6 5 6-5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      </svg>
+    ),
     person: (
       <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.3" />
@@ -338,18 +594,19 @@ function OfficeModal({
 }: {
   office: Office | null;
   onClose: () => void;
-  onSave: (draft: Omit<Office, "id" | "trackingToken">, id?: string) => Promise<void>;
+  onSave: (draft: OfficeDraft, id?: string) => Promise<void>;
 }) {
   const [name, setName]               = useState(office?.name        ?? "");
   const [address, setAddress]         = useState(office?.address     ?? "");
   const [phone, setPhone]             = useState(office?.phone       ?? "");
   const [contactName, setContactName] = useState(office?.contactName ?? "");
+  const [email, setEmail]             = useState(office?.email       ?? "");
   const [saving, setSaving]           = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await onSave({ name, address, phone, contactName }, office?.id);
+    await onSave({ name, address, phone, contactName, email }, office?.id);
     setSaving(false);
   }
 
@@ -397,6 +654,7 @@ function OfficeModal({
           <ModalField label="Office Name"    value={name}        onChange={setName}        placeholder="SF Smile Center" required />
           <ModalField label="Contact Name"   value={contactName} onChange={setContactName} placeholder="Dr. Jane Smith"   required />
           <ModalField label="Phone"          value={phone}       onChange={setPhone}        placeholder="(415) 555-0100"  required type="tel" />
+          <ModalField label="Email (for sending the access code)" value={email} onChange={setEmail} placeholder="frontdesk@sfsmile.com" type="email" />
           <ModalField label="Address"        value={address}     onChange={setAddress}      placeholder="123 Market St, San Francisco, CA 94103" required />
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 4 }}>

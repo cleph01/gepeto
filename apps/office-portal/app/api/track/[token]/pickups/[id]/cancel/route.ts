@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { rateLimited, requireUnlocked } from "@/lib/access";
 import { notifyLab, notifyOfficePage } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -8,15 +9,15 @@ const db = require("@gepeto/db");
 // assigned a driver. After that it has to call the lab, so a driver isn't
 // left driving to a pickup that quietly disappeared.
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string; id: string }> }
 ) {
   try {
     const { token, id } = await params;
-    const office = await db("offices").where("tracking_token", token).select("id", "lab_id").first();
-    if (!office) {
-      return Response.json({ data: null, error: { code: "NOT_FOUND", message: "Tracking link not found" } }, { status: 404 });
-    }
+    const office = await requireUnlocked(token);
+    if (office instanceof Response) return office;
+    const limited = await rateLimited(request, token, "pickup-cancel", 20, 60 * 60);
+    if (limited) return limited;
 
     const cancelled = await db.transaction(async (trx: typeof db) => {
       const n = await trx("returns")

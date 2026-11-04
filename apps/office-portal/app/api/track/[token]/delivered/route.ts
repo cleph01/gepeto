@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { requireUnlocked } from "@/lib/access";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -6,7 +7,7 @@ const MAX_RANGE_DAYS = 366;
 const MAX_ROWS = 300;
 
 // GET /api/track/[token]/delivered?from=<ISO>&to=<ISO>
-// Public (token is the secret). This office's delivered cases with
+// Behind the access code. This office's delivered cases with
 // delivered_at in [from, to), newest first. The page's Delivered tab calls it
 // with the office's local day boundaries. hasPhoto rows have a drop-off photo
 // at /api/track/[token]/photo/[jobId].
@@ -16,10 +17,8 @@ export async function GET(
 ) {
   try {
     const { token } = await params;
-    const office = await db("offices").where("tracking_token", token).select("id").first();
-    if (!office) {
-      return Response.json({ data: null, error: { code: "NOT_FOUND", message: "Tracking link not found" } }, { status: 404 });
-    }
+    const office = await requireUnlocked(token);
+    if (office instanceof Response) return office;
 
     const sp = request.nextUrl.searchParams;
     const from = new Date(sp.get("from") ?? "");

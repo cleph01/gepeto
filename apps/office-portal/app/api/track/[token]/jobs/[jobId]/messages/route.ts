@@ -1,23 +1,29 @@
 import type { NextRequest } from "next/server";
+import { rateLimited, requireUnlocked } from "@/lib/access";
 import { notifyLab, notifyOfficePage } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
 const MAX_BODY_LENGTH = 2000;
 
-async function resolveJobForToken(token: string, jobId: string) {
-  const office = await db("offices").where("tracking_token", token).select("id").first();
-  if (!office) return null;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  const job = await db("jobs")
-    .where({ id: jobId, office_id: office.id })
-    .select("id", "lab_id")
-    .first();
-  return job ?? null;
+/** The job if it's this office's and the code was entered; otherwise the Response to send. */
+async function resolveJobForToken(token: string, jobId: string) {
+  const office = await requireUnlocked(token);
+  if (office instanceof Response) return office;
+
+  const job = UUID.test(jobId)
+    ? await db("jobs").where({ id: jobId, office_id: office.id }).select("id", "lab_id").first()
+    : null;
+  return job ?? Response.json(
+    { data: null, error: { code: "NOT_FOUND", message: "Job not found" } },
+    { status: 404 }
+  );
 }
 
 // GET /api/track/[token]/jobs/[jobId]/messages
-// Public endpoint — the tracking token is the auth secret, scoped to one job.
+// Behind the access code, scoped to one job of this office's.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string; jobId: string }> }
@@ -26,12 +32,7 @@ export async function GET(
     const { token, jobId } = await params;
 
     const job = await resolveJobForToken(token, jobId);
-    if (!job) {
-      return Response.json(
-        { data: null, error: { code: "NOT_FOUND", message: "Job not found" } },
-        { status: 404 }
-      );
-    }
+    if (job instanceof Response) return job;
 
     // If the job was moved to this office from another one, only show
     // messages from after the move, so one office never reads another's.
@@ -66,12 +67,10 @@ export async function POST(
     const { token, jobId } = await params;
 
     const job = await resolveJobForToken(token, jobId);
-    if (!job) {
-      return Response.json(
-        { data: null, error: { code: "NOT_FOUND", message: "Job not found" } },
-        { status: 404 }
-      );
-    }
+    if (job instanceof Response) return job;
+
+    const limited = await rateLimited(request, token, "message", 60, 10 * 60);
+    if (limited) return limited;
 
     const { body } = await request.json();
     const trimmed = typeof body === "string" ? body.trim() : "";
@@ -93,7 +92,6 @@ export async function POST(
         job_id: jobId,
         sender_role: "office",
         sender_id: null,
-        office_token: token,
         body: trimmed,
       })
       .returning(["id", "sender_role", "body", "created_at"]);

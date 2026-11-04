@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { OFFICE_COLUMNS, cleanEmail, ensureAccessCode, officeForLab } from "@/lib/office-access";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
-// PATCH /api/offices/[id] — update office name, address, phone, or contactName
+// PATCH /api/offices/[id] — update office name, address, phone, contactName, or email
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,11 +22,21 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    const updates: Record<string, string> = {};
+    const updates: Record<string, string | null> = {};
     if (body.name        !== undefined) updates.name         = body.name;
     if (body.address     !== undefined) updates.address      = body.address;
     if (body.phone       !== undefined) updates.phone        = body.phone;
     if (body.contactName !== undefined) updates.contact_name = body.contactName;
+    if (body.email       !== undefined) {
+      const email = cleanEmail(body.email);
+      if (email === undefined) {
+        return Response.json(
+          { data: null, error: { code: "BAD_REQUEST", message: "That email address doesn't look right" } },
+          { status: 400 }
+        );
+      }
+      updates.email = email;
+    }
 
     if (Object.keys(updates).length === 0) {
       return Response.json(
@@ -37,7 +48,7 @@ export async function PATCH(
     const [office] = await db("offices")
       .where({ id, lab_id: user.labId })
       .update(updates)
-      .returning("*");
+      .returning(OFFICE_COLUMNS);
 
     if (!office) {
       return Response.json(
@@ -46,7 +57,7 @@ export async function PATCH(
       );
     }
 
-    return Response.json({ data: office, error: null });
+    return Response.json({ data: officeForLab(await ensureAccessCode(office)), error: null });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[PATCH /api/offices/[id]]", err);
