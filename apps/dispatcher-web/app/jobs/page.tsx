@@ -7,6 +7,7 @@ import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
 import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
 import { UnreadBadge, useMessageNotifications } from "@/context/message-notifications";
+import { GroupDivider, SortHeader, SortMenu, byRank, byText, byTime, groupRows, sortRows, useSort, type Comparators } from "@/lib/sorting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ interface Job {
   flags: ItemFlag[];
   createdAt: string;
   updatedAt: string;
+  updatedAtIso: string;
   /** Expected delivery time (ISO). Older jobs created before it was required may have none. */
   scheduledAt: string | null;
   deliveredAt: string | null;
@@ -66,6 +68,34 @@ const FLAG_CONFIG: Record<ItemFlag, { label: string; color: string; bg: string }
   rush:                 { label: "Rush",           color: "#A32D2D", bg: "rgba(163,45,45,0.10)" },
   biohazard:            { label: "Biohazard",      color: "#5F5E5A", bg: "rgba(95,94,90,0.10)"  },
 };
+
+// Sortable columns. Natural order first: Status follows the delivery steps,
+// STAT before standard, soonest due first, newest update first; office and
+// driver A–Z with unassigned last. Ties go to the soonest due.
+const SORT_KEYS = ["caseId", "office", "driver", "priority", "status", "due", "updated"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+const JOB_SORTS: Comparators<Job, SortKey> = {
+  caseId:   byText((j) => j.caseId),
+  office:   byText((j) => j.office),
+  driver:   byText((j) => j.driver),
+  priority: byRank((j) => j.priority, ["stat", "standard"]),
+  status:   byRank((j) => j.status, STATUS_ORDER),
+  due:      byTime((j) => j.scheduledAt),
+  updated:  (a, b) => byTime<Job>((j) => j.updatedAtIso)(b, a),
+};
+const byDue = byTime<Job>((j) => j.scheduledAt);
+const HEADER_KEYS: Record<string, SortKey> = {
+  "Case ID": "caseId", Office: "office", Driver: "driver", Priority: "priority", Status: "status", Due: "due", Updated: "updated",
+};
+const SORT_MENU: { key: SortKey; label: string; reverseLabel: string }[] = [
+  { key: "due",      label: "Due soonest",       reverseLabel: "Due latest" },
+  { key: "status",   label: "Status (pending first)", reverseLabel: "Status (delivered first)" },
+  { key: "office",   label: "Office A–Z",        reverseLabel: "Office Z–A" },
+  { key: "driver",   label: "Driver A–Z",        reverseLabel: "Driver Z–A" },
+  { key: "priority", label: "STAT first",        reverseLabel: "Standard first" },
+  { key: "updated",  label: "Recently updated",  reverseLabel: "Least recently updated" },
+  { key: "caseId",   label: "Case ID A–Z",       reverseLabel: "Case ID Z–A" },
+];
 
 type OfficeOption  = { id: string; name: string; address: string };
 type DriverOption  = { id: string; name: string };
@@ -1849,6 +1879,7 @@ function mapJob(j: ApiJobFull): Job {
     flags: j.items?.[0]?.flags ?? [],
     createdAt: new Date(j.createdAt).toLocaleString(),
     updatedAt: timeAgo(j.updatedAt),
+    updatedAtIso: j.updatedAt,
     scheduledAt: j.scheduledAt,
     deliveredAt: j.deliveredAt,
     recipientName: j.proofOfDelivery?.recipientName ?? null,
@@ -1875,6 +1906,7 @@ export default function JobsPage() {
   const [editError, setEditError]     = useState<string | null>(null);
   const [messagesJob, setMessagesJob] = useState<Job | null>(null);
   const [filter, setFilter]           = useState<FilterTab>("all");
+  const { sort, toggle: toggleSort, choose: chooseSort } = useSort<SortKey>("gepeto.sort.jobs", SORT_KEYS);
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const { target: searchTarget } = useSearch();
   // Picked from global search: make sure the job is visible and open.
@@ -2021,7 +2053,12 @@ export default function JobsPage() {
     }
   };
 
-  const filtered = filter === "all" ? jobs : jobs.filter((j) => j.status === filter);
+  const filtered = sortRows(filter === "all" ? jobs : jobs.filter((j) => j.status === filter), sort, JOB_SORTS, byDue);
+  // Sorted by office or driver: thin dividers between the groups.
+  const groupBy = sort?.key === "office" ? (j: Job) => j.office || "No office"
+    : sort?.key === "driver" ? (j: Job) => j.driver || "Unassigned"
+    : null;
+  const groups = groupBy ? groupRows(filtered, groupBy) : [{ label: "", rows: filtered }];
 
   const counts = {
     all:         jobs.length,
@@ -2104,7 +2141,8 @@ export default function JobsPage() {
                 {filtered.length}
               </span>
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {bp === "mobile" && <SortMenu options={SORT_MENU} sort={sort} onChange={chooseSort} defaultLabel="Newest first" />}
               {([
                 ["all",         "All"],
                 ["pending",     "Pending"],
@@ -2147,9 +2185,7 @@ export default function JobsPage() {
                 ? ["", "Case ID", "Office", "Status", ""]
                 : ["", "Case ID", "Office", "Driver", "Priority", "Status", "Due", "Updated", ""]
               ).map((col, i) => (
-                <span key={i} style={{ fontSize: 11, fontWeight: 500, color: "#5F5E5A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                  {col}
-                </span>
+                <SortHeader key={i} label={col} sortKey={HEADER_KEYS[col]} sort={sort} onToggle={toggleSort} />
               ))}
             </div>
           )}
@@ -2161,7 +2197,10 @@ export default function JobsPage() {
             </div>
           ) : bp === "mobile" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {filtered.map((job) => (
+              {groups.map((g) => (
+                <div key={g.label || "all"}>
+                {groupBy && <GroupDivider label={g.label} count={g.rows.length} />}
+                {g.rows.map((job) => (
                 <div key={job.id} id={`search-job-${job.id}`}>
                 <JobCard
                   job={job}
@@ -2175,15 +2214,20 @@ export default function JobsPage() {
                   unread={unreadByJob[job.id] ?? 0}
                 />
                 </div>
+                ))}
+                </div>
               ))}
             </div>
           ) : (
-            filtered.map((job, i) => (
+            groups.map((g) => (
+              <div key={g.label || "all"}>
+              {groupBy && <GroupDivider label={g.label} count={g.rows.length} />}
+              {g.rows.map((job) => (
               <div key={job.id} id={`search-job-${job.id}`}>
               <JobRow
                 job={job}
                 bp={bp}
-                isLast={i === filtered.length - 1}
+                isLast={job === filtered[filtered.length - 1]}
                 expanded={expandedId === job.id}
                 onToggleExpand={() => setExpandedId(expandedId === job.id ? null : job.id)}
                 onUpdateStatus={() => setStatusJob(job)}
@@ -2195,6 +2239,8 @@ export default function JobsPage() {
                 linkCopied={copiedJobId === job.id}
                 unread={unreadByJob[job.id] ?? 0}
               />
+              </div>
+              ))}
               </div>
             ))
           )}

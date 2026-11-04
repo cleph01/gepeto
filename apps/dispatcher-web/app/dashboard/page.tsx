@@ -8,6 +8,7 @@ import { useMessageNotifications } from "@/context/message-notifications";
 import { SearchTrigger } from "@/context/search";
 import { useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
+import { SortHeader, byRank, byText, byTime, sortRows, useSort, type Comparators } from "@/lib/sorting";
 
 const LiveMap = lazy(() => import("@/components/live-map"));
 
@@ -15,6 +16,7 @@ type ApiJob = {
   id: string; caseId: string; officeName: string; driverName: string | null;
   priority: "stat" | "standard"; status: "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
   createdAt: string; updatedAt: string; deliveryLat: number | null; deliveryLng: number | null;
+  scheduledAt?: string | null;
 };
 type ApiDriver = {
   id: string; name: string; status: string; activeJobs: number; currentLocation: { lat: number; lng: number; updatedAt?: string } | null;
@@ -25,9 +27,26 @@ type ApiDriver = {
 // screens. Shared by the header row and JobRow.
 const JOB_COLUMNS = "112px minmax(100px, 1.4fr) minmax(90px, 1fr) 64px 92px 60px";
 
+// Sortable Active Jobs headers (same orders as the Jobs page; no group
+// dividers here, it's a glance panel). Ties go to the soonest due.
+const SORT_KEYS = ["caseId", "office", "driver", "priority", "status", "updated"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+const JOB_SORTS: Comparators<ApiJob, SortKey> = {
+  caseId:   byText((j) => j.caseId),
+  office:   byText((j) => j.officeName),
+  driver:   byText((j) => j.driverName),
+  priority: byRank((j) => j.priority, ["stat", "standard"]),
+  status:   byRank((j) => j.status, ["pending", "assigned", "picked_up", "in_transit", "arrived", "delivered"]),
+  updated:  (a, b) => byTime<ApiJob>((j) => j.updatedAt)(b, a),
+};
+const HEADER_KEYS: [string, SortKey][] = [
+  ["Case ID", "caseId"], ["Office", "office"], ["Driver", "driver"], ["Priority", "priority"], ["Status", "status"], ["Updated", "updated"],
+];
+
 export default function DashboardPage() {
   const bp = useBreakpoint();
   const { apiFetch, session } = useAuth();
+  const { sort, toggle: toggleSort } = useSort<SortKey>("gepeto.sort.dashboard", SORT_KEYS);
   const router = useRouter();
   const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary } = useMessageNotifications();
   const returningCases = returnsSummary.requestedCases + returnsSummary.withDriverCases + returnsSummary.atLabCases;
@@ -85,11 +104,11 @@ export default function DashboardPage() {
   const activeJobs = jobs.filter((j) => !["delivered", "rejected"].includes(j.status));
   // "Delivered" shows today's deliveries (it replaced the Delivered Today tile).
   const deliveredToday = jobs.filter((j) => j.status === "delivered" && new Date(j.updatedAt).toDateString() === today);
-  const filteredJobs = jobFilter === "delivered" ? deliveredToday : activeJobs.filter((j) =>
+  const filteredJobs = sortRows(jobFilter === "delivered" ? deliveredToday : activeJobs.filter((j) =>
     jobFilter === "all"  ? true :
     jobFilter === "stat" ? j.priority === "stat" :
     j.status === jobFilter
-  );
+  ), sort, JOB_SORTS, byTime<ApiJob>((j) => j.scheduledAt));
   const metrics = {
     active:     activeJobs.length,
     createdToday: jobs.filter((j) => new Date(j.createdAt).toDateString() === today).length,
@@ -254,19 +273,8 @@ export default function DashboardPage() {
                 borderBottom: "1px solid rgba(0,0,0,0.06)",
               }}
             >
-              {["Case ID", "Office", "Driver", "Priority", "Status", "Updated"].map((col) => (
-                <span
-                  key={col}
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: "#5F5E5A",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {col}
-                </span>
+              {HEADER_KEYS.map(([label, key]) => (
+                <SortHeader key={key} label={label} sortKey={key} sort={sort} onToggle={toggleSort} />
               ))}
             </div>
 
