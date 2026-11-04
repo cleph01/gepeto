@@ -9,7 +9,8 @@ const db = require("@gepeto/db");
 function trackingBase(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_TRACKING_BASE_URL) return process.env.NEXT_PUBLIC_TRACKING_BASE_URL;
   if (process.env.NODE_ENV === "production") return null;
-  return `http://${request.nextUrl.hostname}:3001/t`;
+  // Local dev: the address this site was reached at, so the link works from there too.
+  return `http://${request.headers.get("host")?.split(":")[0] ?? "localhost"}:3001/t`;
 }
 
 // POST /api/offices/[id]/email-link — dispatcher only

@@ -235,7 +235,9 @@ export function ConversationModal({
       });
       const json = res.ok ? await res.json() : null;
       if (json?.data) {
-        onMessages(target, [...(messages[target] ?? []), json.data]);
+        // The live update can load this message before the send finishes.
+        const current = messages[target] ?? [];
+        onMessages(target, current.some((m) => m.id === json.data.id) ? current : [...current, json.data]);
         setDraft("");
       } else {
         setSendError(true);

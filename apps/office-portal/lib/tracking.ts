@@ -45,10 +45,13 @@ async function loadTracking(token: string, version: number) {
       "offices.phone",
       "offices.contact_name as contactName",
       "labs.name as labName",
-      "labs.phone as labPhone"
+      "labs.phone as labPhone",
+      "labs.settings as labSettings"
     )
     .first();
   if (!office) return null;
+  const { labSettings, ...officeDetails } = office;
+  const alertsAllowed: boolean = labSettings?.notifications?.officeAlerts ?? true;
 
   const jobs = await db("jobs")
     .leftJoin("drivers", "jobs.driver_id", "drivers.id")
@@ -111,5 +114,5 @@ async function loadTracking(token: string, version: number) {
     delete (j as { driverId?: string | null }).driverId;
   }
 
-  return { locked: false as const, office, jobs, pickups, liveTopic: officeAccess.liveTopic({ token, version }) as string };
+  return { locked: false as const, office: officeDetails, jobs, pickups, alertsAllowed, liveTopic: officeAccess.liveTopic({ token, version }) as string };
 }

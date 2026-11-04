@@ -45,6 +45,7 @@ const DEFAULT_NOTIFS = {
   lateDeliveryAlert: true,
   lateDeliveryMins:  "30",
   driverOffDuty:     false,
+  officeAlerts:      true,
 };
 
 const TIMEZONES = [
@@ -733,6 +734,13 @@ export default function SettingsPage() {
                   description="Alert when a driver's status changes to Off Duty mid-shift"
                   checked={notifs.driverOffDuty}
                   onChange={(v) => setNotifs((p) => ({ ...p, driverOffDuty: v }))}
+                />
+
+                <ToggleRow
+                  label="Message alerts for offices"
+                  description="Lets offices turn on a chime and browser notifications for new messages, from the gear on their tracking page"
+                  checked={notifs.officeAlerts}
+                  onChange={(v) => setNotifs((p) => ({ ...p, officeAlerts: v }))}
                   last
                 />
 

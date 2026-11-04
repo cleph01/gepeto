@@ -530,7 +530,7 @@ const steps = [
     number: "03",
     role: "Dental Office",
     title: "Track in real time",
-    body: "The office gets a magic link. They watch their delivery live on a map — no app, no login, no calls to your lab. Have a question? They can message the dispatcher directly from the same view.",
+    body: "The office gets a private link and access code. They watch their delivery live on a map — no app, no account, no calls to your lab. Have a question? They can message the dispatcher directly from the same view.",
   },
 ];
 
@@ -613,7 +613,7 @@ const features = [
   {
     icon: <LinkIcon />,
     title: "Office Tracking Portal",
-    body: "A magic link gives offices a real-time delivery view — no app download, no account required.",
+    body: "A private link and access code give offices a real-time delivery view — no app download, no account required.",
   },
   {
     icon: <BellIcon />,

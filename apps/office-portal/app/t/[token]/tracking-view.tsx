@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import JobMap from "./job-map";
 import { ChatIcon, ConversationModal, unreadForJobs, type Message } from "./messages";
+import { AlertToasts, AlertsGear, useOfficeAlerts, useTabUnread } from "./alerts";
 import DeliveredView from "./delivered-view";
 import { BoxIcon, PickupsSection, RequestPickupModal, type Pickup } from "./pickups";
 import { itemsLine, locationFreshness, timeAgo, type Item } from "./format";
@@ -48,6 +49,7 @@ interface TrackingData {
   jobs: TrackingJob[];
   pickups: Pickup[];
   liveTopic: string;
+  alertsAllowed: boolean;
 }
 
 // ── Status, in the office's terms ─────────────────────────────────────────────
@@ -242,11 +244,31 @@ export default function TrackingView({
   const groups = useMemo(() => groupByDriver(jobs), [jobs]);
   const onTheWay = jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
   const conversation = openGroup ? groups.find((g) => g.key === openGroup) ?? null : null;
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   const setJobMessages = useCallback((jobId: string, list: Message[]) => {
     setMessages((prev) => ({ ...prev, [jobId]: list }));
     setSeenTick((t) => t + 1);
   }, []);
+  const openConversationFor = useCallback((jobId: string) => {
+    const group = groupByDriver(dataRef.current.jobs).find((g) => g.jobs.some((j) => j.id === jobId));
+    if (!group) return;
+    setTab("active");
+    setOpenGroup(group.key);
+  }, []);
+  const alerts = useOfficeAlerts({
+    allowed: data.alertsAllowed,
+    labName: office.labName,
+    messages,
+    openJobIds: conversation ? conversation.jobs.map((j) => j.id) : [],
+    onOpenJob: openConversationFor,
+  });
+  // A conversation on screen is being read, so it doesn't count.
+  const totalUnread = unreadForJobs(messages, jobs.filter((j) => !conversation?.jobs.some((c) => c.id === j.id)).map((j) => j.id));
+  useTabUnread(totalUnread);
   const closeRequest = useCallback(() => setRequesting(false), []);
   const closeConversation = useCallback(() => {
     setOpenGroup(null);
@@ -284,6 +306,7 @@ export default function TrackingView({
             </div>
           </div>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 0 }}>
         {office.labPhone && (
           // The number is shown, not just linked: on a desktop the office will
           // usually dial it from a desk phone, and tel: links only help on mobile.
@@ -304,7 +327,24 @@ export default function TrackingView({
             </span>
           </a>
         )}
+        {data.alertsAllowed && (
+          <AlertsGear
+            soundOn={alerts.soundOn}
+            notifyOn={alerts.notifyOn}
+            notifyStatus={alerts.notifyStatus}
+            changeSound={alerts.changeSound}
+            changeNotify={alerts.changeNotify}
+          />
+        )}
+        </div>
       </header>
+
+      <AlertToasts
+        toasts={alerts.toasts}
+        caseIdFor={(jobId) => jobs.find((j) => j.id === jobId)?.caseId}
+        onOpen={openConversationFor}
+        onDismiss={alerts.dismissToast}
+      />
 
       {/* Body */}
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 48px" }}>
@@ -345,9 +385,18 @@ export default function TrackingView({
                 background: "none", border: "none", cursor: "pointer", padding: "9px 12px", marginBottom: -1,
                 fontSize: 13.5, fontWeight: tab === id ? 600 : 500, color: tab === id ? "#185FA5" : "#5F5E5A",
                 borderBottom: `2px solid ${tab === id ? "#185FA5" : "transparent"}`,
+                display: "flex", alignItems: "center", gap: 6,
               }}
             >
               {label}
+              {id === "active" && totalUnread > 0 && (
+                <span aria-label={`${totalUnread} unread`} style={{
+                  background: "#D93025", color: "white", fontSize: 10, fontWeight: 700, minWidth: 17, height: 17,
+                  lineHeight: "17px", borderRadius: 9, textAlign: "center", padding: "0 4px", boxSizing: "border-box",
+                }}>
+                  {totalUnread}
+                </span>
+              )}
             </button>
           ))}
         </div>

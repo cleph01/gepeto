@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
           lateDeliveryAlert: settings.notifications?.lateDeliveryAlert ?? true,
           lateDeliveryMins:  settings.notifications?.lateDeliveryMins  ?? "30",
           driverOffDuty:     settings.notifications?.driverOffDuty     ?? false,
+          officeAlerts:      settings.notifications?.officeAlerts      ?? true,
         },
         profile: {
           name:  labUser?.name    ?? "",
