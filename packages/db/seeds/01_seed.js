@@ -1,3 +1,4 @@
+const { randomUUID } = require('crypto');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
@@ -166,7 +167,7 @@ exports.seed = async function (knex) {
   console.log('\nCreating offices...');
 
   let office1Id;
-  const existingOffice1 = await knex('offices').where('tracking_token', 'tok_beverly_hills_001').first();
+  const existingOffice1 = await knex('offices').where({ lab_id: labId, name: 'Beverly Hills Family Dentistry' }).first();
   if (!existingOffice1) {
     const [o1] = await knex('offices')
       .insert({
@@ -175,7 +176,7 @@ exports.seed = async function (knex) {
         address: '456 Dental Ave, Beverly Hills, CA 90210',
         phone: '(310) 555-0200',
         contact_name: 'Dr. Priya Patel',
-        tracking_token: 'tok_beverly_hills_001',
+        tracking_token: randomUUID(),
       })
       .returning('id');
     office1Id = o1.id;
@@ -186,7 +187,7 @@ exports.seed = async function (knex) {
   }
 
   let office2Id;
-  const existingOffice2 = await knex('offices').where('tracking_token', 'tok_santa_monica_002').first();
+  const existingOffice2 = await knex('offices').where({ lab_id: labId, name: 'Santa Monica Smile Studio' }).first();
   if (!existingOffice2) {
     const [o2] = await knex('offices')
       .insert({
@@ -195,7 +196,7 @@ exports.seed = async function (knex) {
         address: '789 Smile Blvd, Santa Monica, CA 90401',
         phone: '(310) 555-0201',
         contact_name: 'Dr. Aaron Kim',
-        tracking_token: 'tok_santa_monica_002',
+        tracking_token: randomUUID(),
       })
       .returning('id');
     office2Id = o2.id;

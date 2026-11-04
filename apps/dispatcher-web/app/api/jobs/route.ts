@@ -21,12 +21,14 @@ export async function GET(request: NextRequest) {
       .select(
         "jobs.*",
         "offices.name as office_name",
-        "offices.tracking_token as office_tracking_token",
         "drivers.name as driver_name"
       );
 
+    // The office's tracking link is for the lab, never the driver.
     if (user.role === "driver") {
       query.where("jobs.driver_id", user.driverId);
+    } else {
+      query.select("offices.tracking_token as office_tracking_token");
     }
 
     const jobs = await query;

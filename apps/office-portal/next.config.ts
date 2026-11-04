@@ -7,6 +7,18 @@ const nextConfig: NextConfig = {
   // silently blocks that cross-origin dev connection and the client hangs
   // forever on first load with no console error.
   allowedDevOrigins: ["100.101.195.96"],
+  // Tracking URLs carry a secret: keep them out of search engines and out of
+  // Referer headers. Origin-only, not no-referrer, because OpenStreetMap's map
+  // tiles require a Referer.
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        { key: "Referrer-Policy", value: "strict-origin" },
+      ],
+    }];
+  },
 };
 
 export default nextConfig;

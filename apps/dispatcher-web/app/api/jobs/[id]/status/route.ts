@@ -123,6 +123,9 @@ export async function PATCH(
       )
       .first();
 
+    // The office's tracking link is for the lab, never the driver.
+    if (user.role === "driver") delete updated.officeTrackingToken;
+
     return Response.json({ data: updated, error: null });
   } catch (err) {
     if (err instanceof Response) return err;
