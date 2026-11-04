@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { driverPhotoCutoff } from "@/lib/pod-photos";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
         "j.id as job_id", "j.case_id", "j.priority", "j.items", "j.delivery_address",
         "o.name as office_name",
         db.raw("coalesce(j.delivered_at, j.updated_at) as at"),
-        db.raw("(j.proof_of_delivery is not null) as has_proof")
+        db.raw("(j.pod_photo_path is not null and j.delivered_at >= ?) as has_photo", [driverPhotoCutoff()])
       );
 
     const rejected = await db("job_status_events as e")
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
     const parseItems = (items: unknown) => (typeof items === "string" ? JSON.parse(items) : items ?? []);
     const entries = [
       ...delivered.map((r: HistoryRow) => ({ kind: "delivered", key: `d-${r.jobId}`, ...r, items: parseItems(r.items) })),
-      ...rejected.map((r: HistoryRow) => ({ kind: "rejected", key: `r-${r.eventId}`, ...r, items: parseItems(r.items), hasProof: false })),
+      ...rejected.map((r: HistoryRow) => ({ kind: "rejected", key: `r-${r.eventId}`, ...r, items: parseItems(r.items), hasPhoto: false })),
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
     const olderTimes = [olderDelivered?.at, olderRejected?.at].filter(Boolean).map((t) => new Date(t).getTime());

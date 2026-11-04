@@ -38,6 +38,7 @@ import { STEPS, dueInfo } from '@/lib/jobs';
 import { EMPTY_RETURN, draftForPickup, findPickupRequest, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
 import { PodPhotoField } from '@/components/pod-photo-field';
+import { DeliveredPhoto } from '@/components/delivered-photo';
 import { isPodPhotoRequired, uploadPodPhoto, type PodPhoto } from '@/lib/pod-photo';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
@@ -404,6 +405,8 @@ export default function JobDetailScreen() {
               </View>
             </View>
           )}
+
+          {isDelivered && <DeliveredPhoto key={job.id} jobId={job.id} />}
 
           {isRejected && (
             <View style={[styles.outcome, styles.outcomeRejected]}>
