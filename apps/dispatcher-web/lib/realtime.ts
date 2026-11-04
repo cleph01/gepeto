@@ -1,5 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const officeAccess = require("@gepeto/db/office-access");
 
 // Server-to-driver-app messages over Supabase Realtime broadcast.
 //
@@ -30,26 +32,26 @@ export async function notifyLab(labId: string, event: string, payload: Record<st
 /** What an office's tracking page should reload. */
 export type OfficeChange = "jobs" | "messages" | "pickups" | "location";
 
-// Lab-to-office: the public tracking page listens on `office:<tracking token>`.
-// The token is the page's secret, so only someone with the link can listen.
+// Lab-to-office: an unlocked tracking page listens on its live topic, which it
+// only learns after the access code passes (see @gepeto/db/office-access).
 // The payload says only what kind of thing changed; the page reloads it
 // through its normal token-checked endpoints.
 export async function notifyOffices(officeIds: (string | null | undefined)[], what: OfficeChange) {
   const ids = [...new Set(officeIds.filter((id): id is string => !!id))];
   if (ids.length === 0) return;
   try {
-    const rows: { trackingToken: string }[] = await db("offices").whereIn("id", ids).select("tracking_token");
-    await Promise.all(rows.map((r) => broadcast(`office:${r.trackingToken}`, "changed", { what })));
+    const rows: { trackingToken: string; accessVersion: number }[] = await db("offices").whereIn("id", ids).select("tracking_token", "access_version");
+    await Promise.all(rows.map((r) => broadcast(officeAccess.liveTopic({ token: r.trackingToken, version: r.accessVersion }), "changed", { what })));
   } catch (err) {
     // Best effort, like every broadcast: the page also polls.
     console.error("[notifyOffices]", err);
   }
 }
 
-// For a link that was just replaced: pages open on the old token get told to
-// reload, which lands them on the "link isn't working" screen.
-export async function notifyOldOfficeLink(token: string) {
-  await broadcast(`office:${token}`, "changed", { what: "jobs" });
+// For a link or code that was just replaced: pages still open on the old one get
+// told to reload, which lands them on the "link isn't working" or code screen.
+export async function notifyReplacedOfficeAccess(token: string, version: number) {
+  await broadcast(officeAccess.liveTopic({ token, version }), "changed", { what: "jobs" });
 }
 
 async function broadcast(topic: string, event: string, payload: Record<string, unknown>) {

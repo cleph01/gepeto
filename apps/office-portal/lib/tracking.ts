@@ -3,7 +3,7 @@
 // Delivered history is separate (/api/track/[token]/delivered), loaded only
 // when the office opens the Delivered tab.
 import { createHmac } from "node:crypto";
-import { isUnlocked, officeFromToken } from "./access";
+import { isUnlocked, officeAccess, officeFromToken } from "./access";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -14,40 +14,27 @@ export const ON_THE_WAY = ["picked_up", "in_transit", "arrived"];
 const driverKey = (token: string, driverId: string) =>
   createHmac("sha256", token).update(driverId).digest("base64url").slice(0, 16);
 
-// What the link alone shows, with no access code: case numbers and status.
-// No driver, location, address, items, messages, pickups or history.
+// What the link alone gets: who it belongs to and how to reach the lab, so staff
+// know they're in the right place. No activity of any kind until the code passes.
 async function loadLocked(token: string) {
   const office = await db("offices")
     .leftJoin("labs", "offices.lab_id", "labs.id")
     .where("offices.tracking_token", token)
     .first("offices.name", "labs.name as labName", "labs.phone as labPhone");
-  const jobs = await db("jobs")
-    .join("offices", "jobs.office_id", "offices.id")
-    .where("offices.tracking_token", token)
-    .whereNotIn("jobs.status", ["delivered", "rejected"])
-    .orderBy("jobs.created_at", "desc")
-    .select(
-      "jobs.case_id as caseId",
-      "jobs.status",
-      "jobs.priority",
-      db.raw("(jobs.driver_id is not null) as has_driver"),
-      "jobs.scheduled_at as scheduledAt",
-      "jobs.updated_at as updatedAt"
-    );
-  return { locked: true as const, office, jobs };
+  return { locked: true as const, office };
 }
 
 /**
  * The page's data for whoever's asking: the full view with a valid access code
- * session, otherwise the basic one. Null for a link that doesn't exist.
+ * session, otherwise just the code screen's details. Null for a link that doesn't exist.
  */
 export async function loadTrackingForRequest(token: string) {
   const access = await officeFromToken(token);
   if (!access) return null;
-  return (await isUnlocked(token, access)) ? loadTracking(token) : loadLocked(token);
+  return (await isUnlocked(token, access)) ? loadTracking(token, access.accessVersion) : loadLocked(token);
 }
 
-async function loadTracking(token: string) {
+async function loadTracking(token: string, version: number) {
   const office = await db("offices")
     .leftJoin("labs", "offices.lab_id", "labs.id")
     .where("offices.tracking_token", token)
@@ -124,5 +111,5 @@ async function loadTracking(token: string) {
     delete (j as { driverId?: string | null }).driverId;
   }
 
-  return { locked: false as const, office, jobs, pickups };
+  return { locked: false as const, office, jobs, pickups, liveTopic: officeAccess.liveTopic({ token, version }) as string };
 }

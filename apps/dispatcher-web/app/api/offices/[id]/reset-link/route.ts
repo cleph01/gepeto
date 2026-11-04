@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { OFFICE_COLUMNS, ensureAccessCode, officeForLab } from "@/lib/office-access";
-import { notifyOldOfficeLink } from "@/lib/realtime";
+import { notifyReplacedOfficeAccess } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -20,7 +20,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const oldOffice = await db("offices").where({ id, lab_id: user.labId }).first("tracking_token");
+    const oldOffice = await db("offices").where({ id, lab_id: user.labId }).first("tracking_token", "access_version");
     if (!oldOffice) {
       return Response.json({ data: null, error: { code: "NOT_FOUND", message: "Office not found" } }, { status: 404 });
     }
@@ -30,7 +30,7 @@ export async function POST(
       .update({ tracking_token: randomUUID() })
       .returning(OFFICE_COLUMNS);
 
-    await notifyOldOfficeLink(oldOffice.trackingToken);
+    await notifyReplacedOfficeAccess(oldOffice.trackingToken, oldOffice.accessVersion);
     return Response.json({ data: officeForLab(await ensureAccessCode(office)), error: null });
   } catch (err) {
     if (err instanceof Response) return err;

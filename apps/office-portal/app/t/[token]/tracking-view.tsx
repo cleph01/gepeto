@@ -47,6 +47,7 @@ interface TrackingData {
   office: Office;
   jobs: TrackingJob[];
   pickups: Pickup[];
+  liveTopic: string;
 }
 
 // ── Status, in the office's terms ─────────────────────────────────────────────
@@ -182,7 +183,7 @@ export default function TrackingView({
 
   const jobIds = data.jobs.map((j) => j.id).join(",");
 
-  // Live updates: the lab's server signals `office:<token>` whenever something
+  // Live updates: the lab's server signals this page's channel whenever something
   // on this page changes (driver assigned or reassigned, status steps, new or
   // edited cases, messages, pickups, driver location). The signal only says
   // what kind of thing changed; we reload it through the usual endpoints.
@@ -204,7 +205,7 @@ export default function TrackingView({
       if (what.has("jobs")) setDeliveredVersion((v) => v + 1);
       if (what.has("messages")) loadMessages(jobIdsRef.current ? jobIdsRef.current.split(",") : []);
     };
-    const topic = `office:${token}`;
+    const topic = data.liveTopic;
     for (const c of sb.getChannels()) {
       if (c.topic === `realtime:${topic}`) sb.removeChannel(c);
     }
@@ -227,7 +228,7 @@ export default function TrackingView({
       document.removeEventListener("visibilitychange", onVisible);
       sb.removeChannel(channel);
     };
-  }, [token, refresh, loadMessages]);
+  }, [data.liveTopic, refresh, loadMessages]);
   useEffect(() => {
     const ids = jobIds ? jobIds.split(",") : [];
     // loadMessages only sets state after its fetches resolve.

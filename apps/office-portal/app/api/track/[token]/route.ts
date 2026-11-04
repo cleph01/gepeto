@@ -2,8 +2,8 @@ import type { NextRequest } from "next/server";
 import { loadTrackingForRequest } from "@/lib/tracking";
 
 // GET /api/track/[token]
-// The link alone gets basic case status; with the access code session, the full
-// view. See lib/tracking.ts for what each one sends.
+// The link alone gets only the code screen's details; with the access code
+// session, the full view. See lib/tracking.ts for what each one sends.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> }

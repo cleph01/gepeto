@@ -4,7 +4,7 @@ const db = require("@gepeto/db");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 export const officeAccess = require("@gepeto/db/office-access");
 
-// The tracking link alone shows basic case status. Everything else takes the
+// The tracking link alone shows only the code screen. Everything else takes the
 // office's access code, which sets a signed cookie for 30 days.
 
 export interface OfficeForToken {

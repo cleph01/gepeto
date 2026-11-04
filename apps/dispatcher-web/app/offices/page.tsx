@@ -268,6 +268,10 @@ function OfficeCard({ office, onEdit, onChanged }: { office: Office; onEdit: () 
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
+        <EmailButton kind="link" office={office} style={{ marginTop: 7 }} />
+        <p style={{ fontSize: 11.5, color: "#5F5E5A", lineHeight: 1.4, margin: "6px 0 0" }}>
+          {office.email ? SEPARATE_EMAILS_NOTE : "Add an email address to this office to send the link and code from here."}
+        </p>
         <button onClick={() => setResetting("link")} style={resetButton}>Reset link</button>
       </div>
 
@@ -292,7 +296,9 @@ const resetButton: React.CSSProperties = {
 
 // ── Access code ───────────────────────────────────────────────────────────────
 
-function EmailCodeButton({ office, style }: { office: Office; style?: React.CSSProperties }) {
+const SEPARATE_EMAILS_NOTE = "The link and code go in separate emails, so forwarding one can't open the full view.";
+
+function EmailButton({ kind, office, style }: { kind: "code" | "link"; office: Office; style?: React.CSSProperties }) {
   const { apiFetch } = useAuth();
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -302,7 +308,7 @@ function EmailCodeButton({ office, style }: { office: Office; style?: React.CSSP
     setError(null);
     try {
       // apiFetch resolves on error responses too; the failure is in the body.
-      const res = await apiFetch<{ data: unknown; error: { message: string } | null }>(`/api/offices/${office.id}/email-code`, { method: "POST" });
+      const res = await apiFetch<{ data: unknown; error: { message: string } | null }>(`/api/offices/${office.id}/email-${kind}`, { method: "POST" });
       if (res.error) {
         setError(res.error.message);
         setState("idle");
@@ -320,14 +326,14 @@ function EmailCodeButton({ office, style }: { office: Office; style?: React.CSSP
       <button
         onClick={send}
         disabled={!office.email || state !== "idle"}
-        title={office.email ? `Send the code to ${office.email}` : "Add an email address to this office first"}
+        title={office.email ? `Send the ${kind} to ${office.email}` : "Add an email address to this office first"}
         style={{
           width: "100%", background: "#FFFFFF", border: "1px solid #C0D9F0", borderRadius: 6, padding: "6px 10px",
           fontSize: 12, fontWeight: 500, color: office.email ? "#185FA5" : "#9a9a9a",
           cursor: office.email && state === "idle" ? "pointer" : "default",
         }}
       >
-        {state === "sent" ? "Emailed ✓" : state === "sending" ? "Sending…" : "Email to office"}
+        {state === "sent" ? "Emailed ✓" : state === "sending" ? "Sending…" : `Email ${kind} to office`}
       </button>
       {error && <div role="alert" style={{ fontSize: 11.5, color: "#C53B0A", marginTop: 5, lineHeight: 1.4 }}>{error}</div>}
     </div>
@@ -370,7 +376,7 @@ function AccessCodeSection({ office, onReset }: { office: Office; onReset: () =>
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <EmailCodeButton office={office} style={{ marginTop: 7 }} />
+      <EmailButton kind="code" office={office} style={{ marginTop: 7 }} />
       <button onClick={onReset} style={resetButton}>Reset code</button>
     </div>
   );
@@ -432,11 +438,12 @@ function OfficeAddedModal({ office, onClose }: { office: Office; onClose: () => 
         </p>
         <CopyRow label="Tracking Link" value={trackingUrl(office.trackingToken)} />
         <CopyRow label="Access Code" value={office.accessCode ?? ""} large />
-        <EmailCodeButton office={office} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <EmailButton kind="link" office={office} />
+          <EmailButton kind="code" office={office} />
+        </div>
         <p style={{ fontSize: 12, color: "#5F5E5A", lineHeight: 1.5, margin: "8px 0 0" }}>
-          {office.email
-            ? "The email has the code only, not the link, so a forwarded email can't open the full view. Send the link separately."
-            : "Add an email address to this office to send the code from here."}
+          {office.email ? SEPARATE_EMAILS_NOTE : "Add an email address to this office to send these from here."}
         </p>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button autoFocus onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 7, padding: "7px 16px", fontSize: 13, color: "#3a3a3a", cursor: "pointer" }}>
@@ -526,7 +533,7 @@ function ResetModal({
               >
                 {copied ? "Copied!" : kind === "code" ? "Copy code" : "Copy link"}
               </button>
-              {kind === "code" && <EmailCodeButton office={done} />}
+              <EmailButton kind={kind} office={done} />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
               <button onClick={onClose} style={{ background: "transparent", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 7, padding: "7px 16px", fontSize: 13, color: "#3a3a3a", cursor: "pointer" }}>
@@ -547,9 +554,8 @@ function ResetModal({
             <ul style={{ margin: "0 0 14px", paddingLeft: 18, fontSize: 13, color: "#3a3a3a", lineHeight: 1.6 }}>
               {kind === "code" ? (
                 <>
-                  <li>Every device at the office is signed out of the full view, even if the page is open right now.</li>
-                  <li>Until they enter the new code, they can&apos;t see driver locations, messages, photos or delivery history, or request pickups.</li>
-                  <li>The tracking link keeps working and still shows basic case status.</li>
+                  <li>Every device at the office is signed out, even if the page is open right now.</li>
+                  <li>Until they enter the new code, the tracking link shows only a code screen. They can&apos;t see their cases, driver locations, messages, photos or delivery history, or request pickups.</li>
                   <li>You&apos;ll need to give the office the new code. It isn&apos;t sent automatically.</li>
                 </>
               ) : (

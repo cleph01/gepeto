@@ -74,6 +74,14 @@ function verifySession(value, office) {
 }
 
 /** Counts a hit. True when it's within `max` per `windowSeconds`. */
+// The channel an unlocked page hears live changes on. Named from the secret, not
+// the link, so the link alone can't tell when activity happens. A new code means
+// a new channel, so someone who was locked out stops hearing it too.
+function liveTopic({ token, version }) {
+  const name = crypto.createHmac('sha256', deriveKey('live-topic')).update(`${token}:${version}`).digest('base64url');
+  return `office:${name}`;
+}
+
 async function withinRateLimit(key, max, windowSeconds) {
   const hashed = crypto.createHash('sha256').update(key).digest('hex');
   const { rows } = await db.raw(
@@ -96,5 +104,6 @@ module.exports = {
   sessionCookieName,
   signSession,
   verifySession,
+  liveTopic,
   withinRateLimit,
 };

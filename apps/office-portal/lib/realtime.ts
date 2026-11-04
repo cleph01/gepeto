@@ -1,4 +1,5 @@
 // Supabase Realtime broadcast (same mechanism as dispatcher-web's lib/realtime.ts).
+import { officeAccess } from "./access";
 
 // Tells the lab's dispatch dashboard something happened. The dashboard
 // listens on `lab:<labId>`; payloads carry only ids.
@@ -10,9 +11,9 @@ export async function notifyLab(labId: string, event: string, payload: Record<st
 export type OfficeChange = "jobs" | "messages" | "pickups" | "location";
 
 // Tells every open copy of this office's tracking page (other tabs, other
-// staff) to reload what changed. Topic is `office:<tracking token>`.
-export async function notifyOfficePage(token: string, what: OfficeChange) {
-  await broadcast(`office:${token}`, "changed", { what });
+// staff) to reload what changed. See liveTopic in @gepeto/db/office-access.
+export async function notifyOfficePage(token: string, version: number, what: OfficeChange) {
+  await broadcast(officeAccess.liveTopic({ token, version }), "changed", { what });
 }
 
 async function broadcast(topic: string, event: string, payload: Record<string, unknown>) {

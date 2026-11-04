@@ -16,7 +16,8 @@ async function resolveJobForToken(token: string, jobId: string) {
   const job = UUID.test(jobId)
     ? await db("jobs").where({ id: jobId, office_id: office.id }).select("id", "lab_id").first()
     : null;
-  return job ?? Response.json(
+  if (job) return { ...job, accessVersion: office.accessVersion };
+  return Response.json(
     { data: null, error: { code: "NOT_FOUND", message: "Job not found" } },
     { status: 404 }
   );
@@ -97,7 +98,7 @@ export async function POST(
       .returning(["id", "sender_role", "body", "created_at"]);
 
     await notifyLab(job.labId, "message", { jobId });
-    await notifyOfficePage(token, "messages");
+    await notifyOfficePage(token, job.accessVersion, "messages");
 
     return Response.json({ data: message, error: null }, { status: 201 });
   } catch (err) {

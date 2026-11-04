@@ -76,7 +76,7 @@ export async function POST(
     });
 
     await notifyLab(office.labId, "return_changed", { returnId: id, change: "requested" });
-    await notifyOfficePage(token, "pickups");
+    await notifyOfficePage(token, office.accessVersion, "pickups");
     return Response.json({ data: { id }, error: null }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/track/[token]/pickups]", err);

@@ -36,7 +36,7 @@ export async function POST(
     }
 
     await notifyLab(office.labId, "return_changed", { returnId: id, change: "cancelled" });
-    await notifyOfficePage(token, "pickups");
+    await notifyOfficePage(token, office.accessVersion, "pickups");
     return Response.json({ data: { ok: true }, error: null });
   } catch (err) {
     console.error("[POST /api/track/[token]/pickups/[id]/cancel]", err);

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { OFFICE_COLUMNS, officeAccess, officeForLab } from "@/lib/office-access";
-import { notifyOffices } from "@/lib/realtime";
+import { notifyReplacedOfficeAccess } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -19,6 +19,7 @@ export async function POST(
     }
 
     const { id } = await params;
+    const old = await db("offices").where({ id, lab_id: user.labId }).first("tracking_token", "access_version");
     const [office] = await db("offices")
       .where({ id, lab_id: user.labId })
       .update({
@@ -30,7 +31,7 @@ export async function POST(
       return Response.json({ data: null, error: { code: "NOT_FOUND", message: "Office not found" } }, { status: 404 });
     }
 
-    await notifyOffices([id], "jobs");
+    await notifyReplacedOfficeAccess(old.trackingToken, old.accessVersion);
     return Response.json({ data: officeForLab(office), error: null });
   } catch (err) {
     if (err instanceof Response) return err;

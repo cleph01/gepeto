@@ -219,7 +219,7 @@ export async function sendOfficeAccessCode(to: string, data: OfficeAccessCodeDat
       ${escapeHtml(data.code)}
     </div>
     <p style="margin:0 0 10px;font-size:13.5px;color:#3a3a3a;line-height:1.5;">
-      Open your office's tracking page and enter this code to see driver locations, messages, delivery history and photos, and to request pickups. Each device stays unlocked for 30 days.
+      Open your office's tracking page and enter this code to see your cases, driver locations, messages, delivery history and photos, and to request pickups. Each device stays unlocked for 30 days.
     </p>
     <p style="margin:0;font-size:13.5px;color:#3a3a3a;line-height:1.5;">
       Don't have the tracking page saved? Reply to this email and ${lab} will send it to you.
@@ -231,6 +231,47 @@ export async function sendOfficeAccessCode(to: string, data: OfficeAccessCodeDat
     replyTo: data.replyTo,
     subject: `Tracking access code for ${data.officeName}`,
     html: layout("Your access code", body, `Gepeto · Sent on behalf of ${lab}. Please keep this code within your office.`),
+  });
+}
+
+export type OfficeTrackingLinkData = {
+  officeName: string;
+  labName: string;
+  url: string;
+  replyTo: string[];
+};
+
+// Deliberately leaves out the access code, for the same reason the code email
+// leaves out the link.
+export async function sendOfficeTrackingLink(to: string, data: OfficeTrackingLinkData) {
+  const office = escapeHtml(data.officeName);
+  const lab = escapeHtml(data.labName);
+  const url = escapeHtml(data.url);
+  const body = `
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
+      Your delivery tracking page
+    </h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
+      ${lab} uses this page to keep ${office} up to date on your cases. Save it for your staff.
+    </p>
+    <div style="text-align:center;margin-bottom:20px;">
+      <a href="${url}" style="display:inline-block;background:#185FA5;color:#ffffff;text-decoration:none;border-radius:8px;padding:11px 22px;font-size:14px;font-weight:600;">
+        Open tracking page
+      </a>
+    </div>
+    <p style="margin:0 0 10px;font-size:13.5px;color:#3a3a3a;line-height:1.5;">
+      The page opens with your office's access code, which is sent separately. It unlocks your cases, driver locations, messages, delivery history and photos, and pickup requests.
+    </p>
+    <p style="margin:0;font-size:13.5px;color:#3a3a3a;line-height:1.5;">
+      Don't have the code? Reply to this email and ${lab} will send it to you.
+    </p>`;
+
+  return getResend().emails.send({
+    from: FROM,
+    to,
+    replyTo: data.replyTo,
+    subject: `Tracking link for ${data.officeName}`,
+    html: layout("Your tracking page", body, `Gepeto · Sent on behalf of ${lab}. Please keep this link within your office.`),
   });
 }
 
