@@ -1121,7 +1121,8 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
         body: JSON.stringify({ body }),
       });
       if (res.data) {
-        setMessages((prev) => [...prev, res.data!]);
+        // The live update can load this message before the send finishes.
+        setMessages((prev) => (prev.some((m) => m.id === res.data!.id) ? prev : [...prev, res.data!]));
         setDraft("");
       }
     } finally {
