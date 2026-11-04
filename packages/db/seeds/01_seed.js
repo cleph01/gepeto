@@ -144,7 +144,7 @@ exports.seed = async function (knex) {
       .insert({
         lab_id: labId,
         user_id: driver2UserId,
-        name: 'Sofia Reyes',
+        name: 'Jewel Durham',
         phone: '(213) 555-0122',
         status: 'on_delivery',
       })
@@ -157,7 +157,7 @@ exports.seed = async function (knex) {
       app_metadata:  { role: 'driver', driver_id: driver2Id, lab_id: labId },
       user_metadata: { role: 'driver', driver_id: driver2Id, lab_id: labId },
     });
-    console.log(`  ↳ Created driver: Sofia Reyes (${driver2Id})`);
+    console.log(`  ↳ Created driver: Jewel Durham (${driver2Id})`);
   } else {
     driver2Id = existingDriver2.id;
     console.log(`  ↳ Driver 2 already exists (${driver2Id}), skipping`);
