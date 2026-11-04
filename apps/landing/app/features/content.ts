@@ -23,6 +23,8 @@ export const SECTIONS: Section[] = [
           { title: "Driver alerts on any screen", body: "A notice pops up with a soft chime when a driver accepts, rejects or delivers a job. Click it to jump straight to that job." },
           { title: "Rejections never slip through", body: "If a driver turns a job down, it goes straight back to Pending, unassigned, and you're alerted so you can hand it to someone else." },
           { title: "Messages arrive instantly", body: "New messages from drivers and offices chime in with an unread count, even when Gepeto is in another browser tab. Open conversations update live and always open on the newest message." },
+          { title: "Desktop notifications", body: "Turn them on and new messages, driver updates and pickup requests pop up while you're in another tab or app, as long as Gepeto stays open in your browser. Click one to go straight to it. They show who it's from and the case, never the message itself." },
+          { title: "Unread count on the browser tab", body: "A red bubble on the Gepeto tab icon shows how many messages are waiting, even on a pinned tab." },
         ],
       },
       {
