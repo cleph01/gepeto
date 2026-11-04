@@ -11,6 +11,15 @@ export const MAX_POD_PHOTO_BYTES = 5 * 1024 * 1024;
 export const RETENTION_CHOICES = [90, 180, 365, 730] as const;
 export const DEFAULT_RETENTION_DAYS = 90;
 
+// A driver can see their own delivery photo for this long, enough to answer
+// "we never got that". After that it's the lab's record: dispatch still has it.
+// The driver app's wording repeats this number (components/delivered-photo.tsx).
+export const DRIVER_PHOTO_DAYS = 7;
+
+export function driverPhotoCutoff(now = Date.now()): Date {
+  return new Date(now - DRIVER_PHOTO_DAYS * 86400000);
+}
+
 export function podPhotoSettings(settings: Record<string, unknown> | null | undefined) {
   const s = settings ?? {};
   const days = Number(s.podPhotoRetentionDays);

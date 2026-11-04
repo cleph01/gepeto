@@ -1,13 +1,14 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { signPodPhoto } from "@/lib/pod-photos";
+import { driverPhotoCutoff, signPodPhoto } from "@/lib/pod-photos";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
 // GET /api/jobs/[id]/pod-photo
 // A 5-minute signed link to the job's delivery photo, for the lab's
 // dispatchers and the job's own driver. Returns { url } or, once the nightly
-// cleanup has removed it, { url: null, deletedAt }.
+// cleanup has removed it, { url: null, deletedAt }. A driver only gets the link
+// for DRIVER_PHOTO_DAYS after delivery; past that, { url: null, expired: true }.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -19,7 +20,7 @@ export async function GET(
       .where(user.role === "driver"
         ? { id, lab_id: user.labId, driver_id: user.driverId }
         : { id, lab_id: user.labId })
-      .first("pod_photo_path", "pod_photo_deleted_at");
+      .first("pod_photo_path", "pod_photo_deleted_at", "delivered_at");
 
     if (!job) {
       return Response.json(
@@ -27,8 +28,13 @@ export async function GET(
         { status: 404 }
       );
     }
-    const url = job.podPhotoPath ? await signPodPhoto(job.podPhotoPath) : null;
-    return Response.json({ data: { url, deletedAt: job.podPhotoDeletedAt }, error: null });
+    const expired = Boolean(
+      user.role === "driver" &&
+      job.podPhotoPath &&
+      (!job.deliveredAt || new Date(job.deliveredAt) < driverPhotoCutoff())
+    );
+    const url = job.podPhotoPath && !expired ? await signPodPhoto(job.podPhotoPath) : null;
+    return Response.json({ data: { url, deletedAt: job.podPhotoDeletedAt, expired }, error: null });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[GET /api/jobs/[id]/pod-photo]", err);
