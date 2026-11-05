@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { Message } from '@gepeto/types';
 import { supabase, channelName } from '@/lib/supabase';
@@ -17,6 +17,8 @@ import { getDriverId } from '@/lib/driver';
 
 interface MessagesContextType {
   unreadByJob: Record<string, number>;
+  /** The job with the newest unread message (the Messages card on the Jobs screen opens it). */
+  newestUnreadJobId: string | null;
   /** The chat screen is showing this job: its messages are read as they arrive. */
   setActiveChat: (jobId: string | null) => void;
   activeChat: string | null;
@@ -28,6 +30,7 @@ interface MessagesContextType {
 
 const MessagesContext = createContext<MessagesContextType>({
   unreadByJob: {},
+  newestUnreadJobId: null,
   setActiveChat: () => {},
   activeChat: null,
   markRead: () => {},
@@ -38,18 +41,20 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
   const driverId = getDriverId(session);
   const [unreadByJob, setUnreadByJob] = useState<Record<string, number>>({});
+  const [latestByJob, setLatestByJob] = useState<Record<string, string>>({});
   const [activeChat, setActiveChatState] = useState<string | null>(null);
   const activeRef = useRef<string | null>(null);
   const listeners = useRef(new Set<(message: Message) => void>());
 
   const refresh = useCallback(async () => {
     try {
-      const res = await apiGet<{ byJob: Record<string, number> }>('/api/driver/messages/unread');
+      const res = await apiGet<{ byJob: Record<string, number>; latestByJob?: Record<string, string> }>('/api/driver/messages/unread');
       if (!res.data) return;
       const byJob = res.data.byJob;
       // The open chat is being read live.
       if (activeRef.current) delete byJob[activeRef.current];
       setUnreadByJob(byJob);
+      setLatestByJob(res.data.latestByJob ?? {});
     } catch {
       // Offline: keep the last counts.
     }
@@ -60,6 +65,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
       // Signed out: no badges carry over to the next driver.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setUnreadByJob({});
+      setLatestByJob({});
       return;
     }
     refresh();
@@ -71,6 +77,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         if (msg.senderRole === 'driver') return;
         if (msg.jobId === activeRef.current) return;
         setUnreadByJob((prev) => ({ ...prev, [msg.jobId]: (prev[msg.jobId] ?? 0) + 1 }));
+        setLatestByJob((prev) => ({ ...prev, [msg.jobId]: msg.createdAt }));
         listeners.current.forEach((l) => l(msg));
       })
       .subscribe();
@@ -114,8 +121,13 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     return () => { listeners.current.delete(listener); };
   }, []);
 
+  const newestUnreadJobId = useMemo(() => {
+    const time = (jobId: string) => Date.parse(latestByJob[jobId]) || 0;
+    return Object.keys(unreadByJob).sort((a, b) => time(b) - time(a))[0] ?? null;
+  }, [unreadByJob, latestByJob]);
+
   return (
-    <MessagesContext.Provider value={{ unreadByJob, setActiveChat, activeChat, markRead, onIncoming }}>
+    <MessagesContext.Provider value={{ unreadByJob, newestUnreadJobId, setActiveChat, activeChat, markRead, onIncoming }}>
       {children}
     </MessagesContext.Provider>
   );

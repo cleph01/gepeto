@@ -31,14 +31,18 @@ export async function GET(request: NextRequest) {
       )
       .groupBy("messages.job_id")
       .select("messages.job_id")
+      .max("messages.created_at as latest_at")
       .count("* as count");
 
     const byJob: Record<string, number> = {};
-    for (const row of rows as { jobId: string; count: string | number }[]) {
+    // Newest unread message per job, so the app can open the newest thread
+    const latestByJob: Record<string, string> = {};
+    for (const row of rows as { jobId: string; count: string | number; latestAt: string | Date }[]) {
       byJob[row.jobId] = Number(row.count);
+      latestByJob[row.jobId] = new Date(row.latestAt).toISOString();
     }
 
-    return Response.json({ data: { byJob }, error: null });
+    return Response.json({ data: { byJob, latestByJob }, error: null });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[GET /api/driver/messages/unread]", err);
