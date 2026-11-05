@@ -164,9 +164,9 @@ export const SECTIONS: Section[] = [
         title: "Access and data",
         features: [
           { title: "Role separation", body: "Driver accounts can't open the dispatch console, and drivers only ever see their own jobs." },
-          { title: "Each lab's data stays its own", body: "Every lab's jobs, drivers, offices and messages are kept separate at the database level." },
-          { title: "Alerts can't be spoofed", body: "The driver app double-checks every alert against the database before acting on it." },
-          { title: "A complete audit trail", body: "Every status change and edit is recorded with who made it and when." },
+          { title: "Each lab's data stays its own", body: "Every job, driver, office and message belongs to one lab, and your team only sees your lab's records." },
+          { title: "A link alone shows nothing", body: "Each office enters its own access code to see anything, and the lab can reset the link or code at any time." },
+          { title: "A full job history", body: "Every status change and edit to a job is recorded with who made it and when." },
         ],
       },
     ],

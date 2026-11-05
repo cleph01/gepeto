@@ -102,7 +102,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Do you store patient information?",
-    a: "No. Gepeto is built around case numbers and products, not patients, so patient names and health details stay in your lab and practice systems. Drivers are asked to photograph the drop-off, not labels or paperwork.",
+    a: "Gepeto doesn't ask for it. It's built around case numbers and products, with no patient fields, so patient names and health details can stay in your lab and practice systems. Drivers are asked to photograph the drop-off, not labels or paperwork.",
   },
   {
     q: "How long do you keep delivery photos?",
