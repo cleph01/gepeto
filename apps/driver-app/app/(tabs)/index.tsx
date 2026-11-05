@@ -82,7 +82,7 @@ function JobCard({ job, unread, inGroup, onPress }: { job: QueueJob; unread: num
       onPress={onPress}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel={`${job.officeName ?? job.caseId}, ${StatusLabels[job.status]}${pendingReply ? ', needs your reply' : ''}${unread > 0 ? `, ${unread} unread messages` : ''}`}
+      accessibilityLabel={`${job.officeName ?? job.caseId}, ${StatusLabels[job.status]}${pendingReply ? ', accept or reject' : ''}${unread > 0 ? `, ${unread} unread messages` : ''}`}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
@@ -184,7 +184,7 @@ function StatsRow({ jobs }: { jobs: Job[] }) {
   return (
     <View style={styles.statsRow}>
       <StatTile label="Active" value={active} />
-      <StatTile label="Needs reply" value={pending} highlight={pending > 0} />
+      <StatTile label="Accept or reject" value={pending} highlight={pending > 0} />
       <StatTile label="Delivered" value={delivered} valueColor={Colors.success} />
     </View>
   );
@@ -379,6 +379,34 @@ function StatTile({ label, value, highlight, valueColor }: { label: string; valu
   );
 }
 
+// Opens the thread with the newest unread message; nothing to open when caught up.
+function MessagesCard({ unreadByJob, onPress }: { unreadByJob: Record<string, number>; onPress: () => void }) {
+  const counts = Object.values(unreadByJob);
+  const total = counts.reduce((sum, n) => sum + n, 0);
+  const hasUnread = total > 0;
+  const summary = hasUnread
+    ? `${total} unread on ${counts.length} job${counts.length !== 1 ? 's' : ''}`
+    : 'All caught up';
+  return (
+    <TouchableOpacity
+      style={[styles.messagesCard, hasUnread && styles.messagesCardUnread]}
+      onPress={onPress}
+      disabled={!hasUnread}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`Messages, ${summary}`}
+      accessibilityHint={hasUnread ? 'Opens the newest unread message' : undefined}
+    >
+      <IconSymbol name="bubble.left.and.bubble.right.fill" size={18} color={hasUnread ? Colors.danger : Colors.textSecondary} />
+      <View style={styles.messagesCardBody}>
+        <Text style={styles.messagesCardTitle}>Messages</Text>
+        <Text style={[styles.statLabel, hasUnread && styles.messagesCardSummaryUnread]}>{summary}</Text>
+      </View>
+      {hasUnread && <IconSymbol name="chevron.right" size={16} color={Colors.textSecondary} />}
+    </TouchableOpacity>
+  );
+}
+
 const stillOpen = (returns: ReturnCase[]) => returns.filter((r) => r.status !== 'checked_in');
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
@@ -395,7 +423,7 @@ type Row =
 export default function JobQueueScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { unreadByJob } = useMessages();
+  const { unreadByJob, newestUnreadJobId } = useMessages();
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
@@ -631,7 +659,7 @@ export default function JobQueueScreen() {
 
   // Sections group jobs going to the same office, so they can go out on one trip.
   const sections = [
-    { title: `Needs your reply · ${replyJobs.length}`, data: replyJobs },
+    { title: `Accept or reject · ${replyJobs.length}`, data: replyJobs },
     { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs },
   ].filter((s) => s.data.length > 0);
 
@@ -709,7 +737,17 @@ export default function JobQueueScreen() {
         }
         renderItem={({ item }) => {
           if (item.type === 'stats') {
-            return <StatsRow jobs={jobs} />;
+            return (
+              <>
+                <StatsRow jobs={jobs} />
+                <MessagesCard
+                  unreadByJob={unreadByJob}
+                  onPress={() => {
+                    if (newestUnreadJobId) router.push(`/chat/${newestUnreadJobId}`);
+                  }}
+                />
+              </>
+            );
           }
           if (item.type === 'locationHint') {
             // Without "Always", the lab and office lose sight of the driver
@@ -933,6 +971,33 @@ const styles = StyleSheet.create({
   },
   statLabelHighlight: {
     color: Colors.accentText,
+  },
+  messagesCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.card,
+    borderRadius: Radius.md + 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  messagesCardUnread: {
+    backgroundColor: Colors.dangerBg,
+    borderColor: Colors.dangerBorder,
+  },
+  messagesCardBody: {
+    flex: 1,
+    gap: 2,
+  },
+  messagesCardTitle: {
+    fontFamily: Fonts.medium,
+    color: Colors.text,
+    fontSize: 15,
+  },
+  messagesCardSummaryUnread: {
+    color: Colors.danger,
   },
   groupHeader: {
     gap: Spacing.md,
