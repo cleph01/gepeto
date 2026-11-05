@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: |
+          for app in dispatcher-web office-portal landing driver-app; do
+            echo "::group::$app"
+            pnpm --filter "./apps/$app" exec tsc --noEmit
+            echo "::endgroup::"
+          done
+
+      # Two apps have existing lint errors, so this reports without failing the
+      # run. Remove continue-on-error once they're fixed.
+      - name: Lint
+        continue-on-error: true
+        run: pnpm lint
