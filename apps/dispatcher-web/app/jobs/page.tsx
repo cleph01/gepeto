@@ -5,6 +5,7 @@ import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
+import { DriverReplyTag } from "@/components/driver-reply-tag";
 import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
 import { UnreadBadge, useMessageNotifications } from "@/context/message-notifications";
 import { GroupDivider, SortHeader, SortMenu, byRank, byText, byTime, groupRows, sortRows, useSort, type Comparators } from "@/lib/sorting";
@@ -33,6 +34,7 @@ interface Job {
   driverId: string | null;
   priority: JobPriority;
   status: JobStatus;
+  driverResponse: string;
   itemDescription: string;
   flags: ItemFlag[];
   createdAt: string;
@@ -1713,8 +1715,9 @@ function JobRow({
         )}
 
         {/* Status */}
-        <span>
+        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
           <StatusBubble status={job.status} onClick={onUpdateStatus} />
+          <DriverReplyTag status={job.status} driverResponse={job.driverResponse} />
         </span>
 
         {/* Due — desktop only */}
@@ -1820,7 +1823,10 @@ function JobCard({
 
       {/* Bottom row: status + action + timestamp */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <StatusBubble status={job.status} onClick={onUpdateStatus} padding="3px 10px" />
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <StatusBubble status={job.status} onClick={onUpdateStatus} padding="3px 10px" />
+          <DriverReplyTag status={job.status} driverResponse={job.driverResponse} />
+        </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <span style={{ fontSize: 11, color: "#9a9a9a" }}>{job.updatedAt}</span>
           {job.officeTrackingToken && (
@@ -1858,7 +1864,7 @@ function JobCard({
 
 type ApiJobFull = {
   id: string; caseId: string; officeName: string; officeId: string; officeTrackingToken: string | null; driverName: string | null; driverId: string | null;
-  priority: JobPriority; status: JobStatus; items: { description: string; flags: ItemFlag[] }[];
+  priority: JobPriority; status: JobStatus; driverResponse: string; items: { description: string; flags: ItemFlag[] }[];
   deliveryAddress: string; createdAt: string; updatedAt: string; scheduledAt: string | null;
   deliveredAt: string | null; proofOfDelivery: { recipientName?: string } | null;
   podPhotoPath: string | null; podPhotoDeletedAt: string | null;
@@ -1876,6 +1882,7 @@ function mapJob(j: ApiJobFull): Job {
     driverId: j.driverId,
     priority: j.priority,
     status: j.status,
+    driverResponse: j.driverResponse,
     itemDescription: j.items?.[0]?.description ?? "",
     flags: j.items?.[0]?.flags ?? [],
     createdAt: new Date(j.createdAt).toLocaleString(),

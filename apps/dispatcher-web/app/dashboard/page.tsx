@@ -9,12 +9,14 @@ import { SearchTrigger } from "@/context/search";
 import { useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
 import { SortHeader, byRank, byText, byTime, sortRows, useSort, type Comparators } from "@/lib/sorting";
+import { DriverReplyTag } from "@/components/driver-reply-tag";
 
 const LiveMap = lazy(() => import("@/components/live-map"));
 
 type ApiJob = {
   id: string; caseId: string; officeName: string; driverName: string | null;
   priority: "stat" | "standard"; status: "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
+  driverResponse: string;
   createdAt: string; updatedAt: string; deliveryLat: number | null; deliveryLng: number | null;
   scheduledAt?: string | null;
 };
@@ -48,7 +50,7 @@ export default function DashboardPage() {
   const { apiFetch, session } = useAuth();
   const { sort, toggle: toggleSort } = useSort<SortKey>("gepeto.sort.dashboard", SORT_KEYS);
   const router = useRouter();
-  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary } = useMessageNotifications();
+  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary, jobsChangedAt } = useMessageNotifications();
   const returningCases = returnsSummary.requestedCases + returnsSummary.withDriverCases + returnsSummary.atLabCases;
   // What needs the front desk first: pickups with no driver, then check-ins.
   const returnsNeedAction = returnsSummary.unassigned > 0 || returnsSummary.atLabCases > 0;
@@ -78,6 +80,19 @@ export default function DashboardPage() {
       if (settingsRes.data)  setLabName(settingsRes.data.lab.name);
     }).catch(() => {}).finally(() => setLoaded(true));
   }, [session]);
+
+  // Reload when the notifications provider hears of a job change (a driver
+  // accepting, rejecting or moving a job along), same as the Jobs page.
+  useEffect(() => {
+    if (!session || !jobsChangedAt) return;
+    const t = setTimeout(() => {
+      apiFetch<ApiResponse<ApiJob[]>>("/api/jobs")
+        .then((res) => { if (res.data) setJobs(res.data); })
+        .catch(() => {});
+    }, 300); // a burst of changes becomes one reload
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobsChangedAt]);
 
   // Upserts a single enriched job into state (used by Realtime hook)
   const refetchJob = useCallback(async (id: string) => {
@@ -533,6 +548,7 @@ type Job = {
   driverName: string | null;
   priority: "stat" | "standard";
   status: "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
+  driverResponse: string;
   updatedAt: string;
 };
 
@@ -587,10 +603,11 @@ function JobRow({ job, isLast }: { job: Job; isLast: boolean }) {
           <span style={{ fontSize: 12, color: "#9a9a9a" }}>Standard</span>
         )}
       </span>
-      <span>
+      <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
         <span style={{ fontSize: 11.5, fontWeight: 500, background: status.bg, color: status.text, borderRadius: 20, padding: "2.5px 9px" }}>
           {status.label}
         </span>
+        <DriverReplyTag status={job.status} driverResponse={job.driverResponse} />
       </span>
       <span style={{ fontSize: 12, color: "#9a9a9a" }}>{timeAgo(job.updatedAt)}</span>
     </div>
