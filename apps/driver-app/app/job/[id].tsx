@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { rowToCamel } from '@/lib/transform';
 import {
   View,
@@ -33,6 +33,7 @@ import {
   Fonts,
 } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { DeliveredToast } from '@/components/delivered-toast';
 import { forgetJob } from '@/components/job-alerts';
 import { STEPS, dueInfo } from '@/lib/jobs';
 import { EMPTY_RETURN, draftForPickup, findPickupRequest, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
@@ -93,6 +94,8 @@ export default function JobDetailScreen() {
   const [submittingPod, setSubmittingPod] = useState(false);
   const [podPhoto, setPodPhoto] = useState<PodPhoto | null>(null);
   const [photoRequired, setPhotoRequired] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const clearToast = useCallback(() => setToast(null), []);
 
   // Set nav title to case ID
   const caseId = job?.caseId;
@@ -254,6 +257,7 @@ export default function JobDetailScreen() {
       setSubmittingPod(false);
       setJob(res.data);
       setShowPod(false);
+      setToast(`Delivered · ${officeName ?? job.deliveryAddress}`);
       if (returnError) {
         Alert.alert('Delivery saved, but the return wasn\'t logged', `${returnError} Use "Log a pickup" on the Jobs tab to add it.`);
       }
@@ -406,7 +410,7 @@ export default function JobDetailScreen() {
             </View>
           )}
 
-          {isDelivered && <DeliveredPhoto key={job.id} jobId={job.id} />}
+          {isDelivered && job.podPhotoPath && <DeliveredPhoto key={job.id} jobId={job.id} deliveredAt={job.deliveredAt} />}
 
           {isRejected && (
             <View style={[styles.outcome, styles.outcomeRejected]}>
@@ -567,6 +571,7 @@ export default function JobDetailScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
+      {toast && <DeliveredToast message={toast} onDone={clearToast} overHomeIndicator />}
     </SafeAreaView>
   );
 }

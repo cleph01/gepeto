@@ -33,6 +33,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { navigate } from '@/lib/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
+import { DeliveredToast } from '@/components/delivered-toast';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
 import { RETURN_STATUS_LABEL, logReturn, readyLabel, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
@@ -173,9 +174,11 @@ function finishedToday(job: Job) {
   return !!when && new Date(when).toDateString() === new Date().toDateString();
 }
 
+const deliveredToday = (jobs: Job[]) => jobs.filter((j) => j.status === 'delivered' && finishedToday(j)).length;
+
 function StatsRow({ jobs }: { jobs: Job[] }) {
   const active = jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
-  const delivered = jobs.filter((j) => j.status === 'delivered' && finishedToday(j)).length;
+  const delivered = deliveredToday(jobs);
   const pending = jobs.filter(needsReply).length;
 
   return (
@@ -333,11 +336,11 @@ function ReturningSection({
             {r.note && <Text style={styles.returnNote} numberOfLines={2}>{r.note}</Text>}
             <View style={styles.returnFooter}>
               <IconSymbol
-                name={r.status === 'checked_in' ? 'checkmark' : inYourCar ? 'tray' : 'clock'}
+                name={inYourCar ? 'tray' : 'clock'}
                 size={14}
-                color={r.status === 'checked_in' ? Colors.success : inYourCar ? Colors.accent : Colors.textSecondary}
+                color={inYourCar ? Colors.accent : Colors.textSecondary}
               />
-              <Text style={[styles.returnStatus, r.status === 'checked_in' && { color: Colors.success }, inYourCar && { color: Colors.accent }]}>
+              <Text style={[styles.returnStatus, inYourCar && { color: Colors.accent }]}>
                 {RETURN_STATUS_LABEL[r.status]}
               </Text>
               {r.pickedUpAt && (
@@ -376,6 +379,8 @@ function StatTile({ label, value, highlight, valueColor }: { label: string; valu
   );
 }
 
+const stillOpen = (returns: ReturnCase[]) => returns.filter((r) => r.status !== 'checked_in');
+
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 type Row =
@@ -399,12 +404,14 @@ export default function JobQueueScreen() {
   const [showLogPickup, setShowLogPickup] = useState(false);
   const [logPickupFor, setLogPickupFor] = useState<ReturnCase | null>(null);
   const [dropping, setDropping] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const clearToast = useCallback(() => setToast(null), []);
 
-  // Returns the driver is carrying or dropped off (and today's checked-in ones).
+  // Pickups and returns still in play. Once the lab checks one in, the driver is done with it.
   const loadReturns = useCallback(async () => {
     try {
       const res = await apiGet<ReturnCase[]>('/api/returns');
-      if (res.data) setReturns(res.data);
+      if (res.data) setReturns(stillOpen(res.data));
     } catch {
       // Offline: keep what we have.
     }
@@ -463,7 +470,7 @@ export default function JobQueueScreen() {
         try {
           const res = await apiGet<ReturnCase[]>('/api/returns');
           if (!res.data) return;
-          setReturns(res.data);
+          setReturns(stillOpen(res.data));
           const r = res.data.find((x) => x.id === returnId && x.status === 'requested');
           if (!r) return;
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -488,7 +495,8 @@ export default function JobQueueScreen() {
   const fetchJobs = useCallback(async (showSpinner = true) => {
     if (!driverId) return;
     if (showSpinner) setRefreshing(true);
-    // Only active jobs and today's finished ones; older ones live in the History tab.
+    // Active jobs, plus today's finished ones for the Delivered tile. Finished
+    // jobs aren't listed here; they live in the History tab.
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const since = startOfToday.toISOString();
@@ -556,7 +564,6 @@ export default function JobQueueScreen() {
   const activeJobs = jobs.filter((j) => j.status !== 'delivered' && j.status !== 'rejected');
   const replyJobs = activeJobs.filter(needsReply);
   const inProgressJobs = activeJobs.filter((j) => !needsReply(j));
-  const completedJobs = jobs.filter(finishedToday);
 
   // ── Group batch actions ──────────────────────────────────────────────────
   // Each job is updated through the same endpoint as the single-job buttons,
@@ -581,6 +588,7 @@ export default function JobQueueScreen() {
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+    return failed.length === 0;
   };
 
   const runBatch = (key: string, group: QueueJob[], action: BatchAction & { jobs: QueueJob[] }) => {
@@ -601,13 +609,14 @@ export default function JobQueueScreen() {
 
   const confirmGroupDelivery = async (recipientName: string, returnDraft: ReturnDraft, photoPath?: string) => {
     if (!delivering) return;
-    const { key, jobs: toDeliver } = delivering;
+    const { key, officeName, jobs: toDeliver } = delivering;
     setDelivering(null);
     const timestamp = new Date().toISOString();
-    await applyToJobs(key, toDeliver, () => ({
+    const allDelivered = await applyToJobs(key, toDeliver, () => ({
       status: 'delivered',
       proofOfDelivery: { recipientName, timestamp, photoPath },
     }));
+    if (allDelivered) setToast(`${toDeliver.length} delivered · ${officeName}`);
     // One return for the stop, linked to the first delivery in the group.
     const returnError = await logReturn(returnDraft, toDeliver[0].officeId, toDeliver[0].id);
     if (returnError) {
@@ -620,14 +629,13 @@ export default function JobQueueScreen() {
   const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
   const { backgroundAllowed } = useLocationTracking(hasActiveJob);
 
-  // Active sections group jobs going to the same office, so they can go out on one trip.
+  // Sections group jobs going to the same office, so they can go out on one trip.
   const sections = [
-    { title: `Needs your reply · ${replyJobs.length}`, data: replyJobs, grouped: true },
-    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs, grouped: true },
-    { title: `Completed today · ${completedJobs.length}`, data: completedJobs, grouped: false },
+    { title: `Needs your reply · ${replyJobs.length}`, data: replyJobs },
+    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs },
   ].filter((s) => s.data.length > 0);
 
-  // "Returning to lab" sits after the active work, before Completed today.
+  // "Returning to lab" sits after the active work.
   const returningRows: Row[] = returns.length > 0
     ? [
         {
@@ -637,26 +645,25 @@ export default function JobQueueScreen() {
         { type: 'returns' },
       ]
     : [];
-  const activeSections = sections.filter((s) => s.grouped);
-  const doneSections = sections.filter((s) => !s.grouped);
 
   const flatData: Row[] = [
     { type: 'stats' },
     ...(hasActiveJob && backgroundAllowed === false ? [{ type: 'locationHint' } as Row] : []),
     { type: 'pickup' },
-    ...[...activeSections, null, ...doneSections].flatMap((s): Row[] => s === null ? returningRows : [
+    ...sections.flatMap((s): Row[] => [
       { type: 'section', title: s.title },
-      ...(s.grouped
-        ? toStops(s.data).flatMap((stop): Row[] =>
-            stop.jobs.length === 1
-              ? [{ type: 'job', job: stop.jobs[0] }]
-              : [
-                  { type: 'group', key: `${s.title}-${stop.key}`, jobs: stop.jobs },
-                  ...stop.jobs.map((job, i): Row => ({ type: 'job', job, inGroup: true, lastInGroup: i === stop.jobs.length - 1 })),
-                ])
-        : s.data.map((job): Row => ({ type: 'job', job }))),
+      ...toStops(s.data).flatMap((stop): Row[] =>
+        stop.jobs.length === 1
+          ? [{ type: 'job', job: stop.jobs[0] }]
+          : [
+              { type: 'group', key: `${s.title}-${stop.key}`, jobs: stop.jobs },
+              ...stop.jobs.map((job, i): Row => ({ type: 'job', job, inGroup: true, lastInGroup: i === stop.jobs.length - 1 })),
+            ]),
     ]),
+    ...returningRows,
   ];
+
+  const deliveredCount = deliveredToday(jobs);
 
   // At an office right now? That's the likely pickup spot.
   const arrivedAt = activeJobs.find((j) => j.status === 'arrived')?.officeId ?? null;
@@ -785,13 +792,18 @@ export default function JobQueueScreen() {
               <View style={styles.emptyIcon}>
                 <IconSymbol name="tray" size={28} color={Colors.accent} />
               </View>
-              <Text style={styles.emptyTitle}>No jobs yet</Text>
-              <Text style={styles.emptySubtitle}>{"You'll get an alert as soon as dispatch assigns you one."}</Text>
+              <Text style={styles.emptyTitle}>{deliveredCount > 0 ? 'All done for now' : 'No jobs yet'}</Text>
+              <Text style={styles.emptySubtitle}>
+                {deliveredCount > 0
+                  ? `${deliveredCount} delivered today. You'll get an alert if dispatch assigns you another.`
+                  : "You'll get an alert as soon as dispatch assigns you one."}
+              </Text>
             </View>
           ) : undefined
         }
       />
       </SafeAreaView>
+      {toast && <DeliveredToast key={toast} message={toast} onDone={clearToast} />}
       <GroupDeliveryModal
         visible={!!delivering}
         officeName={delivering?.officeName ?? ''}
