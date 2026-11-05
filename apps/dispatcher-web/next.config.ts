@@ -7,6 +7,18 @@ const nextConfig: NextConfig = {
   // silently blocks that cross-origin dev connection and the client hangs
   // forever on first load with no console error.
   allowedDevOrigins: ["100.101.195.96"],
+  // HSTS only takes effect over HTTPS, so Tailscale dev over HTTP isn't affected.
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "Strict-Transport-Security", value: "max-age=31536000" },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      ],
+    }];
+  },
 };
 
 export default nextConfig;
