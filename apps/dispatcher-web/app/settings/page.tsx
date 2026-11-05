@@ -755,8 +755,8 @@ export default function SettingsPage() {
                 </ToggleRow>
 
                 <ToggleRow
-                  label="Message alerts for offices"
-                  description="Lets offices turn on a chime and browser notifications for new messages, from the gear on their tracking page"
+                  label="Alerts for offices"
+                  description="Lets offices get a chime, on-page notices and browser notifications for new messages, a driver arriving and deliveries, set from the gear on their tracking page"
                   checked={notifs.officeAlerts}
                   onChange={(v) => setNotifs((p) => ({ ...p, officeAlerts: v }))}
                   last

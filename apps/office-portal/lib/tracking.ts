@@ -62,6 +62,7 @@ async function loadTracking(token: string, version: number) {
       "jobs.id",
       "jobs.case_id as caseId",
       "jobs.status",
+      "jobs.driver_response as driverResponse",
       "jobs.priority",
       "jobs.delivery_address as deliveryAddress",
       "jobs.delivery_lat as deliveryLat",
@@ -74,6 +75,16 @@ async function loadTracking(token: string, version: number) {
       "drivers.current_location as driverLocation",
       "drivers.on_break_since as driverOnBreakSince"
     );
+
+  // Just delivered, so an open page can tell a delivery from a case that merely
+  // left the list (moved to another office, say) and alert the front desk.
+  const recentlyDelivered = await db("jobs")
+    .where("office_id", office.id)
+    .where("status", "delivered")
+    .where("delivered_at", ">=", new Date(Date.now() - 60 * 60 * 1000).toISOString())
+    .orderBy("delivered_at", "desc")
+    .limit(50)
+    .select("id", "case_id as caseId");
 
   // The office's pickup requests and returns still moving, plus anything
   // checked in during the last day, so the office sees it land.
@@ -126,5 +137,5 @@ async function loadTracking(token: string, version: number) {
     delete (j as { driverId?: string | null }).driverId;
   }
 
-  return { locked: false as const, office: officeDetails, jobs, pickups, alertsAllowed, liveTopic: officeAccess.liveTopic({ token, version }) as string };
+  return { locked: false as const, office: officeDetails, jobs, recentlyDelivered, pickups, alertsAllowed, liveTopic: officeAccess.liveTopic({ token, version }) as string };
 }

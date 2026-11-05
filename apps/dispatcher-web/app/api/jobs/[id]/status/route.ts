@@ -107,6 +107,9 @@ export async function PATCH(
     // A driver moved their job along: refresh the dispatch dashboard.
     if (user.role === "driver" && job.status !== status) {
       await notifyLab(user.labId, "job_changed", { jobId: id });
+    }
+    // Whoever made the change, an open tracking page should show it right away.
+    if (job.status !== status) {
       await notifyOffices([job.officeId], "jobs");
     }
 

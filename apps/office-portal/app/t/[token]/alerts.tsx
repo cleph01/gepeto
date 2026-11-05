@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { setFaviconBadge } from "@/lib/favicon-badge";
 import type { Message } from "./messages";
 
-// New-message alerts for the tracking page: a chime, a notice on the page and
-// browser notifications, each chosen per browser from the gear. The lab decides
+// Alerts for the tracking page (new messages, a driver arriving, a delivery): a
+// chime, a notice on the page and browser notifications, each chosen per browser
+// from the gear. The lab decides
 // whether offices get them at all. Unread counts always show.
 //
 // Page notifications only work while the page is open in some tab. The text stays
@@ -111,9 +112,29 @@ function claimAlert(id: string) {
 
 export interface AlertToast {
   id: string;
-  jobId: string;
+  kind: "message" | "arrived" | "delivered";
+  /** The message's case. Null for status alerts, which can cover several cases. */
+  jobId: string | null;
   body: string;
 }
+
+// A batch of cases updates one at a time, so wait a moment and alert about them together.
+const STATUS_BATCH_MS = 1_500;
+
+/** Cases that just reached the driver's door or were delivered, since the last load. */
+export function statusChanges(
+  known: Map<string, string>,
+  jobs: { id: string; caseId: string; status: string }[],
+  recentlyDelivered: { id: string; caseId: string }[]
+) {
+  return {
+    // Only cases already on this page: one that shows up already arrived isn't news.
+    arrived: jobs.filter((j) => j.status === "arrived" && known.has(j.id) && known.get(j.id) !== "arrived"),
+    delivered: recentlyDelivered.filter((j) => known.has(j.id)),
+  };
+}
+
+const caseCount = (cases: { caseId: string }[]) => (cases.length === 1 ? `Case ${cases[0].caseId}` : `${cases.length} cases`);
 
 export function useOfficeAlerts({
   allowed,
@@ -121,6 +142,9 @@ export function useOfficeAlerts({
   messages,
   openJobIds,
   onOpenJob,
+  jobs,
+  recentlyDelivered,
+  onOpenStatus,
 }: {
   allowed: boolean;
   labName: string;
@@ -128,6 +152,9 @@ export function useOfficeAlerts({
   /** Cases in the conversation on screen. Their messages need no alert. */
   openJobIds: string[];
   onOpenJob: (jobId: string) => void;
+  jobs: { id: string; caseId: string; status: string }[];
+  recentlyDelivered: { id: string; caseId: string }[];
+  onOpenStatus: (kind: "arrived" | "delivered") => void;
 }) {
   const [soundOn, setSoundOn] = useState(true);
   const [notifyOn, setNotifyOn] = useState(false);
@@ -149,13 +176,25 @@ export function useOfficeAlerts({
     };
   }, []);
 
-  const latest = useRef({ allowed, labName, soundOn, notifyOn, notifyStatus, openJobIds, onOpenJob });
+  const latest = useRef({ allowed, labName, soundOn, notifyOn, notifyStatus, openJobIds, onOpenJob, onOpenStatus });
   useEffect(() => {
-    latest.current = { allowed, labName, soundOn, notifyOn, notifyStatus, openJobIds, onOpenJob };
+    latest.current = { allowed, labName, soundOn, notifyOn, notifyStatus, openJobIds, onOpenJob, onOpenStatus };
   });
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // The chime and browser notification for an alert.
+  const ring = useCallback((id: string, title: string, tag: string, onClick: () => void) => {
+    const fire = () => {
+      if (!claimAlert(id)) return;
+      const { soundOn, notifyOn, notifyStatus } = latest.current;
+      if (soundOn) playChime();
+      if (notifyOn && notifyStatus === "granted" && isAway()) showNotification(title, tag, onClick);
+    };
+    if (isAway()) setTimeout(fire, AWAY_TAB_DELAY_MS);
+    else fire();
   }, []);
 
   // Each case's first load only records what's already there, so opening the
@@ -179,21 +218,57 @@ export function useOfficeAlerts({
     const alerts = incoming.filter((m) => isAway() || !now.openJobIds.includes(m.jobId));
     if (alerts.length === 0) return;
 
-    setToasts((prev) => [...alerts.map((m) => ({ id: m.id, jobId: m.jobId, body: m.body })), ...prev].slice(0, MAX_TOASTS));
+    setToasts((prev) => [...alerts.map((m) => ({ id: m.id, kind: "message" as const, jobId: m.jobId, body: m.body })), ...prev].slice(0, MAX_TOASTS));
     for (const m of alerts) setTimeout(() => dismissToast(m.id), TOAST_MS);
 
     const newest = alerts[alerts.length - 1];
-    const fire = () => {
-      if (!claimAlert(newest.id)) return;
-      const { soundOn, notifyOn, notifyStatus, labName, onOpenJob } = latest.current;
-      if (soundOn) playChime();
-      if (notifyOn && notifyStatus === "granted" && isAway()) {
-        showNotification(`New message from ${labName}`, `gepeto-message-${newest.id}`, () => onOpenJob(newest.jobId));
+    ring(newest.id, `New message from ${now.labName}`, `gepeto-message-${newest.id}`, () => latest.current.onOpenJob(newest.jobId));
+  }, [messages, dismissToast, ring]);
+
+  // A driver reaching the door or finishing a delivery. The first load only
+  // records where things stand, so opening the page doesn't set anything off.
+  const knownStatus = useRef<Map<string, string> | null>(null);
+  const statusBatch = useRef<{ arrived: Map<string, string>; delivered: Map<string, string>; timer: ReturnType<typeof setTimeout> | null }>({
+    arrived: new Map(),
+    delivered: new Map(),
+    timer: null,
+  });
+  useEffect(() => {
+    const known = knownStatus.current;
+    knownStatus.current = new Map(jobs.map((j) => [j.id, j.status]));
+    if (!known || !latest.current.allowed) return;
+    const { arrived, delivered } = statusChanges(known, jobs, recentlyDelivered);
+    if (arrived.length === 0 && delivered.length === 0) return;
+
+    const batch = statusBatch.current;
+    for (const j of arrived) batch.arrived.set(j.id, j.caseId);
+    for (const j of delivered) batch.delivered.set(j.id, j.caseId);
+    if (batch.timer) return;
+    batch.timer = setTimeout(() => {
+      batch.timer = null;
+      for (const kind of ["arrived", "delivered"] as const) {
+        const cases = [...batch[kind]].map(([id, caseId]) => ({ id, caseId }));
+        batch[kind].clear();
+        if (cases.length === 0) continue;
+        const id = `${kind}:${cases.map((c) => c.id).sort().join(",")}`;
+        setToasts((prev) => [{ id, kind, jobId: null, body: caseCount(cases) }, ...prev].slice(0, MAX_TOASTS));
+        setTimeout(() => dismissToast(id), TOAST_MS);
+        const { labName } = latest.current;
+        ring(
+          id,
+          kind === "arrived" ? `A driver from ${labName} has arrived` : `Delivery from ${labName} completed`,
+          `gepeto-${id}`.slice(0, 64),
+          () => latest.current.onOpenStatus(kind)
+        );
       }
+    }, STATUS_BATCH_MS);
+  }, [jobs, recentlyDelivered, dismissToast, ring]);
+  useEffect(() => {
+    const batch = statusBatch.current;
+    return () => {
+      if (batch.timer) clearTimeout(batch.timer);
     };
-    if (isAway()) setTimeout(fire, AWAY_TAB_DELAY_MS);
-    else fire();
-  }, [messages, dismissToast]);
+  }, []);
 
   const changeSound = useCallback((on: boolean) => {
     setSoundOn(on);
@@ -330,7 +405,7 @@ export function AlertsGear({ soundOn, notifyOn, notifyStatus, changeSound, chang
           <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }} />
           <Switch
             label="Chime"
-            description="Plays a sound on this computer when a new message arrives."
+            description="Plays a sound on this computer for new messages, and when a driver arrives or delivers."
             checked={soundOn}
             onChange={changeSound}
           />
@@ -345,27 +420,33 @@ export function AlertsGear({ soundOn, notifyOn, notifyStatus, changeSound, chang
 export function AlertToasts({ toasts, caseIdFor, onOpen, onDismiss }: {
   toasts: AlertToast[];
   caseIdFor: (jobId: string) => string | undefined;
-  onOpen: (jobId: string) => void;
+  onOpen: (toast: AlertToast) => void;
   onDismiss: (id: string) => void;
 }) {
   if (toasts.length === 0) return null;
   return (
     <div aria-live="polite" style={{ position: "fixed", top: 70, right: 16, left: 16, zIndex: 4000, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, pointerEvents: "none" }}>
-      {toasts.map((t) => (
+      {toasts.map((t) => {
+        const heading =
+          t.kind === "arrived" ? "Your driver has arrived"
+          : t.kind === "delivered" ? "Delivered"
+          : `New message${t.jobId && caseIdFor(t.jobId) ? ` · ${caseIdFor(t.jobId)}` : ""}`;
+        return (
         <div key={t.id} style={{
           pointerEvents: "auto", width: "min(340px, 100%)", boxSizing: "border-box", display: "flex", alignItems: "flex-start", gap: 8,
-          background: "#fff", border: "1px solid #C0D9F0", borderRadius: 10, boxShadow: "0 6px 22px rgba(0,0,0,0.14)", padding: "10px 10px 10px 13px",
+          background: "#fff", border: `1px solid ${t.kind === "message" ? "#C0D9F0" : "#C0E0C0"}`, borderRadius: 10, boxShadow: "0 6px 22px rgba(0,0,0,0.14)", padding: "10px 10px 10px 13px",
         }}>
           <button
-            onClick={() => { onDismiss(t.id); onOpen(t.jobId); }}
+            onClick={() => { onDismiss(t.id); onOpen(t); }}
             style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}
           >
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#185FA5" }}>New message{caseIdFor(t.jobId) ? ` · ${caseIdFor(t.jobId)}` : ""}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: t.kind === "message" ? "#185FA5" : "#3B6D11" }}>{heading}</div>
             <div style={{ fontSize: 13, color: "#3a3a3a", lineHeight: 1.4, marginTop: 2, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{t.body}</div>
           </button>
           <button onClick={() => onDismiss(t.id)} aria-label="Dismiss" style={{ flexShrink: 0, background: "none", border: "none", color: "#5F5E5A", fontSize: 16, lineHeight: 1, padding: "0 3px", cursor: "pointer" }}>×</button>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

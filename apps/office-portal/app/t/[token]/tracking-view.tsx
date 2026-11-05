@@ -17,6 +17,7 @@ interface TrackingJob {
   id: string;
   caseId: string;
   status: JobStatus;
+  driverResponse: "pending" | "accepted" | "rejected";
   priority: "stat" | "standard";
   deliveryAddress: string;
   deliveryLat: number | null;
@@ -49,13 +50,15 @@ interface Office {
 interface TrackingData {
   office: Office;
   jobs: TrackingJob[];
+  recentlyDelivered: { id: string; caseId: string }[];
   pickups: Pickup[];
   liveTopic: string;
   alertsAllowed: boolean;
 }
 
 // ── Status, in the office's terms ─────────────────────────────────────────────
-// Three steps an office cares about: still at the lab, on the way, arrived.
+// The label names every step the driver takes; the bar stays at the three an
+// office cares about: still at the lab, on the way, arrived.
 
 const ON_THE_WAY: JobStatus[] = ["picked_up", "in_transit", "arrived"];
 
@@ -63,8 +66,12 @@ type Stage = { step: 1 | 2 | 3; label: string; bg: string; text: string; border:
 
 function stageOf(job: TrackingJob): Stage {
   if (job.status === "arrived") return { step: 3, label: "Arrived", bg: "#F0FAF0", text: "#3B6D11", border: "#C0E0C0" };
-  if (job.status === "picked_up" || job.status === "in_transit") return { step: 2, label: "On the way", bg: "#EBF2FA", text: "#185FA5", border: "#C0D9F0" };
+  if (job.status === "in_transit") return { step: 2, label: "On the way", bg: "#EBF2FA", text: "#185FA5", border: "#C0D9F0" };
+  if (job.status === "picked_up") return { step: 2, label: "Picked up", bg: "#EBF2FA", text: "#185FA5", border: "#C0D9F0" };
+  if (job.driverKey && job.driverResponse === "accepted") return { step: 1, label: "Driver accepted", bg: "#EBF2FA", text: "#185FA5", border: "#C0D9F0" };
   if (job.driverKey) return { step: 1, label: "Driver assigned", bg: "#F5F5F3", text: "#3a3a3a", border: "#E2E2DE" };
+  // The driver turned it down. The office hears what happens next, not who said no.
+  if (job.driverResponse === "rejected") return { step: 1, label: "Finding a new driver", bg: "#FFF8F0", text: "#854F0B", border: "#F5D9B5" };
   return { step: 1, label: "At the lab", bg: "#FFF8F0", text: "#854F0B", border: "#F5D9B5" };
 }
 
@@ -109,11 +116,19 @@ function groupByDriver(jobs: TrackingJob[]): DriverGroup[] {
 function groupSummary(g: DriverGroup): string {
   const n = g.jobs.length;
   const cases = `${n} case${n === 1 ? "" : "s"} for you`;
-  if (!g.driverName) return `${cases}. The lab will assign a driver soon.`;
+  if (!g.driverName) {
+    return g.jobs.some((j) => j.driverResponse === "rejected")
+      ? `${cases}. The lab is finding a new driver.`
+      : `${cases}. The lab will assign a driver soon.`;
+  }
   const arrived = g.jobs.filter((j) => j.status === "arrived").length;
   const moving = g.jobs.filter((j) => ON_THE_WAY.includes(j.status)).length;
   if (arrived > 0) return `${cases} · arrived`;
-  if (moving === 0) return `${cases} · assigned, not on the way yet`;
+  if (moving === 0) {
+    return g.jobs.every((j) => j.driverResponse === "accepted")
+      ? `${cases} · driver accepted, not picked up yet`
+      : `${cases} · assigned, not on the way yet`;
+  }
   if (moving === n) return `${cases} · on the way`;
   return `${cases} · ${moving} of ${n} on the way`;
 }
@@ -139,6 +154,8 @@ export default function TrackingView({
   const [requesting, setRequesting] = useState(false);
   // Bumped on live job changes so the Delivered tab refetches too.
   const [deliveredVersion, setDeliveredVersion] = useState(0);
+  // The live connection has been down long enough to mention.
+  const [reconnecting, setReconnecting] = useState(false);
   // Bumped when a conversation is read, so unread badges (kept in localStorage) re-render.
   const [, setSeenTick] = useState(0);
 
@@ -181,7 +198,7 @@ export default function TrackingView({
     });
   }, [token]);
 
-  // Poll every 30 seconds
+  // Backstop for the live updates below: reload every 30 seconds regardless.
   useEffect(() => {
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
@@ -215,13 +232,33 @@ export default function TrackingView({
     for (const c of sb.getChannels()) {
       if (c.topic === `realtime:${topic}`) sb.removeChannel(c);
     }
+    // A blip shouldn't flash a notice. A real drop gets one, and coming back
+    // reloads, because anything sent while disconnected was missed.
+    let dropTimer: ReturnType<typeof setTimeout> | null = null;
+    let wasDown = false;
+    let closing = false;
     const channel = sb
       .channel(topic)
       .on("broadcast", { event: "changed" }, ({ payload }) => {
         pending.add(String((payload as { what?: string })?.what ?? "jobs"));
         if (!timer) timer = setTimeout(flush, 400);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (closing) return;
+        if (status === "SUBSCRIBED") {
+          if (dropTimer) clearTimeout(dropTimer);
+          dropTimer = null;
+          setReconnecting(false);
+          if (wasDown) {
+            wasDown = false;
+            refresh();
+            loadMessages(jobIdsRef.current ? jobIdsRef.current.split(",") : []);
+          }
+        } else {
+          wasDown = true;
+          if (!dropTimer) dropTimer = setTimeout(() => setReconnecting(true), 10_000);
+        }
+      });
     // Coming back to a tab that sat in the background: catch up right away.
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -230,7 +267,9 @@ export default function TrackingView({
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
+      closing = true;
       if (timer) clearTimeout(timer);
+      if (dropTimer) clearTimeout(dropTimer);
       document.removeEventListener("visibilitychange", onVisible);
       sb.removeChannel(channel);
     };
@@ -263,12 +302,18 @@ export default function TrackingView({
     setTab("active");
     setOpenGroup(group.key);
   }, []);
+  const openStatus = useCallback((kind: "arrived" | "delivered") => {
+    setTab(kind === "delivered" ? "delivered" : "active");
+  }, []);
   const alerts = useOfficeAlerts({
     allowed: data.alertsAllowed,
     labName: office.labName,
     messages,
     openJobIds: conversation ? conversation.jobs.map((j) => j.id) : [],
     onOpenJob: openConversationFor,
+    jobs,
+    recentlyDelivered: data.recentlyDelivered,
+    onOpenStatus: openStatus,
   });
   // A conversation on screen is being read, so it doesn't count.
   const totalUnread = unreadForJobs(messages, jobs.filter((j) => !conversation?.jobs.some((c) => c.id === j.id)).map((j) => j.id));
@@ -346,7 +391,7 @@ export default function TrackingView({
       <AlertToasts
         toasts={alerts.toasts}
         caseIdFor={(jobId) => jobs.find((j) => j.id === jobId)?.caseId}
-        onOpen={openConversationFor}
+        onOpen={(t) => (t.kind === "message" ? openConversationFor(t.jobId!) : openStatus(t.kind))}
         onDismiss={alerts.dismissToast}
       />
 
@@ -376,6 +421,12 @@ export default function TrackingView({
             Request a pickup
           </button>
         </div>
+
+        {reconnecting && (
+          <div role="status" style={{ marginBottom: 14, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.45, color: "#854F0B", background: "#FFF8EC", border: "1px solid #F5D9B5", borderRadius: 8 }}>
+            Reconnecting… Live updates are paused, so this page may be up to 30 seconds behind.
+          </div>
+        )}
 
         {/* Tabs */}
         <div role="tablist" aria-label="Deliveries" style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(0,0,0,0.08)", marginBottom: 18 }}>
@@ -437,7 +488,7 @@ export default function TrackingView({
 
       {/* Footer */}
       <footer style={{ textAlign: "center", padding: "20px", fontSize: 12, color: "#9a9a9a", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-        Powered by <span style={{ color: "#185FA5", fontWeight: 500 }}>Gepeto</span> · Updates automatically every 30 seconds
+        Powered by <span style={{ color: "#185FA5", fontWeight: 500 }}>Gepeto</span> · Updates automatically
       </footer>
 
       {requesting && (
