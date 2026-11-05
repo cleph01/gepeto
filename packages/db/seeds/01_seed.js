@@ -6,11 +6,8 @@ const { createClient } = require('@supabase/supabase-js');
  * Seed data — one lab, two dispatchers, two drivers, two offices, four jobs.
  *
  * Auth users are created via the Supabase Admin API (service role key).
- * Credentials for test accounts:
- *
- *   Dispatcher:  dispatcher@gepeto.dev  /  SeedPass1!
- *   Driver 1:    driver1@gepeto.dev     /  SeedPass1!
- *   Driver 2:    driver2@gepeto.dev     /  SeedPass1!
+ * Test accounts: dispatcher@gepeto.dev, driver1@gepeto.dev, driver2@gepeto.dev
+ * Their password comes from SEED_USER_PASSWORD in packages/db/.env. Never commit it.
  *
  * Run with:  pnpm --filter @gepeto/db seed
  */
@@ -70,23 +67,25 @@ exports.seed = async function (knex) {
   console.log(`  ↳ Lab ID: ${labId}\n`);
 
   // ── 2. Auth users ─────────────────────────────────────────────────────────
+  const seedPassword = process.env.SEED_USER_PASSWORD;
+  if (!seedPassword) throw new Error('SEED_USER_PASSWORD is not set (packages/db/.env)');
   console.log('Creating auth users...');
 
   const dispatcherUserId = await upsertAuthUser(
     'dispatcher@gepeto.dev',
-    'SeedPass1!',
+    seedPassword,
     { role: 'dispatcher', lab_role: 'owner', lab_id: labId }
   );
 
   const driver1UserId = await upsertAuthUser(
     'driver1@gepeto.dev',
-    'SeedPass1!',
+    seedPassword,
     { role: 'driver' }
   );
 
   const driver2UserId = await upsertAuthUser(
     'driver2@gepeto.dev',
-    'SeedPass1!',
+    seedPassword,
     { role: 'driver' }
   );
 
@@ -282,7 +281,8 @@ exports.seed = async function (knex) {
 
   console.log('\n✅ Seed complete.\n');
   console.log('Test credentials:');
-  console.log('  Dispatcher:  dispatcher@gepeto.dev  /  SeedPass1!');
-  console.log('  Driver 1:    driver1@gepeto.dev     /  SeedPass1!');
-  console.log('  Driver 2:    driver2@gepeto.dev     /  SeedPass1!\n');
+  console.log('  Dispatcher:  dispatcher@gepeto.dev');
+  console.log('  Driver 1:    driver1@gepeto.dev');
+  console.log('  Driver 2:    driver2@gepeto.dev');
+  console.log('  Password:    SEED_USER_PASSWORD in packages/db/.env\n');
 };

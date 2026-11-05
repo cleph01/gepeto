@@ -20,7 +20,7 @@ import urllib.request
 
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps", "dispatcher-web", ".env.local")
 SEED_DRIVERS = ["driver1@gepeto.dev", "driver2@gepeto.dev"]
-SEED_PASSWORD = "SeedPass1!"  # from packages/db/seeds/01_seed.js
+SEED_PASSWORD = os.environ["SEED_USER_PASSWORD"]  # from packages/db/.env
 
 
 def load_env(path):
