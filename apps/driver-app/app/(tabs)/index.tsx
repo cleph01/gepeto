@@ -186,7 +186,7 @@ function StatsRow({ jobs }: { jobs: Job[] }) {
   return (
     <View style={styles.statsRow}>
       <StatTile label="Active" value={active} />
-      <StatTile label="Accept or reject" value={pending} highlight={pending > 0} />
+      <StatTile label="New jobs" value={pending} highlight={pending > 0} />
       <StatTile label="Delivered" value={delivered} valueColor={Colors.success} />
     </View>
   );
