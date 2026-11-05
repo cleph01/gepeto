@@ -39,12 +39,10 @@ interface TeamMember {
 // ─── Notification defaults ────────────────────────────────────────────────────
 
 const DEFAULT_NOTIFS = {
-  statJobAlert:      true,
   unassignedAlert:   true,
   unassignedMinutes: "15",
   lateDeliveryAlert: true,
   lateDeliveryMins:  "30",
-  driverOffDuty:     false,
   officeAlerts:      true,
   longBreakAlert:    false,
   longBreakMins:     "45",
@@ -695,13 +693,6 @@ export default function SettingsPage() {
               <div style={{ padding: isMobile ? "16px" : "20px 24px", display: "flex", flexDirection: "column", gap: 0 }}>
 
                 <ToggleRow
-                  label="STAT job created"
-                  description="Alert immediately when a STAT-priority job is added"
-                  checked={notifs.statJobAlert}
-                  onChange={(v) => setNotifs((p) => ({ ...p, statJobAlert: v }))}
-                />
-
-                <ToggleRow
                   label="Unassigned job threshold"
                   description="Alert when a job has no driver assigned after a set time"
                   checked={notifs.unassignedAlert}
@@ -730,13 +721,6 @@ export default function SettingsPage() {
                     />
                   )}
                 </ToggleRow>
-
-                <ToggleRow
-                  label="Driver goes off-duty"
-                  description="Alert when a driver's status changes to Off Duty mid-shift"
-                  checked={notifs.driverOffDuty}
-                  onChange={(v) => setNotifs((p) => ({ ...p, driverOffDuty: v }))}
-                />
 
                 <ToggleRow
                   label="Long driver break"

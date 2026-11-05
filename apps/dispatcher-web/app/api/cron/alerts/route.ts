@@ -8,14 +8,27 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
+// Resend reports most failures in its response rather than throwing, so check both.
+async function delivered(send: Promise<{ error: unknown }>, label: string) {
+  try {
+    const { error } = await send;
+    if (!error) return true;
+    console.error(`[cron] ${label} failed:`, error);
+  } catch (e) {
+    console.error(`[cron] ${label} failed:`, e);
+  }
+  return false;
+}
+
 /**
  * GET /api/cron/alerts
  *
- * Called by Vercel Cron every 5 minutes. Checks two conditions across all labs:
+ * Called by Vercel Cron (once a day until card 63 restores every 5 minutes). Checks two conditions across all labs:
  *   1. Jobs that have been pending (unassigned) longer than the lab's threshold.
  *   2. Jobs in transit past their scheduled delivery time.
  *
  * Each alert is sent at most once per job (tracked by alerted_at timestamps).
+ * A failed send leaves the timestamp empty, so the next run tries again.
  * Secured with CRON_SECRET — Vercel sends this automatically.
  */
 export async function GET(request: NextRequest) {
@@ -35,6 +48,7 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   let unassignedSent = 0;
   let lateSent = 0;
+  let failed = 0;
 
   // Load all labs that have notifications enabled
   const labs = await db("labs").select("id", "name", "settings");
@@ -70,13 +84,17 @@ export async function GET(request: NextRequest) {
               (now.getTime() - new Date(jobRow.createdAt).getTime()) / 60_000
             );
 
-            await sendUnassignedJobAlert(to, {
+            const sent = await delivered(sendUnassignedJobAlert(to, {
               caseId:            job.caseId,
               officeName:        job.officeName ?? "Unknown Office",
               minutesUnassigned: mins,
               labName:           lab.name,
               dashboardUrl:      `${dashboardUrl}/jobs`,
-            }).catch((e: unknown) => console.error("[cron] unassigned alert failed:", e));
+            }), "unassigned alert");
+            if (!sent) {
+              failed++;
+              continue;
+            }
 
             await db("jobs")
               .where({ id: job.id })
@@ -117,14 +135,18 @@ export async function GET(request: NextRequest) {
               (now.getTime() - new Date(job.scheduledAt).getTime()) / 60_000
             );
 
-            await sendLateDeliveryAlert(to, {
+            const sent = await delivered(sendLateDeliveryAlert(to, {
               caseId:         job.caseId,
               officeName:     job.officeName ?? "Unknown Office",
               driverName:     job.driverName ?? "Unassigned",
               minutesOverdue: mins,
               labName:        lab.name,
               dashboardUrl:   `${dashboardUrl}/jobs`,
-            }).catch((e: unknown) => console.error("[cron] late delivery alert failed:", e));
+            }), "late delivery alert");
+            if (!sent) {
+              failed++;
+              continue;
+            }
 
             await db("jobs")
               .where({ id: job.id })
@@ -137,5 +159,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return Response.json({ ok: true, unassignedSent, lateSent });
+  return Response.json({ ok: true, unassignedSent, lateSent, failed });
 }

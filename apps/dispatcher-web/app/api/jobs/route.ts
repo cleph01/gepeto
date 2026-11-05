@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { notifyOffices } from "@/lib/realtime";
 import { geocodeAddress } from "@/lib/geocode";
-import { sendStatJobAlert, getDispatcherEmails, getDashboardUrl } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -105,24 +104,6 @@ export async function POST(request: NextRequest) {
 
       return created;
     });
-
-    // Send STAT alert (fire-and-forget — don't block the response)
-    if ((priority ?? "standard") === "stat" && process.env.RESEND_API_KEY) {
-      const [to, lab] = await Promise.all([
-        getDispatcherEmails(user.labId),
-        db("labs").where({ id: user.labId }).select("name").first(),
-      ]);
-      const office = await db("offices").where({ id: officeId }).select("name").first();
-      if (to.length > 0) {
-        sendStatJobAlert(to, {
-          caseId,
-          officeName: office?.name ?? "Unknown Office",
-          deliveryAddress,
-          labName: lab?.name ?? "Your Lab",
-          dashboardUrl: `${getDashboardUrl()}/jobs`,
-        }).catch((e) => console.error("[email] STAT alert failed:", e));
-      }
-    }
 
     // Return the same joined shape as GET /api/jobs so the jobs list shows the driver and office right away
     const created = await db("jobs")

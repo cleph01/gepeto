@@ -45,12 +45,10 @@ export async function GET(request: NextRequest) {
           operatingHoursEnd:    settings.operatingHoursEnd    ?? "18:00",
         },
         notifications: {
-          statJobAlert:      settings.notifications?.statJobAlert      ?? true,
           unassignedAlert:   settings.notifications?.unassignedAlert   ?? true,
           unassignedMinutes: settings.notifications?.unassignedMinutes ?? "15",
           lateDeliveryAlert: settings.notifications?.lateDeliveryAlert ?? true,
           lateDeliveryMins:  settings.notifications?.lateDeliveryMins  ?? "30",
-          driverOffDuty:     settings.notifications?.driverOffDuty     ?? false,
           officeAlerts:      settings.notifications?.officeAlerts      ?? true,
           longBreakAlert:    settings.notifications?.longBreakAlert    ?? false,
           longBreakMins:     settings.notifications?.longBreakMins     ?? DEFAULT_LONG_BREAK_MINS,

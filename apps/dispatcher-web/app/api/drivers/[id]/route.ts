@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { sendDriverOffDutyAlert, getDispatcherEmails, getDashboardUrl } from "@/lib/email";
 import { checkDriverRoom } from "@/lib/billing";
 import { hideLocationOnBreak } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -56,25 +55,6 @@ export async function PATCH(
         { data: null, error: { code: "NOT_FOUND", message: "Driver not found" } },
         { status: 404 }
       );
-    }
-
-    // Send off-duty alert when a dispatcher marks a driver as off_duty
-    if (
-      updates.status === "off_duty" &&
-      user.role === "dispatcher" &&
-      process.env.RESEND_API_KEY
-    ) {
-      getDispatcherEmails(user.labId).then((to) => {
-        if (to.length === 0) return;
-        const lab = db("labs").where({ id: user.labId }).select("name").first();
-        lab.then((l: { name: string } | undefined) => {
-          sendDriverOffDutyAlert(to, {
-            driverName: driver.name,
-            labName: l?.name ?? "Your Lab",
-            dashboardUrl: `${getDashboardUrl()}/drivers`,
-          }).catch((e: unknown) => console.error("[email] off-duty alert failed:", e));
-        });
-      }).catch(() => null);
     }
 
     return Response.json({ data: hideLocationOnBreak(driver), error: null });

@@ -47,10 +47,6 @@ function layout(title: string, body: string, footer = LAB_FOOTER) {
 </html>`;
 }
 
-function badge(text: string, color: string, bg: string) {
-  return `<span style="display:inline-block;background:${bg};color:${color};font-size:11px;font-weight:600;border-radius:4px;padding:2px 8px;letter-spacing:0.03em;">${text}</span>`;
-}
-
 function metaRow(label: string, value: string) {
   return `<tr>
     <td style="padding:5px 0;font-size:12px;color:#5F5E5A;width:130px;">${label}</td>
@@ -59,20 +55,6 @@ function metaRow(label: string, value: string) {
 }
 
 // ── Templates ─────────────────────────────────────────────────────────────────
-
-export type StatJobAlertData = {
-  caseId: string;
-  officeName: string;
-  deliveryAddress: string;
-  labName: string;
-  dashboardUrl: string;
-};
-
-export type DriverOffDutyData = {
-  driverName: string;
-  labName: string;
-  dashboardUrl: string;
-};
 
 export type UnassignedJobData = {
   caseId: string;
@@ -92,52 +74,6 @@ export type LateDeliveryData = {
 };
 
 // ── Send helpers ──────────────────────────────────────────────────────────────
-
-export async function sendStatJobAlert(to: string[], data: StatJobAlertData) {
-  const body = `
-    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
-      ${badge("STAT", "#C53B0A", "#FFF0EB")} New STAT Job Created
-    </h2>
-    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
-      A high-priority job has been added to your queue and needs a driver assigned.
-    </p>
-    <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:14px 16px;background:#FAFAFA;margin-bottom:24px;">
-      ${metaRow("Case ID", data.caseId)}
-      ${metaRow("Office", data.officeName)}
-      ${metaRow("Delivery address", data.deliveryAddress)}
-    </table>
-    <a href="${data.dashboardUrl}" style="display:inline-block;background:#185FA5;color:#ffffff;font-size:13.5px;font-weight:500;border-radius:7px;padding:10px 20px;text-decoration:none;">
-      View in Dashboard →
-    </a>`;
-
-  return getResend().emails.send({
-    from: FROM,
-    to,
-    subject: `[STAT] New job — ${data.caseId} · ${data.labName}`,
-    html: layout(`STAT Job Alert — ${data.caseId}`, body),
-  });
-}
-
-export async function sendDriverOffDutyAlert(to: string[], data: DriverOffDutyData) {
-  const body = `
-    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
-      Driver Went Off-Duty
-    </h2>
-    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
-      <strong>${data.driverName}</strong> has changed their status to <strong>Off Duty</strong>.
-      If they had active jobs, those may need to be reassigned.
-    </p>
-    <a href="${data.dashboardUrl}" style="display:inline-block;background:#185FA5;color:#ffffff;font-size:13.5px;font-weight:500;border-radius:7px;padding:10px 20px;text-decoration:none;">
-      View Drivers →
-    </a>`;
-
-  return getResend().emails.send({
-    from: FROM,
-    to,
-    subject: `Driver off-duty — ${data.driverName} · ${data.labName}`,
-    html: layout("Driver Off-Duty Alert", body),
-  });
-}
 
 export async function sendUnassignedJobAlert(to: string[], data: UnassignedJobData) {
   const body = `
@@ -280,12 +216,18 @@ export async function sendOfficeTrackingLink(to: string, data: OfficeTrackingLin
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
+// Test logins can still sign in, but they never receive email: nobody on the team
+// reads these addresses. Card 99 deletes the accounts before production.
+const NO_EMAIL_ADDRESSES = /@(gepeto\.dev|123\.com)$/i;
+
 export async function getDispatcherEmails(labId: string): Promise<string[]> {
   const users = await db("lab_users")
     .where({ lab_id: labId })
     .whereIn("labRole", ["owner", "dispatcher"])
     .select("email");
-  return users.map((u: { email: string }) => u.email).filter(Boolean);
+  return users
+    .map((u: { email: string }) => u.email)
+    .filter((email: string) => email && !NO_EMAIL_ADDRESSES.test(email));
 }
 
 export function getDashboardUrl() {

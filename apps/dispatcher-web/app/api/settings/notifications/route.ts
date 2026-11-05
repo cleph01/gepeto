@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest) {
     const currentSettings = lab.settings ?? {};
     const currentNotifs   = currentSettings.notifications ?? {};
 
-    const allowed = ["statJobAlert", "unassignedAlert", "unassignedMinutes", "lateDeliveryAlert", "lateDeliveryMins", "driverOffDuty", "officeAlerts", "longBreakAlert", "longBreakMins"] as const;
+    const allowed = ["unassignedAlert", "unassignedMinutes", "lateDeliveryAlert", "lateDeliveryMins", "officeAlerts", "longBreakAlert", "longBreakMins"] as const;
     const newNotifs: Record<string, unknown> = { ...currentNotifs };
     for (const key of allowed) {
       if (body[key] !== undefined) newNotifs[key] = body[key];
