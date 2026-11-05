@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,12 @@ import {
   Image,
 } from 'react-native';
 import Constants from 'expo-constants';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/auth';
+import { getDriverId } from '@/lib/driver';
+import { supabase } from '@/lib/supabase';
 import {
   chooseNavApp,
   clearNavPreference,
@@ -28,13 +31,46 @@ const NAV_APP_LABELS: Record<NavApp, string> = {
   system_default: 'System Default',
 };
 
+/** "Sofia Reyes" -> "SR"; a single word uses its first two letters. */
+function initialsFrom(text: string): string {
+  const words = text.trim().split(/\s+/);
+  const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : text.trim().slice(0, 2);
+  return letters.toUpperCase();
+}
+
 export default function SettingsScreen() {
   const { session, signOut } = useAuth();
+  const driverId = getDriverId(session);
   const [navPref, setNavPref] = useState<NavApp | null>(null);
+  // undefined = first load still running; null = no name could be loaded.
+  const [driverName, setDriverName] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     getNavPreference().then(setNavPref);
   }, []);
+
+  // Reload on each visit so a rename by the lab shows up without a restart.
+  useFocusEffect(
+    useCallback(() => {
+      if (!driverId) {
+        setDriverName(null);
+        return;
+      }
+      let active = true;
+      supabase
+        .from('drivers')
+        .select('name')
+        .eq('id', driverId)
+        .maybeSingle()
+        .then(({ data }) => {
+          // A failed refresh keeps the name already on screen.
+          if (active) setDriverName((current) => data?.name ?? current ?? null);
+        });
+      return () => {
+        active = false;
+      };
+    }, [driverId])
+  );
 
   const handleChangeNav = async () => {
     const chosen = await chooseNavApp();
@@ -74,7 +110,8 @@ export default function SettingsScreen() {
   };
 
   const email = session?.user.email ?? '—';
-  const initials = email.slice(0, 2).toUpperCase();
+  const displayName = driverName === undefined ? ' ' : driverName ?? 'Driver';
+  const initials = driverName === undefined ? '' : initialsFrom(driverName ?? email);
 
   const version = Constants.expoConfig?.version ?? '—';
 
@@ -95,7 +132,7 @@ export default function SettingsScreen() {
                 <Text style={styles.avatarText}>{initials}</Text>
               </View>
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>Driver</Text>
+                <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
                 <Text style={styles.profileEmail} numberOfLines={1}>{email}</Text>
               </View>
             </View>
