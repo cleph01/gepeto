@@ -150,8 +150,12 @@ export default function DeliveredView({ token, refreshKey = 0 }: { token: string
                           {d.hasPhoto ? (
                             <button
                               onClick={() => setPhotoFor(d)}
-                              style={{ marginTop: 5, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, color: "#185FA5" }}
+                              style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 500, color: "#185FA5" }}
                             >
+                              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+                                <path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1.6l1-1.5h3.8l1 1.5h1.6A1.5 1.5 0 0 1 14 5.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                                <circle cx="8" cy="8.5" r="2.3" stroke="currentColor" strokeWidth="1.3" />
+                              </svg>
                               View drop-off photo
                             </button>
                           ) : d.photoDeletedAt ? (
@@ -179,6 +183,7 @@ export default function DeliveredView({ token, refreshKey = 0 }: { token: string
 // signed link, so it's fetched fresh each time this opens.
 function PhotoModal({ token, delivery, onClose }: { token: string; delivery: Delivery; onClose: () => void }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -206,13 +211,19 @@ function PhotoModal({ token, delivery, onClose }: { token: string; delivery: Del
         {failed ? (
           <div style={{ padding: "40px 20px", textAlign: "center", fontSize: 13, color: "#A32D2D" }}>Couldn&apos;t load the photo.</div>
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/track/${token}/photo/${delivery.id}`}
-            alt={`Drop-off photo for ${delivery.caseId}`}
-            onError={() => setFailed(true)}
-            style={{ display: "block", width: "100%", maxHeight: "70vh", objectFit: "contain", background: "#F0F2F5" }}
-          />
+          <>
+            {!loaded && (
+              <div style={{ padding: "40px 20px", textAlign: "center", fontSize: 13, color: "#5F5E5A" }}>Loading photo…</div>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/track/${token}/photo/${delivery.id}`}
+              alt={`Drop-off photo for ${delivery.caseId}`}
+              onLoad={() => setLoaded(true)}
+              onError={() => setFailed(true)}
+              style={{ display: loaded ? "block" : "none", width: "100%", maxHeight: "70vh", objectFit: "contain", background: "#F0F2F5" }}
+            />
+          </>
         )}
       </div>
     </div>
