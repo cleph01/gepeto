@@ -111,7 +111,9 @@ export default function OfficesPage() {
         ) : (
           <div style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : bp === "tablet" ? "1fr 1fr" : "1fr 1fr 1fr",
+            // minmax(0, ...): a plain 1fr column won't shrink below its content, so the
+            // one-line tracking link stretched the grid and pushed cards off the page.
+            gridTemplateColumns: `repeat(${isMobile ? 1 : bp === "tablet" ? 2 : 3}, minmax(0, 1fr))`,
             gap: 16,
           }}>
             {!loaded && [0, 1, 2].map((i) => <OfficeCardSkeleton key={i} />)}
