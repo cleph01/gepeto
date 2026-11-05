@@ -46,6 +46,8 @@ const DEFAULT_NOTIFS = {
   lateDeliveryMins:  "30",
   driverOffDuty:     false,
   officeAlerts:      true,
+  longBreakAlert:    false,
+  longBreakMins:     "45",
 };
 
 const TIMEZONES = [
@@ -737,6 +739,22 @@ export default function SettingsPage() {
                 />
 
                 <ToggleRow
+                  label="Long driver break"
+                  description="Flags a driver on the Dashboard and Drivers pages when a break runs past a set time"
+                  checked={notifs.longBreakAlert}
+                  onChange={(v) => setNotifs((p) => ({ ...p, longBreakAlert: v }))}
+                >
+                  {notifs.longBreakAlert && (
+                    <InlineMinutesPicker
+                      value={notifs.longBreakMins}
+                      onChange={(v) => setNotifs((p) => ({ ...p, longBreakMins: v }))}
+                      label="Flag after"
+                      options={["15","20","30","45","60","90","120"]}
+                    />
+                  )}
+                </ToggleRow>
+
+                <ToggleRow
                   label="Message alerts for offices"
                   description="Lets offices turn on a chime and browser notifications for new messages, from the gear on their tracking page"
                   checked={notifs.officeAlerts}
@@ -1194,9 +1212,9 @@ function ToggleRow({
 }
 
 function InlineMinutesPicker({
-  value, onChange, label,
+  value, onChange, label, options = ["5","10","15","20","30","45","60"],
 }: {
-  value: string; onChange: (v: string) => void; label: string;
+  value: string; onChange: (v: string) => void; label: string; options?: string[];
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1220,7 +1238,7 @@ function InlineMinutesPicker({
           backgroundPosition: "right 8px center",
         }}
       >
-        {["5","10","15","20","30","45","60"].map((m) => (
+        {options.map((m) => (
           <option key={m} value={m}>{m} min</option>
         ))}
       </select>

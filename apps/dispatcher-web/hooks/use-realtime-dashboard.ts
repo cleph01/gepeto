@@ -26,6 +26,8 @@ interface DashboardDriver {
   status: string;
   activeJobs: number;
   currentLocation: { lat: number; lng: number } | null;
+  onBreakSince: string | null;
+  breakFlagMins: number | null;
 }
 
 interface Props {
@@ -78,11 +80,17 @@ export function useRealtimeDashboard({ session, setJobs, setDrivers, refetchJob 
             id: string;
             status: string;
             current_location: { lat: number; lng: number } | null;
+            on_break_since: string | null;
           };
           setDrivers((prev) =>
             prev.map((d) =>
               d.id === row.id
-                ? { ...d, status: row.status, currentLocation: row.current_location }
+                ? {
+                    ...d,
+                    status: row.status,
+                    onBreakSince: row.on_break_since,
+                    currentLocation: row.on_break_since ? null : row.current_location,
+                  }
                 : d
             )
           );

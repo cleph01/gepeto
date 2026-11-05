@@ -29,6 +29,8 @@ interface TrackingJob {
   driverName: string | null;
   /** Only sent once this driver is carrying one of the office's cases (lib/tracking.ts). */
   driverLocation: DriverLocation | null;
+  /** The driver is carrying this office's cases but location sharing is paused. */
+  locationPaused: boolean;
 }
 
 /** updatedAt: when the driver's phone last sent it (absent on very old rows). */
@@ -77,6 +79,7 @@ interface DriverGroup {
   key: string;
   driverName: string | null; // null = no driver yet
   driverLocation: DriverLocation | null;
+  locationPaused: boolean;
   jobs: TrackingJob[];
 }
 
@@ -86,11 +89,12 @@ function groupByDriver(jobs: TrackingJob[]): DriverGroup[] {
   for (const job of jobs) {
     const key = job.driverKey ?? "unassigned";
     if (!groups.has(key)) {
-      groups.set(key, { key, driverName: job.driverKey ? job.driverName : null, driverLocation: null, jobs: [] });
+      groups.set(key, { key, driverName: job.driverKey ? job.driverName : null, driverLocation: null, locationPaused: false, jobs: [] });
     }
     const g = groups.get(key)!;
     g.jobs.push(job);
     if (job.driverLocation) g.driverLocation = job.driverLocation;
+    if (job.locationPaused) g.locationPaused = true;
   }
   for (const g of groups.values()) g.jobs.sort((a, b) => stageOf(b).step - stageOf(a).step);
   const rank = (g: DriverGroup) => {
@@ -550,6 +554,11 @@ function DriverCard({
             {freshness === "recent" && <>Last seen {seen}</>}
             {freshness === "stale" && <>Last known location, {seen}. Their phone may be off signal. Call the lab for an update.</>}
           </div>
+        </div>
+      )}
+      {group.driverName && group.locationPaused && (
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", padding: "9px 16px", fontSize: 12.5, color: "#5F5E5A", background: "#FAFBFD" }}>
+          Location paused. Your cases are still on the way; call the lab if you need an update.
         </div>
       )}
       {group.driverName && loc && freshness === "gone" && group.jobs.some((j) => ON_THE_WAY.includes(j.status)) && (

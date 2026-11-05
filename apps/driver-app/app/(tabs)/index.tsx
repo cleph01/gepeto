@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { rowToCamel } from '@/lib/transform';
+import { useDriverBreak } from '@/hooks/use-driver-break';
 import { useLocationTracking } from '@/hooks/use-location-tracking';
 import {
   View,
@@ -33,6 +34,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { navigate } from '@/lib/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
+import { BreakControl } from '@/components/break-control';
 import { DeliveredToast } from '@/components/delivered-toast';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
@@ -386,6 +388,7 @@ const stillOpen = (returns: ReturnCase[]) => returns.filter((r) => r.status !== 
 type Row =
   | { type: 'stats' }
   | { type: 'locationHint' }
+  | { type: 'break' }
   | { type: 'section'; title: string }
   | { type: 'group'; key: string; jobs: QueueJob[] }
   | { type: 'job'; job: QueueJob; inGroup?: boolean; lastInGroup?: boolean }
@@ -627,7 +630,10 @@ export default function JobQueueScreen() {
 
   // Track location whenever the driver has at least one active job
   const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
-  const { backgroundAllowed } = useLocationTracking(hasActiveJob);
+  const driverBreak = useDriverBreak();
+  const onBreak = !!driverBreak.since;
+  // Waits for the saved break state, so reopening the app mid-break sends nothing.
+  const { backgroundAllowed } = useLocationTracking(hasActiveJob && driverBreak.since === null);
 
   // Sections group jobs going to the same office, so they can go out on one trip.
   const sections = [
@@ -648,8 +654,10 @@ export default function JobQueueScreen() {
 
   const flatData: Row[] = [
     { type: 'stats' },
-    ...(hasActiveJob && backgroundAllowed === false ? [{ type: 'locationHint' } as Row] : []),
+    ...(onBreak ? [{ type: 'break' } as Row] : []),
+    ...(hasActiveJob && !onBreak && backgroundAllowed === false ? [{ type: 'locationHint' } as Row] : []),
     { type: 'pickup' },
+    ...(!onBreak && driverBreak.since !== undefined ? [{ type: 'break' } as Row] : []),
     ...sections.flatMap((s): Row[] => [
       { type: 'section', title: s.title },
       ...toStops(s.data).flatMap((stop): Row[] =>
@@ -731,6 +739,9 @@ export default function JobQueueScreen() {
                 </View>
               </TouchableOpacity>
             );
+          }
+          if (item.type === 'break') {
+            return <BreakControl since={driverBreak.since ?? null} busy={driverBreak.busy} onChange={driverBreak.setOnBreak} />;
           }
           if (item.type === 'pickup') {
             return (

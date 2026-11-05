@@ -6,7 +6,7 @@ import { hasBackgroundPermission, startBackgroundLocation, stopBackgroundLocatio
 const INTERVAL_MS = 30_000; // 30 seconds
 
 /**
- * Shares the driver's location while `active` (they're carrying deliveries).
+ * Shares the driver's location while `active` (carrying deliveries, not on a break).
  *
  * - While the app is open: a ping every 30s (covers standing still, too).
  * - In the background (navigating in another app, phone locked): the
@@ -53,7 +53,12 @@ export function useLocationTracking(active: boolean): { backgroundAllowed: boole
       intervalRef.current = setInterval(ping, INTERVAL_MS);
 
       await startBackgroundLocation();
-      if (!cancelled) setBackgroundAllowed(await hasBackgroundPermission());
+      // Turned off (e.g. a break started) while the permission prompt was open.
+      if (cancelled) {
+        stopBackgroundLocation();
+        return;
+      }
+      setBackgroundAllowed(await hasBackgroundPermission());
     }
 
     startTracking();

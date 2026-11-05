@@ -11,6 +11,7 @@ import type { ApiResponse } from "@gepeto/types";
 import { SortHeader, byRank, byText, byTime, sortRows, useSort, type Comparators } from "@/lib/sorting";
 import { DriverReplyTag } from "@/components/driver-reply-tag";
 
+import { BreakPill } from "@/components/break-pill";
 const LiveMap = lazy(() => import("@/components/live-map"));
 
 type ApiJob = {
@@ -22,6 +23,7 @@ type ApiJob = {
 };
 type ApiDriver = {
   id: string; name: string; status: string; activeJobs: number; currentLocation: { lat: number; lng: number; updatedAt?: string } | null;
+  onBreakSince: string | null; breakFlagMins: number | null;
 };
 
 // Active Jobs columns. Office and Driver flex (Office gets the most room); the
@@ -50,7 +52,7 @@ export default function DashboardPage() {
   const { apiFetch, session } = useAuth();
   const { sort, toggle: toggleSort } = useSort<SortKey>("gepeto.sort.dashboard", SORT_KEYS);
   const router = useRouter();
-  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary, jobsChangedAt } = useMessageNotifications();
+  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary, jobsChangedAt, driversChangedAt } = useMessageNotifications();
   const returningCases = returnsSummary.requestedCases + returnsSummary.withDriverCases + returnsSummary.atLabCases;
   // What needs the front desk first: pickups with no driver, then check-ins.
   const returnsNeedAction = returnsSummary.unassigned > 0 || returnsSummary.atLabCases > 0;
@@ -93,6 +95,15 @@ export default function DashboardPage() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobsChangedAt]);
+
+  // A driver's break hides their pin and changes their status at once.
+  useEffect(() => {
+    if (!session || !driversChangedAt) return;
+    apiFetch<ApiResponse<ApiDriver[]>>("/api/drivers")
+      .then((res) => { if (res.data) setDrivers(res.data); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driversChangedAt]);
 
   // Upserts a single enriched job into state (used by Realtime hook)
   const refetchJob = useCallback(async (id: string) => {
@@ -635,9 +646,13 @@ function DriverRow({ driver }: { driver: ApiDriver }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a" }}>{driver.name}</div>
       </div>
-      <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "2px 9px", flexShrink: 0 }}>
-        {s.label}
-      </span>
+      {driver.onBreakSince ? (
+        <BreakPill since={driver.onBreakSince} flagAfterMins={driver.breakFlagMins} />
+      ) : (
+        <span style={{ fontSize: 11, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "2px 9px", flexShrink: 0 }}>
+          {s.label}
+        </span>
+      )}
       {driver.activeJobs > 0 && (
         <span style={{ fontSize: 12, color: "#5F5E5A", flexShrink: 0 }}>
           {driver.activeJobs} job{driver.activeJobs !== 1 ? "s" : ""}

@@ -70,6 +70,8 @@ export interface Driver {
   labId: string;
   status: DriverStatus;
   currentLocation: DriverLocation | null;
+  /** Set while the driver is on a break; their location is hidden until it ends. */
+  onBreakSince: string | null;
 }
 
 // ─── Lab user ────────────────────────────────────────────────────────────────

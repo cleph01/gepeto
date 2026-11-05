@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useSearch } from "@/context/search";
+import { useMessageNotifications } from "@/context/message-notifications";
+import { BreakPill } from "@/components/break-pill";
 import type { ApiResponse } from "@gepeto/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -18,6 +20,8 @@ interface Driver {
   activeJobs: number;
   location: string;
   joinedDate: string;
+  onBreakSince?: string | null;
+  breakFlagMins?: number | null;
 }
 
 
@@ -25,6 +29,8 @@ type ApiDriver = {
   id: string; name: string; phone: string; email: string | null;
   status: DriverStatus; activeJobs: number;
   currentLocation: { lat: number; lng: number } | null;
+  onBreakSince: string | null;
+  breakFlagMins: number | null;
   createdAt: string;
 };
 
@@ -353,6 +359,8 @@ export default function DriversPage() {
     setFilter("all");
   }, [searchTarget]);
 
+  const { driversChangedAt } = useMessageNotifications();
+
   useEffect(() => {
     if (!session) return;
     apiFetch<ApiResponse<ApiDriver[]>>("/api/drivers").then((res) => {
@@ -363,7 +371,7 @@ export default function DriversPage() {
           .toLocaleDateString("en-US", { month: "short", year: "numeric" }),
       })));
     }).catch(() => {}).finally(() => setLoaded(true));
-  }, [session]);
+  }, [session, driversChangedAt]);
 
   const onSave = async (data: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate"> & { email?: string }) => {
     if (modalDriver === "new") {
@@ -543,8 +551,8 @@ export default function DriversPage() {
               style={{
                 display: "grid",
                 gridTemplateColumns: bp === "tablet"
-                  ? "2fr 120px 100px 100px"
-                  : "2fr 140px 120px 100px 110px 120px",
+                  ? "2fr 150px 90px 100px"
+                  : "2fr 140px 160px 80px 100px 110px",
                 padding: "6px 16px",
                 background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)",
               }}
@@ -658,8 +666,8 @@ function DriverRow({
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
   const isOffDuty = driver.status === "off_duty";
   const cols = bp === "tablet"
-    ? "2fr 120px 100px 100px"
-    : "2fr 140px 120px 100px 110px 120px";
+    ? "2fr 150px 90px 100px"
+    : "2fr 140px 160px 80px 100px 110px";
 
   return (
     <div
@@ -693,9 +701,13 @@ function DriverRow({
 
       {/* Status */}
       <span>
-        <span style={{ fontSize: 11.5, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "2.5px 9px" }}>
-          {s.label}
-        </span>
+        {driver.onBreakSince ? (
+          <BreakPill since={driver.onBreakSince} flagAfterMins={driver.breakFlagMins} />
+        ) : (
+          <span style={{ fontSize: 11.5, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "2.5px 9px" }}>
+            {s.label}
+          </span>
+        )}
       </span>
 
       {/* Active jobs */}
@@ -782,9 +794,13 @@ function DriverCard({
           <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a" }}>{driver.name}</div>
           <div style={{ fontSize: 12, color: "#9a9a9a" }}>{driver.phone}</div>
         </div>
-        <span style={{ fontSize: 11.5, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "3px 10px", flexShrink: 0 }}>
-          {s.label}
-        </span>
+        {driver.onBreakSince ? (
+          <BreakPill since={driver.onBreakSince} flagAfterMins={driver.breakFlagMins} />
+        ) : (
+          <span style={{ fontSize: 11.5, fontWeight: 500, background: s.bg, color: s.color, borderRadius: 20, padding: "3px 10px", flexShrink: 0 }}>
+            {s.label}
+          </span>
+        )}
       </div>
 
       {/* Bottom row: location/jobs + actions */}

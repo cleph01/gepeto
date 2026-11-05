@@ -12,6 +12,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 // accepted, delivered) is polled too, and also re-checked the moment realtime
 // reports a change to `jobs`.
 const POLL_MS = 10_000;
+const DRIVERS_POLL_MS = 30_000;
 const TOAST_MS = 7_000;
 const MAX_TOASTS = 3;
 const SOUND_KEY = "gepeto.messageSound";
@@ -97,6 +98,8 @@ interface MessageNotificationsContextType {
   clearPendingHistory: () => void;
   /** Bumped on every realtime change to the lab's jobs, so lists can reload. */
   jobsChangedAt: number;
+  /** Bumped when a driver starts or ends a break, and every 30s in case that signal was missed. */
+  driversChangedAt: number;
   /** Bumped when a message lands on a job, so an open thread can reload at once. */
   messageArrived: { jobId: string; at: number } | null;
   /** Open returning cases, kept live for the sidebar badge and dashboard. */
@@ -123,6 +126,7 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   pendingHistoryJobId: null,
   clearPendingHistory: () => {},
   jobsChangedAt: 0,
+  driversChangedAt: 0,
   messageArrived: null,
   returnsSummary: EMPTY_RETURNS,
   returnsChangedAt: 0,
@@ -281,6 +285,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const [pendingOpenJobId, setPendingOpenJobId] = useState<string | null>(null);
   const [pendingHistoryJobId, setPendingHistoryJobId] = useState<string | null>(null);
   const [jobsChangedAt, setJobsChangedAt] = useState(0);
+  const [driversChangedAt, setDriversChangedAt] = useState(0);
   const [messageArrived, setMessageArrived] = useState<{ jobId: string; at: number } | null>(null);
   const [returnsSummary, setReturnsSummary] = useState<ReturnsSummary>(EMPTY_RETURNS);
   const [returnsChangedAt, setReturnsChangedAt] = useState(0);
@@ -533,6 +538,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       )
       // Server broadcast when a driver accepts, rejects or moves a job along.
       .on("broadcast", { event: "job_changed" }, onJobChange)
+      // Server broadcast when a driver starts or ends a break.
+      .on("broadcast", { event: "driver_changed" }, () => setDriversChangedAt(Date.now()))
       // Server broadcast when anyone sends a message: badge, chime and toast now,
       // not on the next poll.
       .on("broadcast", { event: "message" }, ({ payload }) => {
@@ -550,6 +557,13 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     };
   }, [labId, pollActivity, poll, onReturnChanged]);
 
+  // Slower than the message poll: this reloads the whole driver list.
+  useEffect(() => {
+    if (!session) return;
+    const id = setInterval(() => setDriversChangedAt(Date.now()), DRIVERS_POLL_MS);
+    return () => clearInterval(id);
+  }, [session]);
+
   useEffect(() => {
     if (!session) return;
     // pollAll() only sets state after awaiting the fetch, not synchronously.
@@ -563,6 +577,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       if (document.visibilityState !== "visible") return;
       pollAll();
       setJobsChangedAt(Date.now()); // catch up on anything missed while hidden
+      setDriversChangedAt(Date.now());
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -669,6 +684,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         pendingHistoryJobId,
         clearPendingHistory,
         jobsChangedAt,
+        driversChangedAt,
         messageArrived,
         returnsSummary,
         returnsChangedAt,

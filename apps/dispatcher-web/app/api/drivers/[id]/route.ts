@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { sendDriverOffDutyAlert, getDispatcherEmails, getDashboardUrl } from "@/lib/email";
 import { checkDriverRoom } from "@/lib/billing";
+import { hideLocationOnBreak } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -76,7 +77,7 @@ export async function PATCH(
       }).catch(() => null);
     }
 
-    return Response.json({ data: driver, error: null });
+    return Response.json({ data: hideLocationOnBreak(driver), error: null });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[PATCH /api/drivers/[id]]", err);

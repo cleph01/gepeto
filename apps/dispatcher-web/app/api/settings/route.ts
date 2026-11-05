@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { DEFAULT_LONG_BREAK_MINS } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -51,6 +52,8 @@ export async function GET(request: NextRequest) {
           lateDeliveryMins:  settings.notifications?.lateDeliveryMins  ?? "30",
           driverOffDuty:     settings.notifications?.driverOffDuty     ?? false,
           officeAlerts:      settings.notifications?.officeAlerts      ?? true,
+          longBreakAlert:    settings.notifications?.longBreakAlert    ?? false,
+          longBreakMins:     settings.notifications?.longBreakMins     ?? DEFAULT_LONG_BREAK_MINS,
         },
         profile: {
           name:  labUser?.name    ?? "",

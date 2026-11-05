@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { officesCarriedFor } from "@/lib/driver-break";
 import { notifyOffices } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -30,21 +31,24 @@ export async function PATCH(request: NextRequest) {
 
     const [driver] = await db("drivers")
       .where({ id: user.driverId, lab_id: user.labId })
+      .whereNull("on_break_since")
       .update({ current_location: JSON.stringify(location) })
       .returning("*");
 
     if (!driver) {
+      // A ping from a phone that hasn't heard about the break yet: dropped.
+      const onBreak = await db("drivers")
+        .where({ id: user.driverId, lab_id: user.labId })
+        .whereNotNull("on_break_since")
+        .first("id");
+      if (onBreak) return Response.json({ data: { location: null }, error: null });
       return Response.json(
         { data: null, error: { code: "NOT_FOUND", message: "Driver not found" } },
         { status: 404 }
       );
     }
 
-    const carrying: { officeId: string }[] = await db("jobs")
-      .where({ driver_id: user.driverId, lab_id: user.labId })
-      .whereIn("status", ["picked_up", "in_transit", "arrived"])
-      .distinct("office_id");
-    await notifyOffices(carrying.map((j) => j.officeId), "location");
+    await notifyOffices(await officesCarriedFor(user.driverId!, user.labId), "location");
 
     return Response.json({ data: { location }, error: null });
   } catch (err) {

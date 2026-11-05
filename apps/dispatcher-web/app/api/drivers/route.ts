@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getDashboardUrl } from "@/lib/email";
 import { checkDriverRoom } from "@/lib/billing";
+import { breakFlagMins, hideLocationOnBreak } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -18,10 +19,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const drivers = await db("drivers")
-      .where("lab_id", user.labId)
-      .orderBy("name", "asc")
-      .select("*");
+    const [drivers, lab] = await Promise.all([
+      db("drivers").where("lab_id", user.labId).orderBy("name", "asc").select("*"),
+      db("labs").where({ id: user.labId }).first("settings"),
+    ]);
+    const flagAfterMins = breakFlagMins(lab?.settings);
 
     // Enrich with active job count
     const activeJobCounts: { driverId: string; count: string }[] = await db("jobs")
@@ -35,9 +37,10 @@ export async function GET(request: NextRequest) {
       activeJobCounts.map((r) => [r.driverId, Number(r.count)])
     );
 
-    const enriched = drivers.map((d: { id: string }) => ({
-      ...d,
+    const enriched = drivers.map((d: { id: string; onBreakSince: string | null; currentLocation: unknown }) => ({
+      ...hideLocationOnBreak(d),
       activeJobs: countMap[d.id] ?? 0,
+      breakFlagMins: flagAfterMins,
     }));
 
     return Response.json({ data: enriched, error: null });

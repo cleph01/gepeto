@@ -28,6 +28,7 @@ const MAPPING = {
   'gearshape': 'settings',
   'mappin.and.ellipse': 'place',
   'tray': 'inbox',
+  'pause.circle': 'pause-circle-outline',
   'checkmark': 'check',
   'xmark': 'close',
   'bell.fill': 'notifications',

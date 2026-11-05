@@ -71,7 +71,8 @@ async function loadTracking(token: string, version: number) {
       "jobs.updated_at as updatedAt",
       "jobs.driver_id as driverId",
       "drivers.name as driverName",
-      "drivers.current_location as driverLocation"
+      "drivers.current_location as driverLocation",
+      "drivers.on_break_since as driverOnBreakSince"
     );
 
   // The office's pickup requests and returns still moving, plus anything
@@ -108,8 +109,19 @@ async function loadTracking(token: string, version: number) {
       .filter((j: { status: string; driverId: string | null }) => j.driverId && ON_THE_WAY.includes(j.status))
       .map((j: { driverId: string }) => j.driverId)
   );
-  for (const j of jobs as { driverId: string | null; driverKey?: string | null; driverLocation: unknown }[]) {
-    if (!j.driverId || !driversOnTheWay.has(j.driverId)) j.driverLocation = null;
+  // A driver on a break: no location, and the office is told only that it's
+  // paused. The break itself never leaves the server.
+  for (const j of jobs as {
+    driverId: string | null;
+    driverKey?: string | null;
+    driverLocation: unknown;
+    driverOnBreakSince?: unknown;
+    locationPaused?: boolean;
+  }[]) {
+    const onTheWay = !!j.driverId && driversOnTheWay.has(j.driverId);
+    j.locationPaused = onTheWay && !!j.driverOnBreakSince;
+    if (!onTheWay || j.locationPaused) j.driverLocation = null;
+    delete j.driverOnBreakSince;
     j.driverKey = j.driverId ? driverKey(token, j.driverId) : null;
     delete (j as { driverId?: string | null }).driverId;
   }
