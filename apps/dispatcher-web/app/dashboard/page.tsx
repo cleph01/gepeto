@@ -53,7 +53,7 @@ export default function DashboardPage() {
   const { apiFetch, session } = useAuth();
   const { sort, toggle: toggleSort } = useSort<SortKey>("gepeto.sort.dashboard", SORT_KEYS);
   const router = useRouter();
-  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary, jobsChangedAt, driversChangedAt } = useMessageNotifications();
+  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary, jobsChangedAt, driversChangedAt, returnsChangedAt } = useMessageNotifications();
   const returningCases = returnsSummary.requestedCases + returnsSummary.withDriverCases + returnsSummary.atLabCases;
   // What needs the front desk first: pickups with no driver, then check-ins.
   const returnsNeedAction = returnsSummary.unassigned > 0 || returnsSummary.atLabCases > 0;
@@ -84,6 +84,12 @@ export default function DashboardPage() {
     }).catch(() => {}).finally(() => setLoaded(true));
   }, [session]);
 
+  const reloadDrivers = () => {
+    apiFetch<ApiResponse<ApiDriver[]>>("/api/drivers")
+      .then((res) => { if (res.data) setDrivers(res.data); })
+      .catch(() => {});
+  };
+
   // Reload when the notifications provider hears of a job change (a driver
   // accepting, rejecting or moving a job along), same as the Jobs page.
   useEffect(() => {
@@ -92,19 +98,18 @@ export default function DashboardPage() {
       apiFetch<ApiResponse<ApiJob[]>>("/api/jobs")
         .then((res) => { if (res.data) setJobs(res.data); })
         .catch(() => {});
+      reloadDrivers();
     }, 300); // a burst of changes becomes one reload
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobsChangedAt]);
 
-  // A driver's break hides their pin and changes their status at once.
+  // A driver's break, or finishing or accepting work, changes their pin at once.
   useEffect(() => {
-    if (!session || !driversChangedAt) return;
-    apiFetch<ApiResponse<ApiDriver[]>>("/api/drivers")
-      .then((res) => { if (res.data) setDrivers(res.data); })
-      .catch(() => {});
+    if (!session || (!driversChangedAt && !returnsChangedAt)) return;
+    reloadDrivers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driversChangedAt]);
+  }, [driversChangedAt, returnsChangedAt]);
 
   // Upserts a single enriched job into state (used by Realtime hook)
   const refetchJob = useCallback(async (id: string) => {

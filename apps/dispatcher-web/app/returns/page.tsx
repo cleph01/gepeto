@@ -21,6 +21,7 @@ interface ReturnCase {
   officeName: string | null;
   driverId: string | null;
   driverName: string | null;
+  driverResponse: "pending" | "accepted";
   caseCount: number;
   caseNumbers: string[];
   note: string | null;
@@ -279,8 +280,12 @@ function ReturnRow({
   r: ReturnCase; isMobile: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
   drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void; error: string | null;
 }) {
-  const st = STATUS[r.status];
   const isRequest = r.status === "requested";
+  const st = isRequest && r.driverId
+    ? r.driverResponse === "accepted"
+      ? { label: "Driver accepted", color: "#185FA5", bg: "rgba(24,95,165,0.10)" }
+      : { label: "Waiting for driver to accept", color: "#854F0B", bg: "rgba(133,79,11,0.10)" }
+    : STATUS[r.status];
   const actions = (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: isMobile ? "flex-start" : "flex-end" }}>
       {isRequest && (
@@ -617,7 +622,7 @@ const stepBtn: React.CSSProperties = {
 
 interface ReturnEvent {
   id: string;
-  event: "requested" | "assigned" | "cancelled" | "logged" | "dropped_at_lab" | "checked_in" | "linked" | "redelivery_created" | "edited";
+  event: "requested" | "assigned" | "driver_accepted" | "driver_rejected" | "cancelled" | "logged" | "dropped_at_lab" | "checked_in" | "linked" | "redelivery_created" | "edited";
   detail: {
     caseCount?: number; receivedCount?: number; caseId?: string; caseNumbers?: string[]; fromStatus?: string;
     requestedCount?: number; fulfilledRequest?: boolean; readyAt?: string | null; driverId?: string | null;
@@ -642,6 +647,10 @@ function describeEvent(e: ReturnEvent): React.ReactNode {
       );
     case "assigned":
       return d.driverId ? <>Assigned to <strong>{e.assignedDriverName ?? "a driver"}</strong></> : <>Driver unassigned</>;
+    case "driver_accepted":
+      return <>Driver accepted the pickup</>;
+    case "driver_rejected":
+      return <><strong>Driver rejected the pickup</strong></>;
     case "cancelled":
       return <><strong>Pickup cancelled</strong></>;
     case "logged":

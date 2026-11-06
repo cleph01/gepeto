@@ -11,6 +11,7 @@ export type ReturnCase = {
   id: string;
   number: number;
   status: ReturnStatus;
+  driverResponse: 'pending' | 'accepted';
   officeId: string;
   officeName: string | null;
   caseCount: number;
@@ -81,5 +82,15 @@ export async function logReturn(
     return res.data ? null : res.error?.message ?? "Couldn't log the return.";
   } catch {
     return "Couldn't log the return. Check your signal.";
+  }
+}
+
+/** Accepts or rejects an assigned pickup. Returns an error message, or null. */
+export async function respondToPickup(id: string, driverResponse: 'accepted' | 'rejected'): Promise<string | null> {
+  try {
+    const res = await apiPost<ReturnCase>(`/api/returns/${id}/response`, { driverResponse });
+    return res.data ? null : res.error?.message ?? "Couldn't send your answer.";
+  } catch {
+    return "Couldn't send your answer. Check your signal.";
   }
 }

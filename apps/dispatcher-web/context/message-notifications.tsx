@@ -471,6 +471,20 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       if (soundRef.current) playChime();
       return;
     }
+    if (payload.change === "rejected") {
+      pushToasts([{
+        key: `pickup-rejected-${payload.returnId}-${Date.now()}`,
+        kind: "return",
+        jobId: null,
+        title: "A driver rejected a pickup",
+        body: "Assign another driver in Returning Cases.",
+        notifyBody: "Assign another driver in Returning Cases.",
+        notifyTag: `pickup-rejected-${payload.returnId}`,
+        color: "#854F0B",
+      }]);
+      if (soundRef.current) playChime();
+      return;
+    }
     if (payload.change === "requested" && payload.returnId) {
       try {
         const res = await apiFetch<ApiResponse<{ id: string; caseCount: number; officeName: string | null; note: string | null; readyAt: string | null }[]>>("/api/returns?status=open");

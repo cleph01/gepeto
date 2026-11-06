@@ -38,7 +38,7 @@ import { BreakControl } from '@/components/break-control';
 import { DeliveredToast } from '@/components/delivered-toast';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
-import { RETURN_STATUS_LABEL, logReturn, readyLabel, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { RETURN_STATUS_LABEL, logReturn, readyLabel, respondToPickup, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { onJobRemoved } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
@@ -281,11 +281,15 @@ function ReturningSection({
   dropping,
   onDropAll,
   onLogPickup,
+  respondingTo,
+  onRespond,
 }: {
   returns: ReturnCase[];
   dropping: boolean;
   onDropAll: () => void;
   onLogPickup: (r: ReturnCase) => void;
+  respondingTo: string | null;
+  onRespond: (r: ReturnCase, response: 'accepted' | 'rejected') => void;
 }) {
   const inCar = returns.filter((r) => r.status === 'with_driver');
   const casesInCar = inCar.reduce((n, r) => n + r.caseCount, 0);
@@ -308,18 +312,45 @@ function ReturningSection({
               {r.note && <Text style={styles.returnNote} numberOfLines={2}>{r.note}</Text>}
               <View style={styles.returnFooter}>
                 <IconSymbol name="tray" size={14} color={Colors.accent} />
-                <Text style={[styles.returnStatus, { color: Colors.accent }]}>{RETURN_STATUS_LABEL.requested}</Text>
+                <Text style={[styles.returnStatus, { color: Colors.accent }]}>
+                  {r.driverResponse === 'pending' ? 'New pickup for you' : RETURN_STATUS_LABEL.requested}
+                </Text>
                 <Text style={styles.returnTime}>{readyLabel(r)}</Text>
               </View>
-              <TouchableOpacity
-                style={[styles.batchBtn, { marginTop: Spacing.sm }]}
-                onPress={() => onLogPickup(r)}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityHint="Opens the pickup form, pre-filled from the office's request"
-              >
-                <Text style={styles.batchBtnText}>Log pickup</Text>
-              </TouchableOpacity>
+              {r.driverResponse === 'pending' ? (
+                <View style={styles.pickupAnswer}>
+                  <TouchableOpacity
+                    style={[styles.batchBtn, styles.pickupAnswerBtn, styles.pickupRejectBtn]}
+                    onPress={() => onRespond(r, 'rejected')}
+                    disabled={respondingTo === r.id}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.pickupRejectText}>Reject</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.batchBtn, styles.pickupAnswerBtn, respondingTo === r.id && styles.batchBtnBusy]}
+                    onPress={() => onRespond(r, 'accepted')}
+                    disabled={respondingTo === r.id}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                  >
+                    {respondingTo === r.id
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={styles.batchBtnText}>Accept</Text>}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.batchBtn, { marginTop: Spacing.sm }]}
+                  onPress={() => onLogPickup(r)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityHint="Opens the pickup form, pre-filled from the office's request"
+                >
+                  <Text style={styles.batchBtnText}>Log pickup</Text>
+                </TouchableOpacity>
+              )}
             </View>
           );
         }
@@ -421,7 +452,7 @@ type Row =
   | { type: 'group'; key: string; jobs: QueueJob[] }
   | { type: 'job'; job: QueueJob; inGroup?: boolean; lastInGroup?: boolean }
   | { type: 'pickup' }
-  | { type: 'returns' };
+  | { type: 'returns'; items: ReturnCase[] };
 
 export default function JobQueueScreen() {
   const router = useRouter();
@@ -508,7 +539,8 @@ export default function JobQueueScreen() {
           Alert.alert(
             'New pickup',
             `${r.officeName ?? 'An office'} has ${r.caseCount} case${r.caseCount === 1 ? '' : 's'} for the lab. ${readyLabel(r)}.` +
-              (r.note ? `\n\n“${r.note}”` : '')
+              (r.note ? `\n\n“${r.note}”` : '') +
+              '\n\nAccept or reject it on your Jobs screen when you can.'
           );
         } catch {
           // Offline: it shows up on the next refresh.
@@ -656,8 +688,32 @@ export default function JobQueueScreen() {
     loadReturns();
   };
 
-  // Track location whenever the driver has at least one active job
-  const hasActiveJob = activeJobs.some((j) => ON_THE_WAY.includes(j.status));
+  // Answering a pickup, same as a job: it can wait until the driver has a moment.
+  const [respondingTo, setRespondingTo] = useState<string | null>(null);
+  const sendPickupAnswer = async (r: ReturnCase, response: 'accepted' | 'rejected') => {
+    setRespondingTo(r.id);
+    const error = await respondToPickup(r.id, response);
+    setRespondingTo(null);
+    if (error) Alert.alert("Couldn't send your answer", error);
+    loadReturns();
+  };
+  const answerPickup = (r: ReturnCase, response: 'accepted' | 'rejected') => {
+    if (response === 'accepted') {
+      sendPickupAnswer(r, response);
+      return;
+    }
+    Alert.alert('Reject this pickup?', 'It goes back to dispatch to assign another driver.', [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: () => sendPickupAnswer(r, response) },
+    ]);
+  };
+  const pendingPickups = returns.filter((r) => r.status === 'requested' && r.driverResponse === 'pending');
+  const otherReturns = returns.filter((r) => !pendingPickups.includes(r));
+
+  // The lab sees the driver once they've accepted work or have cases on board.
+  const hasActiveJob =
+    activeJobs.some((j) => ON_THE_WAY.includes(j.status) && (j.status !== 'assigned' || j.driverResponse === 'accepted')) ||
+    returns.some((r) => r.status === 'with_driver' || (r.status === 'requested' && r.driverResponse === 'accepted'));
   const driverBreak = useDriverBreak();
   const onBreak = !!driverBreak.since;
   // Waits for the saved break state, so reopening the app mid-break sends nothing.
@@ -665,18 +721,18 @@ export default function JobQueueScreen() {
 
   // Sections group jobs going to the same office, so they can go out on one trip.
   const sections = [
-    { title: `Accept or reject · ${replyJobs.length}`, data: replyJobs },
-    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs },
-  ].filter((s) => s.data.length > 0);
+    { title: `Accept or reject · ${replyJobs.length + pendingPickups.length}`, data: replyJobs, pickups: pendingPickups },
+    { title: `In progress · ${inProgressJobs.length}`, data: inProgressJobs, pickups: [] },
+  ].filter((s) => s.data.length > 0 || s.pickups.length > 0);
 
   // "Returning to lab" sits after the active work.
-  const returningRows: Row[] = returns.length > 0
+  const returningRows: Row[] = otherReturns.length > 0
     ? [
         {
           type: 'section',
-          title: `${returns.some((r) => r.status === 'requested') ? 'Pickups & returns' : 'Returning to lab'} · ${returns.reduce((n, r) => n + r.caseCount, 0)} cases`,
+          title: `${otherReturns.some((r) => r.status === 'requested') ? 'Pickups & returns' : 'Returning to lab'} · ${returns.reduce((n, r) => n + r.caseCount, 0)} cases`,
         },
-        { type: 'returns' },
+        { type: 'returns', items: otherReturns },
       ]
     : [];
 
@@ -695,6 +751,7 @@ export default function JobQueueScreen() {
               { type: 'group', key: `${s.title}-${stop.key}`, jobs: stop.jobs },
               ...stop.jobs.map((job, i): Row => ({ type: 'job', job, inGroup: true, lastInGroup: i === stop.jobs.length - 1 })),
             ]),
+      ...(s.pickups.length > 0 ? [{ type: 'returns', items: s.pickups } as Row] : []),
     ]),
     ...returningRows,
   ];
@@ -798,10 +855,12 @@ export default function JobQueueScreen() {
           if (item.type === 'returns') {
             return (
               <ReturningSection
-                returns={returns}
+                returns={item.items}
                 dropping={dropping}
                 onDropAll={dropAllAtLab}
                 onLogPickup={(r) => { setLogPickupFor(r); setShowLogPickup(true); }}
+                respondingTo={respondingTo}
+                onRespond={answerPickup}
               />
             );
           }
@@ -1106,6 +1165,24 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     lineHeight: 19,
     marginTop: 2,
+  },
+  pickupAnswer: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  pickupAnswerBtn: {
+    flex: 1,
+  },
+  pickupRejectBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
+  pickupRejectText: {
+    fontFamily: Fonts.semibold,
+    color: Colors.danger,
+    fontSize: FontSize.md,
   },
   pickupBtn: {
     flexDirection: 'row',
