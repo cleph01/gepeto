@@ -791,9 +791,20 @@ export default function JobQueueScreen() {
                 </View>
                 <Text style={styles.wordmark}>Gepeto</Text>
               </View>
-              <Text style={styles.headerDate}>
-                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.headerDate}>
+                  {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                </Text>
+                <TouchableOpacity
+                  style={styles.helpBtn}
+                  onPress={() => router.push('/help')}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Help"
+                >
+                  <IconSymbol name="questionmark.circle" size={22} color={Colors.accent} />
+                </TouchableOpacity>
+              </View>
             </View>
             <Text style={styles.eyebrow}>Today</Text>
             <Text style={styles.headerTitle} accessibilityRole="header">My Jobs</Text>
@@ -991,6 +1002,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: -0.4,
   },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  helpBtn: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   headerDate: {
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,

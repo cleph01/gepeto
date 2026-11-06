@@ -84,6 +84,8 @@ export default function RootLayout() {
               headerBackTitle: 'Jobs',
             }}
           />
+          <Stack.Screen name="help/index" options={{ title: 'Help', headerBackTitle: 'Back' }} />
+          <Stack.Screen name="help/[slug]" options={{ title: 'Help', headerBackTitle: 'Help' }} />
           <Stack.Screen
             name="chat/[id]"
             options={{

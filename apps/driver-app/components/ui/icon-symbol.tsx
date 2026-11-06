@@ -19,6 +19,7 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'questionmark.circle': 'help-outline',
   'list.bullet.rectangle.portrait.fill': 'list-alt',
   'gearshape.fill': 'settings',
   'clock.fill': 'history',

@@ -9,7 +9,7 @@ import {
   Image,
 } from 'react-native';
 import Constants from 'expo-constants';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context/auth';
@@ -39,6 +39,7 @@ function initialsFrom(text: string): string {
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { session, signOut } = useAuth();
   const driverId = getDriverId(session);
   const [navPref, setNavPref] = useState<NavApp | null>(null);
@@ -180,6 +181,23 @@ export default function SettingsScreen() {
           <Text style={styles.sectionHint}>Used when you tap Navigate on a job.</Text>
         </View>
 
+        {/* Help */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Help</Text>
+          <TouchableOpacity
+            style={[styles.card, styles.helpRow]}
+            onPress={() => router.push('/help')}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+          >
+            <View style={styles.prefIcon}>
+              <IconSymbol name="questionmark.circle" size={20} color={Colors.accent} />
+            </View>
+            <Text style={styles.helpRowText}>How to use the app</Text>
+            <IconSymbol name="chevron.right" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
         {/* Sign out */}
         <TouchableOpacity
           style={styles.signOutBtn}
@@ -285,6 +303,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
+  },
+  helpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  helpRowText: {
+    flex: 1,
+    fontFamily: Fonts.semibold,
+    color: Colors.text,
+    fontSize: FontSize.md,
   },
   prefRow: {
     flexDirection: 'row',
