@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useMessageNotifications } from "@/context/message-notifications";
@@ -180,9 +181,12 @@ export default function ReturnsPage() {
         background: "#FFFFFF", borderBottom: "1px solid rgba(0,0,0,0.07)",
       }}>
         <div>
-          <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
-            Returning Cases
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
+              Returning Cases
+            </h1>
+            <HelpLink slug="returning-cases" topic="pickups and check-in" />
+          </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0 }}>
             {loaded
               ? [

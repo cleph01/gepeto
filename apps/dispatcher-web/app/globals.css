@@ -101,3 +101,89 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
 }
+
+/* ── Help site and printable manual ────────────────────────────────────────── */
+
+.help-page { display: flex; flex-direction: column; min-height: 100vh; background: #F8F9FB; }
+.help-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 56px; padding: 8px 28px; background: #fff; border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.help-header h1 { margin: 0; font-size: 15px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.01em; }
+.help-header p { margin: 0; font-size: 11.5px; color: #5F5E5A; }
+.help-column { width: 100%; max-width: 760px; margin: 0 auto; padding: 24px 28px 64px; font-size: 14.5px; line-height: 1.6; color: #2b2b2b; }
+
+.help-button {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: #fff; color: #185FA5; border: 1px solid rgba(24,95,165,0.35); border-radius: 7px;
+  padding: 6px 12px; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.help-button:hover { background: #EBF2FA; }
+.help-back { display: inline-block; margin-bottom: 16px; font-size: 13px; color: #185FA5; text-decoration: none; }
+.help-back:hover { text-decoration: underline; }
+
+.help-link {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2);
+  font-size: 11px; font-weight: 600; line-height: 1; color: #5F5E5A; text-decoration: none;
+}
+.help-link:hover { color: #185FA5; border-color: #185FA5; background: #EBF2FA; }
+
+.help-section-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #5F5E5A; text-transform: uppercase; letter-spacing: 0.04em; }
+.help-card { background: #fff; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; overflow: hidden; }
+.help-card-row { display: block; padding: 12px 16px; color: inherit; text-decoration: none; }
+.help-card-row + .help-card-row { border-top: 1px solid rgba(0,0,0,0.06); }
+.help-card-row:hover { background: #F4F8FC; }
+.help-card-row strong { display: block; font-size: 14px; font-weight: 600; color: #185FA5; }
+.help-card-row span { display: block; font-size: 13px; color: #5F5E5A; }
+
+.help-prose h1 { margin: 0 0 12px; font-size: 22px; font-weight: 600; line-height: 1.25; color: #1a1a1a; letter-spacing: -0.015em; }
+.help-prose h2 { margin: 28px 0 8px; font-size: 16px; font-weight: 600; line-height: 1.3; color: #1a1a1a; scroll-margin-top: 72px; }
+.help-prose p { margin: 0 0 12px; }
+.help-prose ol, .help-prose ul { margin: 0 0 12px; padding-left: 22px; }
+.help-prose ol { list-style: decimal; }
+.help-prose ul { list-style: disc; }
+.help-prose li { margin-bottom: 5px; }
+.help-prose strong { font-weight: 600; color: #1a1a1a; }
+.help-prose a, .help-toc a, .help-related a { color: #185FA5; text-decoration: underline; text-underline-offset: 2px; }
+.help-note { margin: 0 0 12px; padding: 10px 12px; background: #EBF2FA; border-left: 3px solid #185FA5; border-radius: 0 8px 8px 0; font-size: 13.5px; }
+
+.help-toc, .help-related { font-size: 13.5px; }
+.help-toc strong, .help-related strong { font-weight: 600; color: #1a1a1a; }
+.help-toc ul, .help-related ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.help-toc li, .help-related li { margin-top: 3px; }
+.help-toc { margin: 0 0 20px; padding: 12px 14px; background: #fff; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; }
+.help-related { margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(0,0,0,0.1); }
+
+.help-manual-title h1 { margin: 0; font-size: 24px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.015em; }
+.help-manual-title p { margin: 4px 0 20px; color: #5F5E5A; }
+.help-manual-contents { padding: 14px 16px; margin-bottom: 32px; background: #fff; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; }
+.help-manual-contents h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; color: #1a1a1a; }
+.help-manual-contents h3 { margin: 10px 0 2px; font-size: 13.5px; font-weight: 600; color: #1a1a1a; }
+.help-manual-contents ul { margin: 0; padding: 0; list-style: none; }
+.help-manual-contents a { color: #185FA5; text-decoration: none; font-size: 14px; }
+.help-manual-contents a:hover { text-decoration: underline; }
+.help-manual-article { margin-top: 40px; padding-top: 24px; border-top: 1px solid rgba(0,0,0,0.1); scroll-margin-top: 72px; }
+.help-manual-section { margin: 0 0 4px !important; font-size: 12px; font-weight: 600; color: #5F5E5A; text-transform: uppercase; letter-spacing: 0.04em; }
+
+@media (max-width: 1023px) {
+  .help-header { padding: 8px 16px; }
+  .help-column { padding: 16px 16px 48px; }
+}
+
+@media print {
+  @page { margin: 16mm 14mm; }
+  .no-print { display: none !important; }
+  html, body { height: auto !important; display: block !important; background: #fff !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; min-height: 0 !important; display: block !important; }
+  .help-page { display: block; min-height: 0; background: #fff; }
+  .help-column { max-width: none; padding: 0; font-size: 11pt; line-height: 1.45; color: #111; }
+  .help-prose h2 { break-after: avoid; }
+  .help-prose li, .help-note { break-inside: avoid; }
+  .help-prose a { color: inherit; }
+  .help-prose a[data-ref]::after { content: " (see " attr(data-ref) ")"; }
+  .help-note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .help-manual-contents { border: none; padding: 0; }
+  .help-manual-contents a { color: #111; }
+  .help-manual-article { margin: 0; padding: 0; border: none; break-before: page; }
+}

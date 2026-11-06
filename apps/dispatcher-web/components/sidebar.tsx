@@ -72,6 +72,17 @@ const navLinks = [
       </svg>
     ),
   },
+  {
+    href: "/help",
+    label: "Help",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.25" fill="none" />
+        <path d="M6.25 6.25a1.75 1.75 0 113 1.2c-.6.5-1.25.85-1.25 1.8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
+        <circle cx="8" cy="11.5" r="0.75" fill="currentColor" />
+      </svg>
+    ),
+  },
 ];
 
 // Phone top bar: opens global search (same width as the menu button, so the
@@ -242,6 +253,7 @@ export default function Sidebar() {
       <>
         {/* Mobile top header */}
         <header
+          className="no-print"
           style={{
             position: "fixed", top: 0, left: 0, right: 0, height: 56,
             background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.08)",
@@ -290,6 +302,7 @@ export default function Sidebar() {
 
         {/* Drawer */}
         <aside
+          className="no-print"
           style={{
             position: "fixed", top: 0, left: 0, height: "100vh", width: 240,
             background: "#ffffff", borderRight: "1px solid rgba(0,0,0,0.08)",
@@ -309,6 +322,7 @@ export default function Sidebar() {
   // Desktop
   return (
     <aside
+      className="no-print"
       style={{
         width: 240, minWidth: 240, background: "#FFFFFF",
         borderRight: "1px solid rgba(0,0,0,0.08)",

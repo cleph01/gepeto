@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { copyToClipboard, trackingUrl } from "@/lib/client-utils";
@@ -81,9 +82,12 @@ export default function OfficesPage() {
         flexShrink: 0,
       }}>
         <div>
-          <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
-            Offices
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
+              Offices
+            </h1>
+            <HelpLink slug="office-access" topic="office tracking access" />
+          </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0 }}>
             {loaded ? `${offices.length} dental office${offices.length !== 1 ? "s" : ""}` : "Loading offices…"}
           </p>

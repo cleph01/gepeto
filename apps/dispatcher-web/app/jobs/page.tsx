@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useSearch } from "@/context/search";
@@ -2092,9 +2093,12 @@ export default function JobsPage() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
-            Jobs
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
+              Jobs
+            </h1>
+            <HelpLink slug="create-a-job" topic="creating and assigning jobs" />
+          </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, fontWeight: 400 }}>
             {jobsLoaded
               ? `${activeCount} active · ${counts.pending} pending · ${counts.delivered} delivered today`
