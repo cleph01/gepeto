@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
@@ -63,6 +63,15 @@ interface DriverOption {
 
 const CHECKED_IN_DAYS = 30;
 
+// The table's six columns need this much room beside the sidebar. Below it,
+// each return is a card, so nothing runs off the right edge.
+const STACKED_QUERY = "(max-width: 1279px)";
+const subscribeStacked = (onChange: () => void) => {
+  const q = window.matchMedia(STACKED_QUERY);
+  q.addEventListener("change", onChange);
+  return () => q.removeEventListener("change", onChange);
+};
+
 const STATUS: Record<ReturnStatus, { label: string; color: string; bg: string }> = {
   requested:   { label: "Pickup requested",         color: "#854F0B", bg: "rgba(133,79,11,0.12)" },
   cancelled:   { label: "Cancelled",                color: "#5F5E5A", bg: "rgba(0,0,0,0.06)" },
@@ -83,6 +92,7 @@ const timeLabel = (iso: string) => {
 export default function ReturnsPage() {
   const bp = useBreakpoint();
   const isMobile = bp === "mobile";
+  const stacked = useSyncExternalStore(subscribeStacked, () => window.matchMedia(STACKED_QUERY).matches, () => false);
   const { apiFetch, session } = useAuth();
   const { returnsSummary, returnsChangedAt } = useMessageNotifications();
 
@@ -257,7 +267,7 @@ export default function ReturnsPage() {
           background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12,
           boxShadow: "0 1px 3px rgba(0,0,0,0.07)", overflow: "hidden",
         }}>
-          {!isMobile && (
+          {!stacked && (
             <div style={{ ...rowGrid, padding: "8px 16px", background: "#FAFAFA", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
               {HEADERS.map(([label, key], i) => (
                 <SortHeader key={i} label={label} sortKey={key} sort={sort} onToggle={toggleSort} />
@@ -284,6 +294,7 @@ export default function ReturnsPage() {
               <ReturnRow
                 r={r}
                 isMobile={isMobile}
+                stacked={stacked}
                 isLast={r === ordered[ordered.length - 1]}
                 onCheckIn={() => setCheckInFor(r)}
                 onHistory={() => setHistoryFor(r)}
@@ -316,15 +327,15 @@ export default function ReturnsPage() {
 
 const rowGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "120px minmax(140px, 1.2fr) minmax(110px, 1fr) minmax(140px, 1.3fr) 170px 150px",
+  gridTemplateColumns: "110px minmax(130px, 1.1fr) minmax(140px, 190px) minmax(130px, 1.2fr) 190px 170px",
   gap: 12,
   alignItems: "start",
 };
 
 function ReturnRow({
-  r, isMobile, isLast, onCheckIn, onHistory, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, error,
+  r, isMobile, stacked, isLast, onCheckIn, onHistory, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, error,
 }: {
-  r: ReturnCase; isMobile: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
+  r: ReturnCase; isMobile: boolean; stacked: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
   drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void;
   onChangeDriver: (driverId: string) => void; onUndoDropOff: () => void; onUndoCheckIn: () => void; error: string | null;
 }) {
@@ -335,38 +346,48 @@ function ReturnRow({
       ? { label: "Driver accepted", color: "#185FA5", bg: "rgba(24,95,165,0.10)" }
       : { label: "Waiting for driver to accept", color: "#854F0B", bg: "rgba(133,79,11,0.10)" }
     : STATUS[r.status];
+  // The driver is edited where it's read, in the Driver column.
+  const driverCell = isRequest || canChangeDriver ? (
+    <select
+      value={r.driverId ?? ""}
+      onChange={(e) => {
+        if (isRequest) onAssign(e.target.value || null);
+        else if (e.target.value) onChangeDriver(e.target.value);
+      }}
+      aria-label={`Driver for RET-${r.number}`}
+      style={{
+        width: "100%", maxWidth: isMobile ? "none" : stacked ? 320 : 190, boxSizing: "border-box", cursor: "pointer", color: "#1a1a1a",
+        fontSize: isMobile ? 16 : 12.5, padding: isMobile ? "8px 10px" : "6px 8px", borderRadius: 7,
+        border: `1px solid ${r.driverId ? "rgba(0,0,0,0.15)" : "#854F0B"}`,
+        background: r.driverId ? "#fff" : "rgba(133,79,11,0.06)",
+      }}
+    >
+      {(isRequest || !r.driverId) && <option value="">{isRequest ? "Assign driver…" : "Choose driver…"}</option>}
+      {drivers.map((d) => (
+        <option key={d.id} value={d.id}>{d.name}{d.status === "off_duty" ? " (off duty)" : ""}</option>
+      ))}
+    </select>
+  ) : (
+    <div style={{ fontSize: 13, color: r.driverName ? "#3a3a3a" : "#9a9a9a" }}>{r.driverName ?? "—"}</div>
+  );
+  // One main action at most. Everything else stays quiet underneath it.
+  const canCheckIn = r.status === "with_driver" || r.status === "at_lab";
   const actions = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: isMobile ? "flex-start" : "flex-end" }}>
-      {(isRequest || canChangeDriver) && (
-        <select
-          value={r.driverId ?? ""}
-          onChange={(e) => {
-            if (isRequest) onAssign(e.target.value || null);
-            else if (e.target.value) onChangeDriver(e.target.value);
-          }}
-          aria-label={`Driver for RET-${r.number}`}
-          style={{
-            fontSize: 12, padding: "5px 8px", borderRadius: 7, maxWidth: 150, cursor: "pointer",
-            border: `1px solid ${r.driverId ? "rgba(0,0,0,0.15)" : "#854F0B"}`,
-            background: r.driverId ? "#fff" : "rgba(133,79,11,0.06)", color: "#1a1a1a",
-          }}
-        >
-          {(isRequest || !r.driverId) && <option value="">{isRequest ? "Assign driver…" : "Choose driver…"}</option>}
-          {drivers.map((d) => (
-            <option key={d.id} value={d.id}>{d.name}{d.status === "off_duty" ? " (off duty)" : ""}</option>
-          ))}
-        </select>
-      )}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
-        {(r.status === "with_driver" || r.status === "at_lab") && (
-          <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>
-        )}
-        {isRequest && <button onClick={onCancel} style={ghostBtn}>Cancel</button>}
-        {r.status === "at_lab" && <button onClick={onUndoDropOff} style={ghostBtn}>Undo drop-off</button>}
-        {r.status === "checked_in" && <button onClick={onUndoCheckIn} style={ghostBtn}>Undo check-in</button>}
-        <button onClick={onHistory} style={ghostBtn}>History</button>
+    <div style={{
+      display: "flex", gap: stacked ? 8 : 4,
+      flexDirection: stacked ? "row" : "column",
+      alignItems: stacked ? "center" : "flex-end",
+      justifyContent: stacked ? "space-between" : "flex-start",
+      flexWrap: "wrap",
+    }}>
+      {canCheckIn && <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>}
+      <div style={{ display: "flex", gap: isMobile ? 4 : 2, marginLeft: stacked ? "auto" : 0, marginRight: -6 }}>
+        {isRequest && <button onClick={onCancel} style={linkBtn(isMobile)}>Cancel</button>}
+        {r.status === "at_lab" && <button onClick={onUndoDropOff} style={linkBtn(isMobile)}>Undo drop-off</button>}
+        {r.status === "checked_in" && <button onClick={onUndoCheckIn} style={linkBtn(isMobile)}>Undo check-in</button>}
+        <button onClick={onHistory} style={linkBtn(isMobile)}>History</button>
       </div>
-      {error && <span style={{ fontSize: 11.5, color: "#A32D2D" }}>{error}</span>}
+      {error && <span style={{ fontSize: 11.5, color: "#A32D2D", flexBasis: "100%", textAlign: stacked ? "left" : "right" }}>{error}</span>}
     </div>
   );
   const checkInDetail = r.status === "checked_in" && (
@@ -409,7 +430,7 @@ function ReturnRow({
     </div>
   );
 
-  if (isMobile) {
+  if (stacked) {
     return (
       <div style={{ padding: "12px 14px", borderBottom: isLast ? "none" : "1px solid rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
@@ -417,7 +438,7 @@ function ReturnRow({
           {status}
         </div>
         <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>{r.officeName ?? "Office"}</div>
-        <div style={{ fontSize: 12.5, color: "#3a3a3a" }}>{r.driverName ?? (isRequest ? "No driver yet" : "Driver")}</div>
+        {driverCell}
         {cases}
         {when}
         {actions}
@@ -437,7 +458,7 @@ function ReturnRow({
           <div style={{ fontSize: 11.5, color: "#9a9a9a", marginTop: 2 }}>During delivery of {r.pickedUpDuringCaseId}</div>
         )}
       </div>
-      <div style={{ fontSize: 13, color: r.driverName ? "#3a3a3a" : "#9a9a9a" }}>{r.driverName ?? (isRequest ? "No driver yet" : "—")}</div>
+      <div style={{ minWidth: 0 }}>{driverCell}</div>
       {cases}
       <div>{status}</div>
       {actions}
@@ -467,6 +488,11 @@ const primaryBtn = (emphasis: boolean): React.CSSProperties => ({
   background: emphasis ? "#185FA5" : "#FFFFFF",
   color: emphasis ? "#FFFFFF" : "#185FA5",
   whiteSpace: "nowrap",
+});
+
+const linkBtn = (isMobile: boolean): React.CSSProperties => ({
+  fontSize: 12, padding: isMobile ? "8px 6px" : "4px 6px", border: "none", background: "none", cursor: "pointer",
+  color: "#5F5E5A", textDecoration: "underline", textDecorationColor: "rgba(0,0,0,0.25)", textUnderlineOffset: 2, whiteSpace: "nowrap",
 });
 
 const ghostBtn: React.CSSProperties = {
