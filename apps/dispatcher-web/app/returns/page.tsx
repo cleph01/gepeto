@@ -101,6 +101,7 @@ export default function ReturnsPage() {
   const [historyFor, setHistoryFor] = useState<ReturnCase | null>(null);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [requesting, setRequesting] = useState(false);
 
   // Drivers for the Assign dropdown on pickup requests.
   useEffect(() => {
@@ -127,6 +128,47 @@ export default function ReturnsPage() {
     const res = await apiFetch<ApiResponse<{ ok: boolean }>>(`/api/returns/${r.id}/cancel`, { method: "POST" }).catch(() => null);
     if (res?.data) setReturns((prev) => prev.filter((x) => x.id !== r.id));
     else setRowError({ id: r.id, message: res?.error?.message ?? "Couldn't cancel. Try again." });
+  };
+
+  // Fixes after pickup: a different driver, or undoing a drop-off or check-in.
+  const correctReturn = async (r: ReturnCase, fix: { driverId: string } | { undo: "drop_off" | "check_in" }) => {
+    setRowError(null);
+    const res = await apiFetch<ApiResponse<ReturnCase>>(`/api/returns/${r.id}/correct`, {
+      method: "POST",
+      body: JSON.stringify(fix),
+    }).catch(() => null);
+    if (!res?.data) {
+      setRowError({ id: r.id, message: res?.error?.message ?? "Couldn't make that change. Try again." });
+      return;
+    }
+    const updated = res.data;
+    setReturns((prev) => {
+      const others = prev.filter((x) => x.id !== updated.id);
+      return prev.length === others.length ? [updated, ...others] : prev.map((x) => (x.id === updated.id ? updated : x));
+    });
+    setCheckedIn((prev) => (prev ? prev.filter((x) => x.id !== updated.id) : prev));
+  };
+
+  const changeDriver = (r: ReturnCase, driverId: string) => {
+    const name = drivers.find((d) => d.id === driverId)?.name ?? "this driver";
+    if (!window.confirm(`Change the driver on RET-${r.number} to ${name}? This is recorded in the return's history.`)) return;
+    correctReturn(r, { driverId });
+  };
+
+  const undoDropOff = (r: ReturnCase) => {
+    if (!window.confirm(`Undo the drop-off for RET-${r.number}? It goes back to With driver.`)) return;
+    correctReturn(r, { undo: "drop_off" });
+  };
+
+  const undoCheckIn = (r: ReturnCase) => {
+    if (!window.confirm(`Undo the check-in for RET-${r.number}? It goes back to needing check-in, and you'll enter its details again. The old details stay in its history.`)) return;
+    correctReturn(r, { undo: "check_in" });
+  };
+
+  const onRequested = (created: ReturnCase) => {
+    setReturns((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+    setFilter("open");
+    setRequesting(false);
   };
 
   // Load on open, and again whenever a return is logged, dropped off or checked in.
@@ -198,6 +240,7 @@ export default function ReturnsPage() {
               : "Loading returns…"}
           </p>
         </div>
+        <button onClick={() => setRequesting(true)} style={{ ...primaryBtn(true), padding: "7px 14px" }}>Request pickup</button>
       </header>
 
       <div style={{ padding: isMobile ? 12 : "20px 28px", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -247,6 +290,9 @@ export default function ReturnsPage() {
                 drivers={drivers}
                 onAssign={(driverId) => assignPickup(r, driverId)}
                 onCancel={() => cancelPickup(r)}
+                onChangeDriver={(driverId) => changeDriver(r, driverId)}
+                onUndoDropOff={() => undoDropOff(r)}
+                onUndoCheckIn={() => undoCheckIn(r)}
                 error={rowError?.id === r.id ? rowError.message : null}
               />
               </div>
@@ -261,6 +307,7 @@ export default function ReturnsPage() {
         <CheckInModal r={checkInFor} onClose={() => setCheckInFor(null)} onDone={onCheckedIn} />
       )}
       {historyFor && <ReturnHistoryModal r={historyFor} onClose={() => setHistoryFor(null)} />}
+      {requesting && <RequestPickupModal onClose={() => setRequesting(false)} onDone={onRequested} />}
     </div>
   );
 }
@@ -275,12 +322,14 @@ const rowGrid: React.CSSProperties = {
 };
 
 function ReturnRow({
-  r, isMobile, isLast, onCheckIn, onHistory, drivers, onAssign, onCancel, error,
+  r, isMobile, isLast, onCheckIn, onHistory, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, error,
 }: {
   r: ReturnCase; isMobile: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
-  drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void; error: string | null;
+  drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void;
+  onChangeDriver: (driverId: string) => void; onUndoDropOff: () => void; onUndoCheckIn: () => void; error: string | null;
 }) {
   const isRequest = r.status === "requested";
+  const canChangeDriver = r.status === "with_driver" || r.status === "at_lab";
   const st = isRequest && r.driverId
     ? r.driverResponse === "accepted"
       ? { label: "Driver accepted", color: "#185FA5", bg: "rgba(24,95,165,0.10)" }
@@ -288,10 +337,13 @@ function ReturnRow({
     : STATUS[r.status];
   const actions = (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: isMobile ? "flex-start" : "flex-end" }}>
-      {isRequest && (
+      {(isRequest || canChangeDriver) && (
         <select
           value={r.driverId ?? ""}
-          onChange={(e) => onAssign(e.target.value || null)}
+          onChange={(e) => {
+            if (isRequest) onAssign(e.target.value || null);
+            else if (e.target.value) onChangeDriver(e.target.value);
+          }}
           aria-label={`Driver for RET-${r.number}`}
           style={{
             fontSize: 12, padding: "5px 8px", borderRadius: 7, maxWidth: 150, cursor: "pointer",
@@ -299,7 +351,7 @@ function ReturnRow({
             background: r.driverId ? "#fff" : "rgba(133,79,11,0.06)", color: "#1a1a1a",
           }}
         >
-          <option value="">Assign driver…</option>
+          {(isRequest || !r.driverId) && <option value="">{isRequest ? "Assign driver…" : "Choose driver…"}</option>}
           {drivers.map((d) => (
             <option key={d.id} value={d.id}>{d.name}{d.status === "off_duty" ? " (off duty)" : ""}</option>
           ))}
@@ -310,6 +362,8 @@ function ReturnRow({
           <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>
         )}
         {isRequest && <button onClick={onCancel} style={ghostBtn}>Cancel</button>}
+        {r.status === "at_lab" && <button onClick={onUndoDropOff} style={ghostBtn}>Undo drop-off</button>}
+        {r.status === "checked_in" && <button onClick={onUndoCheckIn} style={ghostBtn}>Undo check-in</button>}
         <button onClick={onHistory} style={ghostBtn}>History</button>
       </div>
       {error && <span style={{ fontSize: 11.5, color: "#A32D2D" }}>{error}</span>}
@@ -615,6 +669,162 @@ function CheckInModal({ r, onClose, onDone }: {
   );
 }
 
+interface OfficeOption {
+  id: string;
+  name: string;
+}
+
+function timeInputValue(d: Date) {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+// For an office that asked outside the app, usually by phone. The result is the
+// same pickup request an office makes from its tracking page.
+function RequestPickupModal({ onClose, onDone }: {
+  onClose: () => void; onDone: (created: ReturnCase) => void;
+}) {
+  const { apiFetch } = useAuth();
+  const [offices, setOffices] = useState<OfficeOption[] | null>(null);
+  const [officeId, setOfficeId] = useState("");
+  const [count, setCount] = useState(1);
+  const [caseText, setCaseText] = useState("");
+  const [note, setNote] = useState("");
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [laterTime, setLaterTime] = useState(() => {
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    d.setMinutes(d.getMinutes() < 30 ? 30 : 60, 0, 0);
+    return timeInputValue(d);
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<ApiResponse<OfficeOption[]>>("/api/offices")
+      .then((res) => setOffices(res.data ?? []))
+      .catch(() => setOffices([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const caseNumbers = caseText.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+
+  // "Later" means later today; a time already past rolls to tomorrow.
+  const readyAt = (() => {
+    if (when === "now") return null;
+    const [h, m] = laterTime.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    if (d <= new Date()) d.setDate(d.getDate() + 1);
+    return d;
+  })();
+
+  const submit = async () => {
+    if (!officeId) { setError("Choose the office these cases are coming from."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch<ApiResponse<ReturnCase>>("/api/returns/request", {
+        method: "POST",
+        body: JSON.stringify({
+          officeId,
+          caseCount: Math.max(count, caseNumbers.length),
+          caseNumbers,
+          note,
+          readyAt: readyAt ? readyAt.toISOString() : null,
+        }),
+      });
+      if (res.data) onDone(res.data);
+      else setError(res.error?.message ?? "Couldn't create the pickup.");
+    } catch {
+      setError("Couldn't reach the server. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ModalFrame title="Request a pickup" subtitle="For an office that called or emailed. Assign a driver once it's added." onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div>
+          <label htmlFor="request-office" style={fieldLabel}>Office</label>
+          <select
+            id="request-office"
+            value={officeId}
+            onChange={(e) => setOfficeId(e.target.value)}
+            disabled={offices === null}
+            style={{ ...textInput, appearance: "auto" }}
+          >
+            <option value="">{offices === null ? "Loading offices…" : offices.length === 0 ? "No offices yet" : "Choose an office…"}</option>
+            {(offices ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <span style={fieldLabel}>Number of cases</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button aria-label="One fewer" onClick={() => setCount((n) => Math.max(1, n - 1))} style={stepBtn}>−</button>
+            <span aria-live="polite" style={{ fontSize: 18, fontWeight: 600, minWidth: 28, textAlign: "center", color: "#1a1a1a" }}>{Math.max(count, caseNumbers.length)}</span>
+            <button aria-label="One more" onClick={() => setCount((n) => Math.min(99, n + 1))} style={stepBtn}>+</button>
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="request-cases" style={fieldLabel}>
+            Case numbers <span style={{ fontWeight: 400, color: "#9a9a9a" }}>(optional)</span>
+          </label>
+          <input
+            id="request-cases"
+            value={caseText}
+            onChange={(e) => setCaseText(e.target.value)}
+            placeholder="e.g. LAB-2042, LAB-2043"
+            style={textInput}
+          />
+          <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9a9a9a" }}>Use case numbers, not patient names.</p>
+        </div>
+
+        <div>
+          <span style={fieldLabel}>When are they ready?</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <Chip active={when === "now"} onClick={() => setWhen("now")}>Ready now</Chip>
+            <Chip active={when === "later"} onClick={() => setWhen("later")}>Ready after…</Chip>
+            {when === "later" && (
+              <input type="time" value={laterTime} onChange={(e) => setLaterTime(e.target.value)} aria-label="Ready after" style={{ ...textInput, width: "auto" }} />
+            )}
+          </div>
+          {readyAt && (
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9a9a9a" }}>
+              Ready {readyAt.toDateString() === new Date().toDateString() ? "today" : "tomorrow"} after {readyAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="request-note" style={fieldLabel}>
+            Note <span style={{ fontWeight: 400, color: "#9a9a9a" }}>(optional)</span>
+          </label>
+          <input
+            id="request-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            placeholder="e.g. Leave at the front desk"
+            style={textInput}
+          />
+        </div>
+
+        {error && <p style={{ margin: 0, fontSize: 12.5, color: "#A32D2D" }}>{error}</p>}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onClose} style={ghostBtn}>Cancel</button>
+          <button onClick={submit} disabled={saving} style={{ ...primaryBtn(true), opacity: saving ? 0.6 : 1, padding: "7px 16px" }}>
+            {saving ? "Adding…" : "Request pickup"}
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
+  );
+}
+
 const stepBtn: React.CSSProperties = {
   width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(0,0,0,0.15)", background: "#fff",
   fontSize: 18, lineHeight: "18px", cursor: "pointer", color: "#1a1a1a",
@@ -626,6 +836,7 @@ interface ReturnEvent {
   detail: {
     caseCount?: number; receivedCount?: number; caseId?: string; caseNumbers?: string[]; fromStatus?: string;
     requestedCount?: number; fulfilledRequest?: boolean; readyAt?: string | null; driverId?: string | null;
+    correction?: "driver" | "undo_drop_off" | "undo_check_in"; previousDriverName?: string | null;
   } | null;
   actorRole: "driver" | "dispatcher" | "office";
   assignedDriverName: string | null;
@@ -680,6 +891,18 @@ function describeEvent(e: ReturnEvent): React.ReactNode {
     case "redelivery_created":
       return <>Redelivery job created</>;
     default:
+      if (d.correction === "driver") {
+        return <><strong>Driver corrected</strong>{d.previousDriverName ? <> from {d.previousDriverName}</> : null} to <strong>{e.assignedDriverName ?? "another driver"}</strong></>;
+      }
+      if (d.correction === "undo_drop_off") return <><strong>Drop-off undone</strong>: back with the driver</>;
+      if (d.correction === "undo_check_in") {
+        return (
+          <>
+            <strong>Check-in undone</strong>
+            {d.caseId && <>: it was <span style={{ fontFamily: "monospace" }}>{d.caseId}</span>, received {d.receivedCount}</>}
+          </>
+        );
+      }
       return <>Edited</>;
   }
 }
