@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import JobMap from "./job-map";
@@ -359,6 +360,7 @@ export default function TrackingView({
         {office.labPhone && (
           // The number is shown, not just linked: on a desktop the office will
           // usually dial it from a desk phone, and tel: links only help on mobile.
+          // On a phone the icon alone is enough, which leaves room for the lab's name.
           <a
             href={`tel:${office.labPhone.replace(/[^\d+]/g, "")}`}
             aria-label={`Call the lab at ${office.labPhone}`}
@@ -370,7 +372,7 @@ export default function TrackingView({
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
               <path d="M5.5 2.5L4 2 2.5 3.5c-.5 4 5 9.5 9 9l1.5-1.5-.5-1.5-2.5-1-1.25 1.25c-1.25-.5-2.75-2-3.25-3.25L6.75 5.25 5.5 2.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
-            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+            <span className="office-call-text" style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
               <span style={{ fontSize: 10.5, fontWeight: 500, color: "#5F5E5A" }}>Call the lab</span>
               <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", userSelect: "all" }}>{office.labPhone}</span>
             </span>
@@ -385,6 +387,18 @@ export default function TrackingView({
             changeNotify={alerts.changeNotify}
           />
         )}
+        <Link
+          href={`/t/${token}/help`}
+          aria-label="Help"
+          title="Help"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, flexShrink: 0,
+            border: "1px solid #C0D9F0", borderRadius: 8, background: "#fff", color: "#185FA5",
+            fontSize: 16, fontWeight: 600, textDecoration: "none",
+          }}
+        >
+          ?
+        </Link>
         </div>
       </header>
 

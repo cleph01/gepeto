@@ -24,3 +24,43 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Phones tap to call, so the header keeps just the icon. */
+@media (max-width: 480px) {
+  .office-call-text { display: none !important; }
+}
+
+/* ── Office help guide ─────────────────────────────────────────────────────── */
+
+.office-help { min-height: 100vh; background: #F8F9FB; color: #2b2b2b; font-family: system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.6; }
+.office-help-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 60px; padding: 8px 20px; background: #fff; border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.office-help-header a { color: #185FA5; font-size: 14px; font-weight: 500; text-decoration: none; }
+.office-help-header a:hover { text-decoration: underline; }
+.office-help-button { min-height: 38px; padding: 0 14px; background: #fff; color: #185FA5; border: 1px solid #C0D9F0; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.office-help main { max-width: 720px; margin: 0 auto; padding: 24px 20px 64px; }
+.office-help h1 { margin: 0 0 16px; font-size: 22px; font-weight: 600; line-height: 1.25; color: #1a1a1a; letter-spacing: -0.015em; }
+.office-help h2 { margin: 28px 0 8px; font-size: 16px; font-weight: 600; line-height: 1.3; color: #1a1a1a; }
+.office-help p { margin: 0 0 12px; }
+.office-help ol, .office-help ul { margin: 0 0 12px; padding-left: 22px; }
+.office-help ol { list-style: decimal; }
+.office-help ul { list-style: disc; }
+.office-help li { margin-bottom: 5px; }
+.office-help strong { font-weight: 600; color: #1a1a1a; }
+.office-help-note { margin: 0 0 12px; padding: 10px 12px; background: #EBF2FA; border-left: 3px solid #185FA5; border-radius: 0 8px 8px 0; font-size: 14px; }
+.office-help-toc { margin: 0 0 20px; padding: 12px 14px; background: #fff; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; font-size: 14px; }
+.office-help-toc ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.office-help-toc li { margin: 3px 0 0; }
+.office-help-toc a { color: #185FA5; text-decoration: underline; text-underline-offset: 2px; }
+
+@media print {
+  @page { margin: 16mm 14mm; }
+  .office-help { min-height: 0; background: #fff; color: #111; font-size: 11pt; line-height: 1.45; }
+  .office-help-header, .office-help-toc { display: none; }
+  .office-help main { max-width: none; padding: 0; }
+  .office-help h2 { break-after: avoid; }
+  .office-help li, .office-help-note { break-inside: avoid; }
+  .office-help-note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
