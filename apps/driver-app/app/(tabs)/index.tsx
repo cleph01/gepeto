@@ -39,7 +39,7 @@ import { DeliveredToast } from '@/components/delivered-toast';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
 import { RETURN_STATUS_LABEL, logReturn, readyLabel, respondToPickup, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
-import { onJobRemoved } from '@/components/job-alerts';
+import { onJobRemoved, showPickupAlert } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
 // The queue reads office names alongside each job (drivers can read their lab's offices).
@@ -535,13 +535,12 @@ export default function JobQueueScreen() {
           setReturns(stillOpen(res.data));
           const r = res.data.find((x) => x.id === returnId && x.status === 'requested');
           if (!r) return;
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          Alert.alert(
-            'New pickup',
-            `${r.officeName ?? 'An office'} has ${r.caseCount} case${r.caseCount === 1 ? '' : 's'} for the lab. ${readyLabel(r)}.` +
-              (r.note ? `\n\n“${r.note}”` : '') +
-              '\n\nAccept or reject it on your Jobs screen when you can.'
-          );
+          showPickupAlert({
+            returnId: r.id,
+            label: returnLabel(r),
+            officeName: r.officeName ?? 'An office',
+            summary: `${r.caseCount} case${r.caseCount === 1 ? '' : 's'} · ${readyLabel(r)}` + (r.note ? ` · “${r.note}”` : ''),
+          });
         } catch {
           // Offline: it shows up on the next refresh.
         }

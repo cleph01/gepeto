@@ -25,6 +25,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 //   due      dispatch changed a job's expected delivery time
 //   multi    several of office/due/priority changed in one save
 //   message  the lab or office sent a message (tap opens the chat)
+//   pickup   dispatch assigned an office pickup (tap opens the Jobs tab to answer)
 //
 // Case number changes update the job quietly (no alert).
 //
@@ -35,7 +36,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 // row change alone can't tell dispatch's status changes from the driver's own.
 // Messages come from MessagesProvider, which skips the chat that's open.
 
-type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi' | 'message';
+type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi' | 'message' | 'pickup';
 type JobAlert = {
   kind: AlertKind;
   jobId: string;
@@ -46,7 +47,7 @@ type JobAlert = {
   scheduledAt?: string | null;
   changed?: string[]; // for 'multi': what changed, in words
   from?: 'Lab' | 'Office'; // for 'message'
-  body?: string;           // for 'message'
+  body?: string;           // for 'message' and 'pickup'
 };
 type KnownJob = Pick<Job, 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>;
 
@@ -64,6 +65,13 @@ const removedListeners = new Set<(jobId: string) => void>();
 export function onJobRemoved(listener: (jobId: string) => void): () => void {
   removedListeners.add(listener);
   return () => { removedListeners.delete(listener); };
+}
+
+// The Jobs tab hears about assigned pickups and hands them to the banner.
+export type PickupAlert = { returnId: string; label: string; officeName: string; summary: string };
+const pickupListeners = new Set<(pickup: PickupAlert) => void>();
+export function showPickupAlert(pickup: PickupAlert) {
+  pickupListeners.forEach((l) => l(pickup));
 }
 
 function remember(row: Pick<Job, 'id' | 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>) {
@@ -207,6 +215,23 @@ export function JobAlerts() {
     [onIncoming]
   );
 
+  // An office pickup assigned to this driver. It can wait, so it never blocks the screen.
+  useEffect(() => {
+    const listener = (p: PickupAlert) => {
+      setAlert({
+        kind: 'pickup',
+        jobId: p.returnId,
+        caseId: p.label,
+        deliveryAddress: p.officeName,
+        priority: 'standard',
+        body: p.summary,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    };
+    pickupListeners.add(listener);
+    return () => { pickupListeners.delete(listener); };
+  }, []);
+
   useEffect(() => {
     Animated.timing(slide, {
       toValue: alert ? 0 : -160,
@@ -222,6 +247,8 @@ export function JobAlerts() {
     setAlert(null);
     if (alert.kind === 'message') {
       router.push(`/chat/${alert.jobId}`);
+    } else if (alert.kind === 'pickup') {
+      router.navigate('/(tabs)');
     } else if (alert.kind === 'removed') {
       // Don't leave the driver on a job that's no longer theirs.
       if (onJobScreen) router.replace('/(tabs)');
@@ -244,6 +271,7 @@ export function JobAlerts() {
     due: 'Due time changed',
     multi: 'Job updated',
     message: `Message from ${alert.from ?? 'Lab'}`,
+    pickup: 'New pickup',
   }[alert.kind];
   const detail = {
     new: `${alert.caseId} → ${alert.deliveryAddress}`,
@@ -255,9 +283,10 @@ export function JobAlerts() {
     due: alert.scheduledAt ? `${alert.caseId} · now ${dayLabel(alert.scheduledAt)} ${timeLabel(alert.scheduledAt)}` : alert.caseId,
     multi: `${alert.caseId} · ${(alert.changed ?? []).join(', ')}`,
     message: `${alert.caseId} · ${alert.body ?? ''}`,
+    pickup: `${alert.deliveryAddress} · ${alert.body ?? ''}`,
   }[alert.kind];
   // Only when the tap does something the driver needs to know about.
-  const cta = alert.kind === 'new'
+  const cta = alert.kind === 'new' || alert.kind === 'pickup'
     ? 'Tap to accept or reject'
     : alert.kind === 'removed' && onJobScreen
       ? 'Tap to go back to your jobs'
@@ -269,7 +298,7 @@ export function JobAlerts() {
       pointerEvents="box-none"
     >
       <TouchableOpacity
-        style={[styles.banner, { backgroundColor: look.bg, borderColor: look.border, borderWidth: look.border === ATTENTION_GREEN ? 2 : 1 }]}
+        style={[styles.banner, { backgroundColor: look.bg, borderColor: look.border, borderWidth: look.border === NEW_WORK_GREEN || look.border === MESSAGE_VIOLET ? 2 : 1 }]}
         onPress={tap}
         activeOpacity={0.85}
       >
@@ -285,7 +314,7 @@ export function JobAlerts() {
               </View>
             )}
           </View>
-          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={alert.kind === 'message' ? 2 : 1}>{detail}</Text>
+          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={alert.kind === 'message' || alert.kind === 'pickup' ? 2 : 1}>{detail}</Text>
           {cta && <Text style={[styles.cta, { color: look.cta }]}>{cta}</Text>}
         </View>
         <TouchableOpacity
@@ -301,8 +330,9 @@ export function JobAlerts() {
   );
 }
 
-// Blue: new work. Amber (the STAT color): urgent changes to the route or
-// priority, with a strong buzz. Navy: routine updates. Grey: low priority.
+// Blue with a green outline: new work. Violet outline: messages. Amber (the
+// STAT color): urgent changes to the route or priority, with a strong buzz.
+// Navy: routine updates. Grey: low priority.
 type Look = {
   icon: Parameters<typeof IconSymbol>[0]['name'];
   bg: string;
@@ -317,11 +347,13 @@ const AMBER = { bg: Colors.warningBg, border: Colors.warning, tile: Colors.stat,
 const NAVY = { bg: Colors.card, border: Colors.accentBorder, tile: Colors.cardElevated, iconColor: Colors.accent, detail: Colors.textSecondary, cta: Colors.accent };
 const GREY = { bg: Colors.card, border: Colors.borderStrong, tile: Colors.cardElevated, iconColor: Colors.textSecondary, detail: Colors.textSecondary, cta: Colors.textSecondary };
 
-// Bright enough to stand out: new jobs and messages need the driver's attention.
-const ATTENTION_GREEN = '#4ADE80';
+// Bright enough to stand out, and different so a driver can tell them apart at a glance.
+const NEW_WORK_GREEN = '#4ADE80';
+const MESSAGE_VIOLET = '#C084FC';
 
 const LOOK: Record<AlertKind, Look> = {
-  new:     { icon: 'bell.fill', ...BLUE, border: ATTENTION_GREEN },
+  new:     { icon: 'bell.fill', ...BLUE, border: NEW_WORK_GREEN },
+  pickup:  { icon: 'tray', ...BLUE, border: NEW_WORK_GREEN },
   stat:    { icon: 'bolt.fill', ...AMBER },
   office:  { icon: 'mappin.and.ellipse', ...AMBER },
   status:  { icon: 'list.bullet.rectangle.portrait', ...NAVY },
@@ -329,7 +361,7 @@ const LOOK: Record<AlertKind, Look> = {
   multi:   { icon: 'square.and.pencil', ...NAVY },
   removed: { icon: 'arrow.uturn.left', ...GREY },
   unstat:  { icon: 'arrow.down', ...GREY },
-  message: { icon: 'bubble.left.and.bubble.right.fill', ...NAVY, border: ATTENTION_GREEN },
+  message: { icon: 'bubble.left.and.bubble.right.fill', ...NAVY, border: MESSAGE_VIOLET },
 };
 
 const styles = StyleSheet.create({
