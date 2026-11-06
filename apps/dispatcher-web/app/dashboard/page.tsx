@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, lazy, Suspense, useCallback } from "react";
+import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useRealtimeDashboard } from "@/hooks/use-realtime-dashboard";
@@ -158,9 +159,12 @@ export default function DashboardPage() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
-            Dashboard
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
+              Dashboard
+            </h1>
+            <HelpLink slug="read-the-dashboard" topic="reading the Dashboard" />
+          </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, fontWeight: 400 }}>
             {now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             {" · "}

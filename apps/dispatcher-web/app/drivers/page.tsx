@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
 import { useSearch } from "@/context/search";
@@ -460,9 +461,12 @@ export default function DriversPage() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
-            Drivers
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>
+              Drivers
+            </h1>
+            <HelpLink slug="manage-drivers" topic="adding and managing drivers" />
+          </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, fontWeight: 400 }}>
             {loaded
               ? `${counts.on_delivery} on delivery · ${counts.available} available · ${counts.off_duty} off duty`

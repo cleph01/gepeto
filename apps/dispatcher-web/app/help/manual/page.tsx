@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { BackToHelp, HelpPage, PrintButton } from "@/components/help/help-page";
 import { HelpBody, type HelpLinkTarget } from "@/components/help/markdown";
 import type { HelpManual } from "@/lib/help/types";
@@ -70,13 +69,6 @@ function ManualContents({ manual }: { manual: HelpManual }) {
 }
 
 export default function HelpManualPage() {
-  // Browsers suggest the page title as the PDF's file name.
-  useEffect(() => {
-    const previous = document.title;
-    document.title = TITLE;
-    return () => { document.title = previous; };
-  }, []);
-
   return (
     <HelpPage
       title="Printable manual"

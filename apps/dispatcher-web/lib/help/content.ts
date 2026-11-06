@@ -7,6 +7,97 @@ import type { HelpManual } from "./types";
 export const dispatcherManual: HelpManual = {
   sections: [
     {
+      title: "Getting started",
+      articles: [
+        {
+          slug: "read-the-dashboard",
+          title: "Read the Dashboard",
+          summary: "See active jobs, drivers, returns and unread messages on one screen.",
+          related: ["find-anything", "alerts-and-notifications", "follow-and-change-a-job"],
+          body: `
+The [Dashboard](/dashboard) shows what's happening right now and updates on its own.
+
+## The tiles across the top
+
+- **Active Jobs:** jobs still in progress, and how many were created today.
+- **In Transit:** jobs on the road, and how many of them are STAT.
+- **Returning Cases:** cases on their way back to the lab. Click the tile to open [Returning Cases](/help/returning-cases).
+- **Pending:** jobs waiting for a driver. See [Create and assign a job](/help/create-a-job).
+- **Unread Messages:** click the tile to open the newest unread conversation. If nothing is unread, it opens the Jobs page.
+
+## The job list
+
+Use **All**, **STAT**, **In Transit**, **Pending** and **Delivered** to filter the list. Click a column heading to sort by it. Your sort choice is remembered on that browser.
+
+Assigned jobs show **Accepted** or **Awaiting reply**, so you can see [who still needs to answer](/help/create-a-job#see-whether-the-driver-accepted).
+
+## Drivers and the map
+
+**Drivers On Shift** lists your drivers and their status. A driver on a break shows when the break started and no location. See [Follow a driver's break](/help/manage-drivers#follow-a-driver-s-break).
+
+**Live Map** shows your drivers and deliveries. The legend on the map explains the colors.
+`,
+        },
+        {
+          slug: "find-anything",
+          title: "Find anything with search",
+          summary: "Jump straight to a job, return, office or driver.",
+          related: ["read-the-dashboard", "follow-and-change-a-job"],
+          body: `
+Search looks through all of your lab's jobs, including finished ones, so you can use it for old cases too.
+
+## Search for something
+
+1. Click the search box in the sidebar, or press **⌘K** (**Ctrl+K** on Windows) or **/** on any page. On a phone, tap the magnifying glass at the top.
+2. Type at least two characters.
+3. Click a result, or use the arrow keys and press **Enter**. Gepeto opens it on the right page.
+
+## What you can search for
+
+- Case numbers. You don't have to type them exactly: "lab2042" finds LAB-2042.
+- Return numbers, such as RET-1001.
+- Office and driver names.
+- Item descriptions and addresses.
+`,
+        },
+        {
+          slug: "alerts-and-notifications",
+          title: "Alerts and notifications",
+          summary: "Choose how Gepeto tells you about messages, driver updates and late jobs.",
+          related: ["lab-settings", "read-the-dashboard", "create-a-job"],
+          body: `
+Gepeto alerts you on screen and can also notify you when you're working somewhere else.
+
+## Alerts inside Gepeto
+
+While Gepeto is open, a pop-up and a chime tell you when a driver accepts, rejects or delivers a job, when someone sends a message, and when an office requests a pickup. Click an alert to go straight to it.
+
+Unread messages also show as a count beside **Jobs** in the sidebar and on the Gepeto browser tab.
+
+## Turn on desktop notifications
+
+Desktop notifications reach you when Gepeto is in another tab or window.
+
+1. Go to [Settings](/settings) and open **Notifications**.
+2. Under **Message Alerts**, turn on **Desktop notifications**.
+3. If your browser asks, allow notifications.
+
+These settings apply to that browser only, so repeat them on each computer. The Gepeto tab has to stay open, even if it's in the background.
+
+> Notifications show who a message is from and which case it's about, but never the message itself. Nothing sensitive sits on a shared screen.
+
+## Turn the chime on or off
+
+Use **Sound for new messages** under **Message Alerts**. This also applies only to that browser.
+
+## Late and unassigned job alerts
+
+Gepeto can email you when a job has no driver or is running late. To set the times, see [Set alert times](/help/lab-settings#set-alert-times).
+`,
+        },
+      ],
+    },
+    {
       title: "Jobs",
       articles: [
         {
@@ -139,6 +230,53 @@ Use the **Checked in** filter to see returns from the last 30 days. Click **Hist
       ],
     },
     {
+      title: "Drivers",
+      articles: [
+        {
+          slug: "manage-drivers",
+          title: "Add and manage drivers",
+          summary: "Invite drivers, edit their details, take them off the roster and follow breaks.",
+          related: ["create-a-job", "plan-and-billing", "lab-settings"],
+          body: `
+Your drivers use the Gepeto driver app on their phones. You add and manage them on the [Drivers](/drivers) page.
+
+## Add a driver
+
+1. Go to [Drivers](/drivers) and click **Add Driver**.
+2. Enter their full name, phone number and email address.
+3. Choose **Available** or **Off Duty** as their starting status.
+4. Click **Add Driver**.
+
+Gepeto emails the driver an invite to set a password. They then log in to the driver app with that email address and password.
+
+If your plan's driver spots are full, Gepeto tells you when you try to add someone. See [Driver spots](/help/plan-and-billing#driver-spots).
+
+## If a driver didn't get the invite
+
+On the driver's row, click the button labeled **Resend account-setup email** when you hover over it. Ask them to check their spam folder too.
+
+## What each status means
+
+- **Available:** ready for work.
+- **On Delivery:** currently out on a delivery.
+- **Off Duty:** not working, and not offered for new jobs.
+
+## Edit or deactivate a driver
+
+Use the buttons on the driver's row to edit their details or deactivate them. A deactivated driver is set to **Off Duty** and doesn't appear when you assign jobs. Use **Reactivate** to bring them back.
+
+> Off Duty drivers don't use a spot on your plan. Reactivating one takes a spot again.
+
+## Follow a driver's break
+
+Drivers can pause location sharing from the app when they take a break. You'll see when the break started and no location until they end it. Offices see only "Location paused", with nothing about a break.
+
+To flag long breaks, see [Set alert times](/help/lab-settings#set-alert-times).
+`,
+        },
+      ],
+    },
+    {
       title: "Offices",
       articles: [
         {
@@ -177,6 +315,102 @@ Reset one if it reached the wrong person. Use **Reset code** or **Reset link** o
 - **Reset link:** the old link stops working right away, including bookmarks. The access code stays the same, but everyone has to enter it again on the new link.
 
 > A reset takes effect immediately and can't be undone. Gepeto doesn't send the new link or code automatically, so the office can't get back in until you share it.
+
+## Help for offices
+
+Offices have their own guide. Once they've entered their code, they can open it from the **?** at the top of their tracking page.
+`,
+        },
+      ],
+    },
+    {
+      title: "Settings and billing",
+      articles: [
+        {
+          slug: "lab-settings",
+          title: "Set up your lab",
+          summary: "Set lab details, alert times, office alerts and proof of delivery rules.",
+          related: ["alerts-and-notifications", "invite-teammates", "plan-and-billing"],
+          body: `
+Lab-wide choices live in [Settings](/settings). Your own name, role and email are under **Profile**.
+
+## Enter your lab's details
+
+1. Open **Lab Info** in Settings.
+2. Enter your lab's name, phone and address.
+3. Set your opening and closing times and your time zone.
+4. Save your changes.
+
+Your lab's phone number is what offices see on the **Call the lab** button on their tracking page.
+
+## Set alert times
+
+Open **Notifications** in Settings to turn on each alert and choose its time, then click **Save Changes**.
+
+- **Unassigned job threshold:** alerts you when a job still has no driver after this time.
+- **Late delivery alert:** alerts you when a delivery runs past its expected time.
+- **Long driver break:** flags a driver on the Dashboard and Drivers pages when a break passes this time.
+
+## Choose alerts for offices
+
+**Alerts for offices** lets offices get a chime, on-page notices and browser notifications for new messages, a driver arriving and deliveries. Each office chooses its own settings from the gear on its tracking page. Turn this off and the gear disappears for all of your offices.
+
+## Set proof of delivery rules
+
+Open **Proof of delivery** in Settings.
+
+- **Require a photo on every delivery:** when this is off, drivers can still add a photo. Either way, they enter who received the case.
+- **Keep photos for:** photos are deleted automatically after this time. The delivery record and the recipient's name stay.
+
+> Choosing a shorter time deletes older photos that night.
+`,
+        },
+        {
+          slug: "invite-teammates",
+          title: "Invite teammates",
+          summary: "Give other people at your lab a dispatcher login.",
+          related: ["lab-settings", "manage-drivers"],
+          body: `
+Teammates are people at your lab who use this dispatcher site. Drivers are added separately. See [Add a driver](/help/manage-drivers#add-a-driver).
+
+## Invite someone
+
+Only the lab owner can do this.
+
+1. Go to [Settings](/settings) and open **Team**.
+2. Click **+ Invite Teammate**.
+3. Enter their name and email address, then click **Send Invite**.
+
+They get an email with a link to set a password. If they didn't get it, the owner can resend it from the Team list.
+
+## If an invite link has expired
+
+Whoever opens an expired link is told to ask for a new one. Resend it from the Team list.
+`,
+        },
+        {
+          slug: "plan-and-billing",
+          title: "Plan and billing",
+          summary: "Check your plan and driver spots, and manage your subscription.",
+          related: ["manage-drivers", "lab-settings"],
+          body: `
+Go to [Settings](/settings) and open **Plan & billing** to see your plan, status and driver spots.
+
+## Your free trial
+
+New labs start with a 30-day free trial. **Plan & billing** shows the date it ends. Add a card before then to keep Gepeto running. Without one, the subscription ends on that date.
+
+## Driver spots
+
+Each plan includes a set number of active drivers. If your spots are full, you can't add or reactivate a driver until you add a spot, upgrade or take another driver off duty. Off Duty drivers don't use a spot. See [Edit or deactivate a driver](/help/manage-drivers#edit-or-deactivate-a-driver).
+
+## Manage your subscription
+
+Click **Manage billing** to change your plan, add drivers or a card, see invoices or cancel. Only the lab owner can do this.
+
+## If a payment fails
+
+**Plan & billing** tells you when your last payment didn't go through. Update your card there to keep Gepeto running.
 `,
         },
       ],
