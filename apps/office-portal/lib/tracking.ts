@@ -109,7 +109,8 @@ async function loadTracking(token: string, version: number) {
       "r.picked_up_at as pickedUpAt",
       "r.checked_in_at as checkedInAt",
       db.raw("(r.driver_id is not null) as has_driver"),
-      "d.name as driverName"
+      // The office hears who's coming only once that driver has accepted.
+      db.raw("case when r.driver_response = 'accepted' then d.name end as driver_name")
     );
 
   // A driver's live location is only shared once they're carrying at least one

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { officesCarriedFor } from "@/lib/driver-break";
+import { driverSharesLocation } from "@/lib/driver-sharing";
 import { notifyOffices } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -25,6 +26,13 @@ export async function PATCH(request: NextRequest) {
         { data: null, error: { code: "BAD_REQUEST", message: "lat and lng must be numbers" } },
         { status: 400 }
       );
+    }
+
+    // Nothing accepted or on board (e.g. a phone that hasn't heard yet): the
+    // location isn't kept, and the last one goes with it.
+    if (!(await driverSharesLocation(user.driverId!, user.labId))) {
+      await db("drivers").where({ id: user.driverId, lab_id: user.labId }).update({ current_location: null });
+      return Response.json({ data: { location: null }, error: null });
     }
 
     const location = { lat, lng, updatedAt: new Date().toISOString() };

@@ -46,7 +46,7 @@ export async function POST(
     await db.transaction(async (trx: typeof db) => {
       const updated = await trx("returns")
         .where({ id, lab_id: user.labId, status: "requested" })
-        .update({ driver_id: driverId, assigned_at: driverId ? trx.fn.now() : null, updated_at: trx.fn.now() });
+        .update({ driver_id: driverId, driver_response: "pending", assigned_at: driverId ? trx.fn.now() : null, updated_at: trx.fn.now() });
       if (updated === 0) {
         throw Response.json({ data: null, error: { code: "CONFLICT", message: "This pickup has already been collected or cancelled." } }, { status: 409 });
       }

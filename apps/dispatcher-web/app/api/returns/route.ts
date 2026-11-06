@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
         await trx("returns").where({ id: request.id }).update({
           status: "with_driver",
           driver_id: user.driverId,
+          driver_response: "accepted",
           case_count: caseCount,
           case_numbers: JSON.stringify(merged),
           note: mergedNote,
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
           lab_id: user.labId,
           office_id: office.id,
           driver_id: user.driverId,
+          driver_response: "accepted",
           case_count: caseCount,
           case_numbers: JSON.stringify(caseNumbers),
           note,

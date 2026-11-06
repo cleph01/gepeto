@@ -269,7 +269,7 @@ export function JobAlerts() {
       pointerEvents="box-none"
     >
       <TouchableOpacity
-        style={[styles.banner, { backgroundColor: look.bg, borderColor: look.border }]}
+        style={[styles.banner, { backgroundColor: look.bg, borderColor: look.border, borderWidth: alert.kind === 'message' ? 2 : 1 }]}
         onPress={tap}
         activeOpacity={0.85}
       >
@@ -317,6 +317,9 @@ const AMBER = { bg: Colors.warningBg, border: Colors.warning, tile: Colors.stat,
 const NAVY = { bg: Colors.card, border: Colors.accentBorder, tile: Colors.cardElevated, iconColor: Colors.accent, detail: Colors.textSecondary, cta: Colors.accent };
 const GREY = { bg: Colors.card, border: Colors.borderStrong, tile: Colors.cardElevated, iconColor: Colors.textSecondary, detail: Colors.textSecondary, cta: Colors.textSecondary };
 
+// Bright enough to stand out from the routine navy alerts.
+const MESSAGE_GREEN = '#4ADE80';
+
 const LOOK: Record<AlertKind, Look> = {
   new:     { icon: 'bell.fill', ...BLUE },
   stat:    { icon: 'bolt.fill', ...AMBER },
@@ -326,7 +329,7 @@ const LOOK: Record<AlertKind, Look> = {
   multi:   { icon: 'square.and.pencil', ...NAVY },
   removed: { icon: 'arrow.uturn.left', ...GREY },
   unstat:  { icon: 'arrow.down', ...GREY },
-  message: { icon: 'bubble.left.and.bubble.right.fill', ...NAVY },
+  message: { icon: 'bubble.left.and.bubble.right.fill', ...NAVY, border: MESSAGE_GREEN },
 };
 
 const styles = StyleSheet.create({

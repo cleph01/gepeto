@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { driversSharingLocation } from "@/lib/driver-sharing";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getDashboardUrl } from "@/lib/email";
@@ -37,8 +38,11 @@ export async function GET(request: NextRequest) {
       activeJobCounts.map((r) => [r.driverId, Number(r.count)])
     );
 
+    const sharing = await driversSharingLocation(user.labId);
     const enriched = drivers.map((d: { id: string; onBreakSince: string | null; currentLocation: unknown }) => ({
       ...hideLocationOnBreak(d),
+      // No accepted work: no pin, even if a last location is still on file.
+      ...(sharing.has(d.id) ? null : { currentLocation: null }),
       activeJobs: countMap[d.id] ?? 0,
       breakFlagMins: flagAfterMins,
     }));

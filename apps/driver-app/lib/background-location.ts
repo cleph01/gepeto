@@ -4,8 +4,7 @@ import { apiPatch } from './api';
 
 // Keeps the driver's location flowing to the lab and offices while they
 // navigate in Google Maps / Waze / Apple Maps or lock the phone. Runs only
-// while the driver is carrying deliveries (useLocationTracking starts and
-// stops it). iOS shows the blue location pill; Android shows a notification.
+// once the driver has accepted work (useLocationTracking starts and stops it). iOS shows the blue location pill; Android shows a notification.
 //
 // The task must be defined when the app's JS loads, even if it was woken in
 // the background, so app/_layout.tsx imports this file.
@@ -16,7 +15,9 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, 
   if (error || !data?.locations?.length) return;
   const last = data.locations[data.locations.length - 1];
   try {
-    await apiPatch('/api/drivers/location', { lat: last.coords.latitude, lng: last.coords.longitude });
+    const res = await apiPatch<{ location: unknown }>('/api/drivers/location', { lat: last.coords.latitude, lng: last.coords.longitude });
+    // The server didn't keep it: this driver's work ended while the app was closed.
+    if (res.data && res.data.location === null) await stopBackgroundLocation();
   } catch {
     // No signal: the next update tries again.
   }
@@ -46,7 +47,7 @@ export async function startBackgroundLocation(): Promise<boolean> {
       showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: 'Sharing your location with the lab',
-        notificationBody: 'Only while you have deliveries on board.',
+        notificationBody: 'Only while you have accepted work.',
         notificationColor: '#185FA5',
         killServiceOnDestroy: true,
       },
