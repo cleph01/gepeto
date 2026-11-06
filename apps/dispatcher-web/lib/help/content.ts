@@ -200,6 +200,7 @@ A return is any group of cases on its way back to the lab, such as remakes, adju
 
 - **An office requests a pickup** from its tracking page. You get an alert, and the request appears at the top of the list until a driver is assigned. Offices need [tracking access](/help/office-access) to do this.
 - **A driver logs a pickup** in the driver app, either after a delivery or as a separate stop. The return appears in your list right away.
+- **You enter a pickup for an office** that called or emailed. Click **Request pickup**, fill in the details, then assign a driver.
 
 ## What each status means
 
@@ -223,6 +224,12 @@ The driver is asked to accept or reject the pickup in the driver app. If they re
 5. Click the **Check in** button at the bottom of the window to finish.
 
 > If the count you enter differs from the driver's, Gepeto warns you and keeps the difference in the return's history.
+
+## Fix a mistake
+
+- **Wrong driver:** until check-in, choose the right driver on the return. They don't need to accept, because this records who has the cases.
+- **Marked dropped off by mistake:** click **Undo drop-off**.
+- **Checked in by mistake:** click **Undo check-in**, then check it in again when you're ready. The earlier details stay in the return's history.
 
 ## Find older returns
 
