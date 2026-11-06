@@ -35,7 +35,7 @@ Assigned jobs show **Accepted** or **Awaiting reply**, so you can see [who still
 
 **Drivers On Shift** lists your drivers and their status. A driver on a break shows when the break started and no location. See [Follow a driver's break](/help/manage-drivers#follow-a-driver-s-break).
 
-**Live Map** shows your drivers and deliveries. The legend on the map explains the colors.
+**Live Map** shows your drivers and deliveries. The legend on the map explains the colors. A driver appears once they've accepted a job or pickup, or have cases on board.
 `,
         },
         {
@@ -203,7 +203,7 @@ A return is any group of cases on its way back to the lab, such as remakes, adju
 
 ## What each status means
 
-- **Pickup requested:** an office asked for a pickup, and the driver hasn't collected the cases yet.
+- **Pickup requested:** an office asked for a pickup, and no driver has collected the cases yet. Once you assign a driver, this shows **Waiting for driver to accept**, then **Driver accepted**.
 - **With driver:** the driver has the cases.
 - **At lab · needs check-in:** the driver marked the cases as dropped off at the lab.
 - **Checked in:** the front desk has received the cases.
@@ -211,6 +211,8 @@ A return is any group of cases on its way back to the lab, such as remakes, adju
 ## Assign or cancel a pickup request
 
 Choose a driver from **Assign driver…** on the request. To call it off, click **Cancel** and confirm.
+
+The driver is asked to accept or reject the pickup in the driver app. If they reject it, Gepeto alerts you and returns it to the list without a driver, so you can assign someone else.
 
 ## Check in a return
 
