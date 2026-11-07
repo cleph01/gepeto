@@ -1,5 +1,6 @@
 "use client";
 
+import { LegalLinks } from "@/components/legal-links";
 import { useEffect, useState } from "react";
 import { SESSION_EXPIRED_KEY, useAuth } from "@/context/auth";
 
@@ -192,6 +193,7 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+        <LegalLinks style={{ padding: "0 28px 20px", textAlign: "center" }} />
       </div>
     </div>
   );

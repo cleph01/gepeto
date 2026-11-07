@@ -1,5 +1,6 @@
 "use client";
 
+import { LegalLinks } from "./legal-links";
 import { useEffect, useState } from "react";
 
 // The tracking link on its own is only a code screen. The server sends no case
@@ -93,6 +94,7 @@ export default function LockedView({ token, initial }: { token: string; initial:
           </p>
         </form>
 
+        <LegalLinks />
       </main>
     </div>
   );

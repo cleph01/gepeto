@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { LegalLink } from "@/components/legal-links";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 import { PLANS, TRIAL_DAYS, isInterval, isPlanId, type BillingInterval, type PlanId } from "@/lib/plans";
 
 // Display prices (Stripe holds the real ones; see lib/plans.ts).
@@ -27,9 +29,14 @@ export default function SignupPage() {
   const [error, setError]       = useState<string | null>(null);
   const [plan, setPlan]         = useState<PlanId>(() => initialChoice().plan);
   const [interval, setInterval] = useState<BillingInterval>(() => initialChoice().interval);
+  const [accepted, setAccepted] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!accepted) {
+      setError("Please agree to the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
     setError(null);
     setLoading(true);
 
@@ -38,7 +45,7 @@ export default function SignupPage() {
       res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ labName: labName.trim(), email: email.trim(), plan, interval }),
+        body: JSON.stringify({ labName: labName.trim(), email: email.trim(), plan, interval, acceptedTerms: accepted }),
       });
     } catch {
       // Network failure (offline, DNS, etc.) — fetch itself threw, no response at all.
@@ -182,6 +189,23 @@ export default function SignupPage() {
               onBlur={blurInput}
             />
           </div>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#3a3a3a", lineHeight: 1.45, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={accepted}
+              onChange={(e) => { setAccepted(e.target.checked); setError(null); }}
+              style={{ marginTop: 2, flexShrink: 0 }}
+            />
+            <span>
+              I agree to the <LegalLink href={TERMS_URL}>Terms of Service</LegalLink> and{" "}
+              <LegalLink href={PRIVACY_URL}>Privacy Policy</LegalLink> on behalf of my lab.
+            </span>
+          </label>
+
+          <p style={{ margin: 0, fontSize: 12, color: "#5F5E5A", lineHeight: 1.5 }}>
+            After your {TRIAL_DAYS}-day trial, {PLANS[plan].name} renews automatically at ${PRICE[plan][interval].toLocaleString("en-US")} per {interval} plus any tax, until you cancel in Settings.
+          </p>
 
           <button
             type="submit"

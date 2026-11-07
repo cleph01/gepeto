@@ -1,3 +1,5 @@
+import * as WebBrowser from 'expo-web-browser';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/legal';
 import { useRef, useState } from 'react';
 import {
   View,
@@ -142,6 +144,14 @@ export default function LoginScreen() {
             </View>
 
             <Text style={styles.help}>Trouble signing in? Ask your dispatcher{'\n'}to resend your invite.</Text>
+
+            <Text style={styles.legal}>
+              By signing in, you agree to follow Gepeto&apos;s{' '}
+              <Text style={styles.legalLink} accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)}>Terms of Service</Text>
+              . Our{' '}
+              <Text style={styles.legalLink} accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)}>Privacy Policy</Text>
+              {' '}explains how your information, including your location, is used.
+            </Text>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -290,6 +300,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
   },
+  legal: {
+    fontFamily: Fonts.regular,
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  legalLink: { color: Colors.textSecondary, textDecorationLine: 'underline' },
   help: {
     fontFamily: Fonts.regular,
     color: Colors.textHelp,

@@ -1,10 +1,11 @@
 import Stripe from "stripe";
 import type { NextRequest } from "next/server";
+import { TERMS_VERSION } from "@/lib/legal";
 import { TRIAL_DAYS, isInterval, isPlanId, planLookupKey } from "@/lib/plans";
 
 // POST /api/stripe/checkout
 // Creates a Stripe Checkout Session for a new lab subscription.
-// Body: { email: string; labName: string; plan?: "starter"|"growth"|"pro"; interval?: "month"|"year" }
+// Body: { email: string; labName: string; acceptedTerms: true; plan?: "starter"|"growth"|"pro"; interval?: "month"|"year" }
 // A card is required up front but not charged until the trial ends. If the
 // card is removed during the trial (Customer Portal), the subscription cancels
 // at the end of the trial instead of billing.
@@ -33,6 +34,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (body.acceptedTerms !== true) {
+      return Response.json(
+        { data: null, error: { code: "BAD_REQUEST", message: "Please agree to the Terms of Service and Privacy Policy to continue." } },
+        { status: 400 }
+      );
+    }
+    // Set here, not by the browser. Saved on the lab once Stripe confirms signup.
+    const acceptance = { termsVersion: TERMS_VERSION, termsAcceptedAt: new Date().toISOString() };
+
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
     const lookupKey = planLookupKey(plan, interval);
@@ -56,7 +66,7 @@ export async function POST(request: NextRequest) {
         metadata: { email: email.trim(), labName: labName.trim(), plan, interval },
       },
       // Metadata on the session so the webhook can access it directly
-      metadata: { email: email.trim(), labName: labName.trim(), plan, interval },
+      metadata: { email: email.trim(), labName: labName.trim(), plan, interval, ...acceptance },
       success_url: `${appUrl}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/signup`,
     });

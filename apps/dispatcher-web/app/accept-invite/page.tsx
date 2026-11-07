@@ -1,5 +1,7 @@
 "use client";
 
+import { LegalLink } from "@/components/legal-links";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/legal";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth";
@@ -202,6 +204,11 @@ export default function AcceptInvitePage() {
         >
           {submitting ? "Setting password…" : "Set Password & Continue"}
         </button>
+
+        <p style={{ margin: 0, fontSize: 12, color: "#5F5E5A", lineHeight: 1.5, textAlign: "center" }}>
+          By continuing, you agree to follow Gepeto&apos;s <LegalLink href={TERMS_URL}>Terms of Service</LegalLink>, and our{" "}
+          <LegalLink href={PRIVACY_URL}>Privacy Policy</LegalLink> explains how your information is used.
+        </p>
       </form>
     </Card>
   );

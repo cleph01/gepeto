@@ -1,5 +1,6 @@
 "use client";
 
+import { LegalLinks } from "@/components/legal-links";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -59,6 +60,15 @@ const navLinks = [
         <rect x="1.5" y="5.5" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.25" fill="none" />
         <path d="M5 5.5V4a3 3 0 016 0v1.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
         <path d="M6 9.5h4M8 8v3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M2.5 13.5h11M4.5 11V7.5M8 11V3.5M11.5 11V6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -180,6 +190,7 @@ function NavContent({
         })}
       </nav>
 
+      <LegalLinks style={{ padding: "0 20px 10px" }} />
       <UserArea />
     </>
   );

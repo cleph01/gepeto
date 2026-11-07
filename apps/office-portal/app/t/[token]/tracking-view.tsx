@@ -1,5 +1,6 @@
 "use client";
 
+import { LegalLinks } from "./legal-links";
 import Link from "next/link";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -528,6 +529,7 @@ export default function TrackingView({
       {/* Footer */}
       <footer style={{ textAlign: "center", padding: "20px", fontSize: 12, color: "#9a9a9a", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
         Powered by <span style={{ color: "#185FA5", fontWeight: 500 }}>Gepeto</span> · Updates automatically
+        <LegalLinks />
       </footer>
 
       {requesting && (

@@ -1,3 +1,5 @@
+import * as WebBrowser from 'expo-web-browser';
+import { PRIVACY_URL, TERMS_URL } from '@/lib/legal';
 import { useCallback, useEffect, useState } from 'react';
 import {
   View,
@@ -194,6 +196,24 @@ export default function SettingsScreen() {
               <IconSymbol name="questionmark.circle" size={20} color={Colors.accent} />
             </View>
             <Text style={styles.helpRowText}>How to use the app</Text>
+            <IconSymbol name="chevron.right" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.card, styles.helpRow]}
+            onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)}
+            activeOpacity={0.8}
+            accessibilityRole="link"
+          >
+            <Text style={styles.helpRowText}>Privacy Policy</Text>
+            <IconSymbol name="chevron.right" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.card, styles.helpRow]}
+            onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)}
+            activeOpacity={0.8}
+            accessibilityRole="link"
+          >
+            <Text style={styles.helpRowText}>Terms of Service</Text>
             <IconSymbol name="chevron.right" size={18} color={Colors.textMuted} />
           </TouchableOpacity>
         </View>

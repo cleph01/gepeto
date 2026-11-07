@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
       settings: JSON.stringify({}),
       stripe_customer_id: customerId,
       stripe_subscription_id: subscriptionId,
+      terms_version: session.metadata?.termsVersion ?? null,
+      terms_accepted_at: session.metadata?.termsAcceptedAt ?? null,
+      terms_accepted_by_email: session.metadata?.termsVersion ? email : null,
     });
 
     // 2. Invite the user via Supabase Auth — sends the invite email with a
