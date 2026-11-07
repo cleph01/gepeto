@@ -337,6 +337,37 @@ Offices have their own guide. Once they've entered their code, they can open it 
       ],
     },
     {
+      title: "Reports",
+      articles: [
+        {
+          slug: "reports",
+          title: "Reports",
+          summary: "See how your deliveries are going and download your data.",
+          related: ["read-the-dashboard", "plan-and-billing"],
+          body: `
+[Reports](/reports) shows how your deliveries are going. It's on the Growth and Pro plans.
+
+## Choose a period
+
+Pick the last 7, 30 or 90 days, all time, or your own dates.
+
+## What the numbers mean
+
+- **Deliveries:** jobs completed in that period, including how many were STAT.
+- **On time:** the share delivered by their due time. Jobs without a due time don't count.
+- **Cases returned:** cases received at check-in.
+- **Count differences:** returns where the number received didn't match the number logged.
+
+## Export your data
+
+Click **Download** to get a CSV file that opens in Excel, Numbers or Google Sheets. Jobs, returns and messages use the period you chose. The driver and office lists are always complete.
+
+> Tracking links and access codes are never included. Exported messages can contain whatever people typed, so store the files securely.
+`,
+        },
+      ],
+    },
+    {
       title: "Settings and billing",
       articles: [
         {

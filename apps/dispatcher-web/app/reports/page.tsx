@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import HelpLink from "@/components/help-link";
 import { useAuth } from "@/context/auth";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import type { ApiResponse } from "@gepeto/types";
@@ -111,7 +112,10 @@ export default function ReportsPage() {
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#F8F9FB" }}>
       <header style={{ padding: isMobile ? "0 16px" : "0 28px", height: 56, display: "flex", alignItems: "center", background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
         <div>
-          <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>Reports</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <h1 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0, letterSpacing: "-0.01em" }}>Reports</h1>
+            <HelpLink slug="reports" topic="reports and data export" />
+          </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0 }}>How deliveries went, and your data to download</p>
         </div>
       </header>
