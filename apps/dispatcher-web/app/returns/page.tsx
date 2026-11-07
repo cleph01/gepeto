@@ -4,7 +4,9 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
-import { useMessageNotifications } from "@/context/message-notifications";
+import { useConfirm } from "@/components/confirm-dialog";
+import { MessageThreadModal } from "@/components/message-thread-modal";
+import { UnreadBadge, useMessageNotifications, type ReturnThreadRef } from "@/context/message-notifications";
 import { useSearch } from "@/context/search";
 import type { ApiResponse } from "@gepeto/types";
 import { GroupDivider, SortHeader, byRank, byText, groupRows, sortRows, useSort, type Comparators } from "@/lib/sorting";
@@ -94,7 +96,7 @@ export default function ReturnsPage() {
   const isMobile = bp === "mobile";
   const stacked = useSyncExternalStore(subscribeStacked, () => window.matchMedia(STACKED_QUERY).matches, () => false);
   const { apiFetch, session } = useAuth();
-  const { returnsSummary, returnsChangedAt } = useMessageNotifications();
+  const { returnsSummary, returnsChangedAt, unreadByReturn, pendingOpenReturn, clearPendingOpenReturn } = useMessageNotifications();
 
   const [returns, setReturns] = useState<ReturnCase[]>([]);
   const [checkedIn, setCheckedIn] = useState<ReturnCase[] | null>(null);
@@ -112,6 +114,14 @@ export default function ReturnsPage() {
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
+  const [messagesFor, setMessagesFor] = useState<ReturnThreadRef | null>(null);
+  // A message notice or the dashboard tile can open a conversation from anywhere.
+  const openThread = pendingOpenReturn ?? messagesFor;
+  const closeThread = () => {
+    setMessagesFor(null);
+    clearPendingOpenReturn();
+  };
 
   // Drivers for the Assign dropdown on pickup requests.
   useEffect(() => {
@@ -133,7 +143,14 @@ export default function ReturnsPage() {
   };
 
   const cancelPickup = async (r: ReturnCase) => {
-    if (!window.confirm(`Cancel the pickup request from ${r.officeName ?? "this office"}?`)) return;
+    const ok = await confirm({
+      title: "Cancel this pickup?",
+      body: `RET-${r.number} from ${r.officeName ?? "this office"} comes off the list here, and off the office's page and any driver's list.`,
+      confirmLabel: "Cancel pickup",
+      cancelLabel: "Keep pickup",
+      danger: true,
+    });
+    if (!ok) return;
     setRowError(null);
     const res = await apiFetch<ApiResponse<{ ok: boolean }>>(`/api/returns/${r.id}/cancel`, { method: "POST" }).catch(() => null);
     if (res?.data) setReturns((prev) => prev.filter((x) => x.id !== r.id));
@@ -159,19 +176,39 @@ export default function ReturnsPage() {
     setCheckedIn((prev) => (prev ? prev.filter((x) => x.id !== updated.id) : prev));
   };
 
-  const changeDriver = (r: ReturnCase, driverId: string) => {
+  const changeDriver = async (r: ReturnCase, driverId: string) => {
     const name = drivers.find((d) => d.id === driverId)?.name ?? "this driver";
-    if (!window.confirm(`Change the driver on RET-${r.number} to ${name}? This is recorded in the return's history.`)) return;
+    const ok = await confirm({
+      title: "Change the driver?",
+      body: `RET-${r.number} will show ${name} as having these cases. The change is recorded in its history.`,
+      confirmLabel: "Change driver",
+      cancelLabel: "Never mind",
+    });
+    if (!ok) return;
     correctReturn(r, { driverId });
   };
 
-  const undoDropOff = (r: ReturnCase) => {
-    if (!window.confirm(`Undo the drop-off for RET-${r.number}? It goes back to With driver.`)) return;
+  const undoDropOff = async (r: ReturnCase) => {
+    const ok = await confirm({
+      title: "Undo the drop-off?",
+      body: `RET-${r.number} goes back to With driver. The change is recorded in its history.`,
+      confirmLabel: "Undo drop-off",
+      cancelLabel: "Never mind",
+      danger: true,
+    });
+    if (!ok) return;
     correctReturn(r, { undo: "drop_off" });
   };
 
-  const undoCheckIn = (r: ReturnCase) => {
-    if (!window.confirm(`Undo the check-in for RET-${r.number}? It goes back to needing check-in, and you'll enter its details again. The old details stay in its history.`)) return;
+  const undoCheckIn = async (r: ReturnCase) => {
+    const ok = await confirm({
+      title: "Undo the check-in?",
+      body: `RET-${r.number} goes back to needing check-in, and you'll enter its details again. The old details stay in its history.`,
+      confirmLabel: "Undo check-in",
+      cancelLabel: "Never mind",
+      danger: true,
+    });
+    if (!ok) return;
     correctReturn(r, { undo: "check_in" });
   };
 
@@ -298,6 +335,8 @@ export default function ReturnsPage() {
                 isLast={r === ordered[ordered.length - 1]}
                 onCheckIn={() => setCheckInFor(r)}
                 onHistory={() => setHistoryFor(r)}
+                unread={unreadByReturn[r.id] ?? 0}
+                onMessages={() => { clearPendingOpenReturn(); setMessagesFor({ id: r.id, number: r.number, officeName: r.officeName }); }}
                 drivers={drivers}
                 onAssign={(driverId) => assignPickup(r, driverId)}
                 onCancel={() => cancelPickup(r)}
@@ -318,6 +357,8 @@ export default function ReturnsPage() {
         <CheckInModal r={checkInFor} onClose={() => setCheckInFor(null)} onDone={onCheckedIn} />
       )}
       {historyFor && <ReturnHistoryModal r={historyFor} onClose={() => setHistoryFor(null)} />}
+      {confirmDialog}
+      {openThread && <ReturnMessagesModal thread={openThread} onClose={closeThread} />}
       {requesting && <RequestPickupModal onClose={() => setRequesting(false)} onDone={onRequested} />}
     </div>
   );
@@ -333,9 +374,10 @@ const rowGrid: React.CSSProperties = {
 };
 
 function ReturnRow({
-  r, isMobile, stacked, isLast, onCheckIn, onHistory, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, error,
+  r, isMobile, stacked, isLast, onCheckIn, onHistory, unread, onMessages, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, error,
 }: {
   r: ReturnCase; isMobile: boolean; stacked: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
+  unread: number; onMessages: () => void;
   drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void;
   onChangeDriver: (driverId: string) => void; onUndoDropOff: () => void; onUndoCheckIn: () => void; error: string | null;
 }) {
@@ -380,7 +422,19 @@ function ReturnRow({
       justifyContent: stacked ? "space-between" : "flex-start",
       flexWrap: "wrap",
     }}>
-      {canCheckIn && <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>}
+      <div style={{ display: "flex", gap: 6 }}>
+        {r.status !== "cancelled" && (
+          <button
+            onClick={onMessages}
+            title={unread > 0 ? `Messages (${unread} unread)` : "Messages"}
+            style={{ ...ghostBtn, position: "relative" }}
+          >
+            Messages
+            <UnreadBadge count={unread} style={{ position: "absolute", top: -7, right: -7 }} />
+          </button>
+        )}
+        {canCheckIn && <button onClick={onCheckIn} style={primaryBtn(r.status === "at_lab")}>Check in</button>}
+      </div>
       <div style={{ display: "flex", gap: isMobile ? 4 : 2, marginLeft: stacked ? "auto" : 0, marginRight: -6 }}>
         {isRequest && <button onClick={onCancel} style={linkBtn(isMobile)}>Cancel</button>}
         {r.status === "at_lab" && <button onClick={onUndoDropOff} style={linkBtn(isMobile)}>Undo drop-off</button>}
@@ -501,6 +555,20 @@ const ghostBtn: React.CSSProperties = {
 };
 
 // ── Modals ────────────────────────────────────────────────────────────────────
+
+function ReturnMessagesModal({ thread, onClose }: { thread: ReturnThreadRef; onClose: () => void }) {
+  const { markReturnRead, setActiveReturnThread, returnMessageArrived } = useMessageNotifications();
+  return (
+    <MessageThreadModal
+      subtitle={`RET-${thread.number} · ${thread.officeName ?? "Office"}`}
+      path={`/api/returns/${thread.id}/messages`}
+      arrivedAt={returnMessageArrived?.returnId === thread.id ? returnMessageArrived.at : 0}
+      onActive={(open) => setActiveReturnThread(open ? thread.id : null)}
+      onRead={(upTo) => markReturnRead(thread.id, upTo)}
+      onClose={onClose}
+    />
+  );
+}
 
 function ModalFrame({ title, subtitle, onClose, children }: {
   title: string; subtitle: string; onClose: () => void; children: React.ReactNode;

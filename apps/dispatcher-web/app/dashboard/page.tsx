@@ -53,7 +53,7 @@ export default function DashboardPage() {
   const { apiFetch, session } = useAuth();
   const { sort, toggle: toggleSort } = useSort<SortKey>("gepeto.sort.dashboard", SORT_KEYS);
   const router = useRouter();
-  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnsSummary, jobsChangedAt, driversChangedAt, returnsChangedAt } = useMessageNotifications();
+  const { totalUnread, unreadByJob, newestUnreadJobId, openThread, returnUnreadTotal, unreadByReturn, newestUnreadReturn, openReturnThread, returnsSummary, jobsChangedAt, driversChangedAt, returnsChangedAt } = useMessageNotifications();
   const returningCases = returnsSummary.requestedCases + returnsSummary.withDriverCases + returnsSummary.atLabCases;
   // What needs the front desk first: pickups with no driver, then check-ins.
   const returnsNeedAction = returnsSummary.unassigned > 0 || returnsSummary.atLabCases > 0;
@@ -63,6 +63,12 @@ export default function DashboardPage() {
     returnsSummary.withDriverCases > 0 && `${returnsSummary.withDriverCases} with drivers`,
   ].filter(Boolean).slice(0, 2).join(" · ");
   const unreadJobCount = Object.values(unreadByJob).filter((n) => n > 0).length;
+  const unreadReturnCount = Object.values(unreadByReturn).filter((n) => n > 0).length;
+  const allUnread = totalUnread + returnUnreadTotal;
+  const unreadWhere = [
+    unreadJobCount > 0 && `${unreadJobCount} job${unreadJobCount !== 1 ? "s" : ""}`,
+    unreadReturnCount > 0 && `${unreadReturnCount} return${unreadReturnCount !== 1 ? "s" : ""}`,
+  ].filter(Boolean).join(", ");
   const [jobs, setJobs]      = useState<ApiJob[]>([]);
   const [drivers, setDrivers] = useState<ApiDriver[]>([]);
   const [labName, setLabName] = useState<string | null>(null);
@@ -238,13 +244,17 @@ export default function DashboardPage() {
             />
             <MetricCard value={loaded ? String(metrics.pending) : "–"}   label="Pending"        color="#854F0B" />
             <MetricCard
-              value={String(totalUnread)}
+              value={String(allUnread)}
               label="Unread Messages"
-              color={totalUnread > 0 ? "#C0392B" : "#1a1a1a"}
-              sublabel={totalUnread > 0 ? `on ${unreadJobCount} job${unreadJobCount !== 1 ? "s" : ""}` : "All caught up"}
-              highlight={totalUnread > 0}
-              hint={newestUnreadJobId ? "Open the newest unread thread" : "Open Jobs"}
-              onClick={() => (newestUnreadJobId ? openThread(newestUnreadJobId) : router.push("/jobs"))}
+              color={allUnread > 0 ? "#C0392B" : "#1a1a1a"}
+              sublabel={allUnread > 0 ? `on ${unreadWhere}` : "All caught up"}
+              highlight={allUnread > 0}
+              hint={newestUnreadJobId || newestUnreadReturn ? "Open the newest unread thread" : "Open Jobs"}
+              onClick={() => {
+                if (newestUnreadJobId) openThread(newestUnreadJobId);
+                else if (newestUnreadReturn) openReturnThread(newestUnreadReturn);
+                else router.push("/jobs");
+              }}
               style={bp === "desktop" ? undefined : { gridColumn: "span 2" }}
             />
           </div>

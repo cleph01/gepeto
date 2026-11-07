@@ -129,8 +129,7 @@ function NavContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const { totalUnread, returnsSummary } = useMessageNotifications();
-  const openReturns = returnsSummary.requested + returnsSummary.withDriver + returnsSummary.atLab;
+  const { totalUnread, returnUnreadTotal } = useMessageNotifications();
   return (
     <>
       {/* Logo */}
@@ -175,7 +174,7 @@ function NavContent({
               <span style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }}>{link.icon}</span>
               {link.label}
               {link.href === "/jobs" && <UnreadBadge count={totalUnread} style={{ marginLeft: "auto", boxShadow: "none" }} />}
-              {link.href === "/returns" && <UnreadBadge count={openReturns} style={{ marginLeft: "auto", boxShadow: "none" }} />}
+              {link.href === "/returns" && <UnreadBadge count={returnUnreadTotal} style={{ marginLeft: "auto", boxShadow: "none" }} />}
             </Link>
           );
         })}
@@ -227,8 +226,7 @@ function UserArea() {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { totalUnread, returnsSummary } = useMessageNotifications();
-  const openReturns = returnsSummary.requested + returnsSummary.withDriver + returnsSummary.atLab;
+  const { totalUnread, returnUnreadTotal } = useMessageNotifications();
   const [isMobile, setIsMobile] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -271,7 +269,7 @@ export default function Sidebar() {
               position: "relative",
             }}
           >
-            {(totalUnread > 0 || openReturns > 0) && (
+            {(totalUnread > 0 || returnUnreadTotal > 0) && (
               <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: "50%", background: "#D93025", boxShadow: "0 0 0 2px #fff" }} />
             )}
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">

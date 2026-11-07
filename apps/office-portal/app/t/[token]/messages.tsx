@@ -147,6 +147,7 @@ export function ConversationModal({
   messages,
   onMessages,
   onClose,
+  threadPath = (id) => `jobs/${id}/messages`,
 }: {
   token: string;
   title: string;
@@ -155,6 +156,8 @@ export function ConversationModal({
   messages: Record<string, Message[]>;
   onMessages: (jobId: string, list: Message[]) => void;
   onClose: () => void;
+  /** Where a conversation lives under this page's API. Jobs by default; pickups pass their own. */
+  threadPath?: (id: string) => string;
 }) {
   const multi = cases.length > 1;
   // Default to the case with the most recent message, else the first one.
@@ -180,7 +183,7 @@ export function ConversationModal({
     await Promise.all(
       jobKey.split(",").filter(Boolean).map(async (jobId) => {
         try {
-          const res = await fetch(`/api/track/${token}/jobs/${jobId}/messages`);
+          const res = await fetch(`/api/track/${token}/${threadPath(jobId)}`);
           if (!res.ok) return;
           const json = await res.json();
           if (json.data) onMessages(jobId, json.data);
@@ -189,6 +192,8 @@ export function ConversationModal({
         }
       })
     );
+    // threadPath only ever depends on the id, so it doesn't need to reload this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, jobKey, onMessages]);
 
   // Live while open: refresh every 10s, close on Escape, no page scroll behind.
@@ -228,7 +233,7 @@ export function ConversationModal({
     setSending(true);
     setSendError(false);
     try {
-      const res = await fetch(`/api/track/${token}/jobs/${target}/messages`, {
+      const res = await fetch(`/api/track/${token}/${threadPath(target)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body }),

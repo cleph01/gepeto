@@ -48,6 +48,7 @@ type JobAlert = {
   changed?: string[]; // for 'multi': what changed, in words
   from?: 'Lab' | 'Office'; // for 'message'
   body?: string;           // for 'message' and 'pickup'
+  returnId?: string;       // for a 'message' on a return, not a job
 };
 type KnownJob = Pick<Job, 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>;
 
@@ -92,7 +93,7 @@ export function JobAlerts() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
-  const { onIncoming } = useMessages();
+  const { onIncoming, onIncomingReturn } = useMessages();
   const driverId = getDriverId(session);
   const [alert, setAlert] = useState<JobAlert | null>(null);
   const [slide] = useState(() => new Animated.Value(-160));
@@ -215,6 +216,25 @@ export function JobAlerts() {
     [onIncoming]
   );
 
+  // The same banner for a message on a return.
+  useEffect(
+    () =>
+      onIncomingReturn((msg) => {
+        setAlert({
+          kind: 'message',
+          jobId: msg.returnId,
+          returnId: msg.returnId,
+          caseId: `RET-${msg.number}`,
+          deliveryAddress: msg.officeName ?? 'Office',
+          priority: 'standard',
+          from: msg.senderRole === 'office' ? 'Office' : 'Lab',
+          body: msg.body,
+        });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }),
+    [onIncomingReturn]
+  );
+
   // An office pickup assigned to this driver. It can wait, so it never blocks the screen.
   useEffect(() => {
     const listener = (p: PickupAlert) => {
@@ -246,7 +266,7 @@ export function JobAlerts() {
   const tap = () => {
     setAlert(null);
     if (alert.kind === 'message') {
-      router.push(`/chat/${alert.jobId}`);
+      router.push(alert.returnId ? `/return-chat/${alert.returnId}` : `/chat/${alert.jobId}`);
     } else if (alert.kind === 'pickup') {
       router.navigate('/(tabs)');
     } else if (alert.kind === 'removed') {

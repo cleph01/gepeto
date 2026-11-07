@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "./confirm-dialog";
 import { useEffect, useState } from "react";
 
 // Pickup requests: the office tells the lab it has cases ready to go back.
@@ -52,18 +53,30 @@ export function PickupsSection({
   token,
   pickups,
   onChanged,
+  unreadFor,
+  onOpenMessages,
 }: {
   token: string;
   pickups: Pickup[];
   onChanged: () => void;
+  unreadFor: (id: string) => number;
+  onOpenMessages: (id: string) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
 
   if (pickups.length === 0) return null;
 
   const cancel = async (p: Pickup) => {
-    if (!window.confirm(`Cancel the pickup for ${p.caseCount} case${p.caseCount === 1 ? "" : "s"}?`)) return;
+    const ok = await confirm({
+      title: "Cancel this pickup?",
+      body: `The lab won't send a driver for ${p.caseCount === 1 ? "this case" : `these ${p.caseCount} cases`}. You can request another pickup anytime.`,
+      confirmLabel: "Cancel pickup",
+      cancelLabel: "Keep pickup",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(p.id);
     setError(null);
     try {
@@ -111,6 +124,17 @@ export function PickupsSection({
                 {st.label}
               </span>
               {st.detail && <span style={{ fontSize: 11, color: "#5F5E5A" }}>{st.detail}</span>}
+              <button
+                onClick={() => onOpenMessages(p.id)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#185FA5", background: "#EBF2FA", border: "1px solid #C0D9F0", borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}
+              >
+                Messages
+                {unreadFor(p.id) > 0 && (
+                  <span aria-label={`${unreadFor(p.id)} unread`} style={{ background: "#D93025", color: "white", fontSize: 10, fontWeight: 700, minWidth: 16, height: 16, lineHeight: "16px", borderRadius: 8, textAlign: "center", padding: "0 4px", boxSizing: "border-box" }}>
+                    {unreadFor(p.id)}
+                  </span>
+                )}
+              </button>
               {canCancel && (
                 <button
                   onClick={() => cancel(p)}
@@ -124,6 +148,7 @@ export function PickupsSection({
           </div>
         );
       })}
+      {confirmDialog}
     </div>
   );
 }

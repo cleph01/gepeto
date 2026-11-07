@@ -22,6 +22,12 @@ export async function notifyDriverPickups(driverId: string, event: string, paylo
   await broadcast(`driver-pickups:${driverId}`, event, payload);
 }
 
+// A message on a return this driver has. The app re-reads its unread list through
+// the API, so a forged signal shows nothing.
+export async function notifyDriverReturnMessage(driverId: string, payload: Record<string, unknown>) {
+  await broadcast(`driver-return-messages:${driverId}`, "message", payload);
+}
+
 // Driver-to-dispatch: the dashboard listens on `lab:<labId>` so a driver's
 // accept, reject or status step shows up without waiting for the poll.
 // (postgres_changes alone proved unreliable for the dispatcher's session.)

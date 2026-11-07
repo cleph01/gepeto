@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import JobMap from "./job-map";
-import { ChatIcon, ConversationModal, unreadForJobs, type Message } from "./messages";
+import { ChatIcon, ConversationModal, unreadCount, unreadForJobs, type Message } from "./messages";
 import { AlertToasts, AlertsGear, useOfficeAlerts, useTabUnread } from "./alerts";
 import DeliveredView from "./delivered-view";
 import { BoxIcon, PickupsSection, RequestPickupModal, type Pickup } from "./pickups";
@@ -140,6 +140,9 @@ function initials(name: string) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const PICKUP_THREAD = "pickup:";
+const pickupThreadPath = (id: string) => `pickups/${id}/messages`;
+
 export default function TrackingView({
   token,
   initial,
@@ -151,6 +154,7 @@ export default function TrackingView({
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [openPickup, setOpenPickup] = useState<string | null>(null);
   const [tab, setTab] = useState<"active" | "delivered">("active");
   const [requesting, setRequesting] = useState(false);
   // Bumped on live job changes so the Delivered tab refetches too.
@@ -180,11 +184,14 @@ export default function TrackingView({
 
   // Every active case's messages, so badges can show what's new without opening
   // anything. Small: an office rarely has more than a handful of cases in flight.
-  const loadMessages = useCallback(async (jobIds: string[]) => {
+  const loadMessages = useCallback(async (threads: string[]) => {
     const entries = await Promise.all(
-      jobIds.map(async (id) => {
+      threads.map(async (thread) => {
+        // Cases are plain ids; pickups come as "pickup:<id>".
+        const isPickup = thread.startsWith(PICKUP_THREAD);
+        const id = isPickup ? thread.slice(PICKUP_THREAD.length) : thread;
         try {
-          const res = await fetch(`/api/track/${token}/jobs/${id}/messages`);
+          const res = await fetch(`/api/track/${token}/${isPickup ? "pickups" : "jobs"}/${id}/messages`);
           const json = res.ok ? await res.json() : null;
           return [id, (json?.data ?? null) as Message[] | null] as const;
         } catch {
@@ -205,7 +212,7 @@ export default function TrackingView({
     return () => clearInterval(id);
   }, [refresh]);
 
-  const jobIds = data.jobs.map((j) => j.id).join(",");
+  const jobIds = [...data.jobs.map((j) => j.id), ...data.pickups.map((p) => `${PICKUP_THREAD}${p.id}`)].join(",");
 
   // Live updates: the lab's server signals this page's channel whenever something
   // on this page changes (driver assigned or reassigned, status steps, new or
@@ -298,6 +305,11 @@ export default function TrackingView({
     setSeenTick((t) => t + 1);
   }, []);
   const openConversationFor = useCallback((jobId: string) => {
+    if (dataRef.current.pickups.some((p) => p.id === jobId)) {
+      setTab("active");
+      setOpenPickup(jobId);
+      return;
+    }
     const group = groupByDriver(dataRef.current.jobs).find((g) => g.jobs.some((j) => j.id === jobId));
     if (!group) return;
     setTab("active");
@@ -310,18 +322,22 @@ export default function TrackingView({
     allowed: data.alertsAllowed,
     labName: office.labName,
     messages,
-    openJobIds: conversation ? conversation.jobs.map((j) => j.id) : [],
+    openJobIds: [...(conversation ? conversation.jobs.map((j) => j.id) : []), ...(openPickup ? [openPickup] : [])],
     onOpenJob: openConversationFor,
     jobs,
     recentlyDelivered: data.recentlyDelivered,
     onOpenStatus: openStatus,
   });
   // A conversation on screen is being read, so it doesn't count.
-  const totalUnread = unreadForJobs(messages, jobs.filter((j) => !conversation?.jobs.some((c) => c.id === j.id)).map((j) => j.id));
+  const totalUnread =
+    unreadForJobs(messages, jobs.filter((j) => !conversation?.jobs.some((c) => c.id === j.id)).map((j) => j.id)) +
+    unreadForJobs(messages, pickups.filter((p) => p.id !== openPickup).map((p) => p.id));
+  const pickupInConversation = openPickup ? pickups.find((p) => p.id === openPickup) ?? null : null;
   useTabUnread(totalUnread);
   const closeRequest = useCallback(() => setRequesting(false), []);
   const closeConversation = useCallback(() => {
     setOpenGroup(null);
+    setOpenPickup(null);
     setSeenTick((t) => t + 1);
   }, []);
 
@@ -404,7 +420,10 @@ export default function TrackingView({
 
       <AlertToasts
         toasts={alerts.toasts}
-        caseIdFor={(jobId) => jobs.find((j) => j.id === jobId)?.caseId}
+        caseIdFor={(jobId) => {
+          const pickup = pickups.find((p) => p.id === jobId);
+          return pickup ? `RET-${pickup.number}` : jobs.find((j) => j.id === jobId)?.caseId;
+        }}
         onOpen={(t) => (t.kind === "message" ? openConversationFor(t.jobId!) : openStatus(t.kind))}
         onDismiss={alerts.dismissToast}
       />
@@ -473,7 +492,13 @@ export default function TrackingView({
         {tab === "active" ? (
           jobs.length > 0 || pickups.length > 0 ? (
             <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <PickupsSection token={token} pickups={pickups} onChanged={refresh} />
+              <PickupsSection
+                token={token}
+                pickups={pickups}
+                onChanged={refresh}
+                unreadFor={(id) => (id === openPickup ? 0 : unreadCount(messages[id], id))}
+                onOpenMessages={setOpenPickup}
+              />
               {groups.map((g) => (
                 <DriverCard
                   key={g.key}
@@ -507,6 +532,19 @@ export default function TrackingView({
 
       {requesting && (
         <RequestPickupModal token={token} onClose={closeRequest} onSent={refresh} />
+      )}
+
+      {pickupInConversation && (
+        <ConversationModal
+          token={token}
+          title={`Messages · RET-${pickupInConversation.number}`}
+          subtitle={pickupInConversation.driverName ? `With the lab and ${pickupInConversation.driverName}, your driver` : "With the lab"}
+          cases={[{ jobId: pickupInConversation.id, caseId: `RET-${pickupInConversation.number}` }]}
+          messages={messages}
+          onMessages={setJobMessages}
+          onClose={closeConversation}
+          threadPath={pickupThreadPath}
+        />
       )}
 
       {conversation && (

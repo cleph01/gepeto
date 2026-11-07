@@ -276,6 +276,26 @@ function GroupHeader({
 
 // ─── Returning to lab ────────────────────────────────────────────────────────
 
+function ReturnMessagesLink({ unread, onPress }: { unread: number; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={styles.returnMessages}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={`Messages${unread > 0 ? `, ${unread} unread` : ''}`}
+    >
+      <IconSymbol name="bubble.left.and.bubble.right.fill" size={14} color={Colors.accent} />
+      <Text style={styles.returnMessagesText}>Messages</Text>
+      {unread > 0 && (
+        <View style={styles.unreadBadge}>
+          <Text style={styles.unreadBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 function ReturningSection({
   returns,
   dropping,
@@ -283,7 +303,11 @@ function ReturningSection({
   onLogPickup,
   respondingTo,
   onRespond,
+  unreadByReturn,
+  onOpenMessages,
 }: {
+  unreadByReturn: Record<string, number>;
+  onOpenMessages: (r: ReturnCase) => void;
   returns: ReturnCase[];
   dropping: boolean;
   onDropAll: () => void;
@@ -317,6 +341,7 @@ function ReturningSection({
                 </Text>
                 <Text style={styles.returnTime}>{readyLabel(r)}</Text>
               </View>
+              <ReturnMessagesLink unread={unreadByReturn[r.id] ?? 0} onPress={() => onOpenMessages(r)} />
               {r.driverResponse === 'pending' ? (
                 <View style={styles.pickupAnswer}>
                   <TouchableOpacity
@@ -382,6 +407,7 @@ function ReturningSection({
                 </Text>
               )}
             </View>
+            <ReturnMessagesLink unread={unreadByReturn[r.id] ?? 0} onPress={() => onOpenMessages(r)} />
           </View>
         );
       })}
@@ -413,13 +439,16 @@ function StatTile({ label, value, highlight, valueColor }: { label: string; valu
 }
 
 // Opens the thread with the newest unread message; nothing to open when caught up.
-function MessagesCard({ unreadByJob, onPress }: { unreadByJob: Record<string, number>; onPress: () => void }) {
-  const counts = Object.values(unreadByJob);
-  const total = counts.reduce((sum, n) => sum + n, 0);
+function MessagesCard({ unreadByJob, unreadByReturn, onPress }: { unreadByJob: Record<string, number>; unreadByReturn: Record<string, number>; onPress: () => void }) {
+  const jobCount = Object.keys(unreadByJob).length;
+  const returnCount = Object.keys(unreadByReturn).length;
+  const total = [...Object.values(unreadByJob), ...Object.values(unreadByReturn)].reduce((sum, n) => sum + n, 0);
   const hasUnread = total > 0;
-  const summary = hasUnread
-    ? `${total} unread on ${counts.length} job${counts.length !== 1 ? 's' : ''}`
-    : 'All caught up';
+  const where = [
+    jobCount > 0 && `${jobCount} job${jobCount !== 1 ? 's' : ''}`,
+    returnCount > 0 && `${returnCount} pickup${returnCount !== 1 ? 's' : ''}`,
+  ].filter(Boolean).join(' and ');
+  const summary = hasUnread ? `${total} unread on ${where}` : 'All caught up';
   return (
     <TouchableOpacity
       style={[styles.messagesCard, hasUnread && styles.messagesCardUnread]}
@@ -457,7 +486,7 @@ type Row =
 export default function JobQueueScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { unreadByJob, newestUnreadJobId } = useMessages();
+  const { unreadByJob, unreadByReturn, newestUnread, refreshReturnUnread } = useMessages();
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
@@ -474,10 +503,12 @@ export default function JobQueueScreen() {
     try {
       const res = await apiGet<ReturnCase[]>('/api/returns');
       if (res.data) setReturns(stillOpen(res.data));
+      // A pickup that left this driver takes its unread messages with it.
+      refreshReturnUnread();
     } catch {
       // Offline: keep what we have.
     }
-  }, []);
+  }, [refreshReturnUnread]);
 
   // Refresh whenever the tab comes back into view (e.g. after a delivery logged a return).
   useFocusEffect(
@@ -533,6 +564,7 @@ export default function JobQueueScreen() {
           const res = await apiGet<ReturnCase[]>('/api/returns');
           if (!res.data) return;
           setReturns(stillOpen(res.data));
+          refreshReturnUnread();
           const r = res.data.find((x) => x.id === returnId && x.status === 'requested');
           if (!r) return;
           showPickupAlert({
@@ -552,7 +584,7 @@ export default function JobQueueScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [driverId, loadReturns]);
+  }, [driverId, loadReturns, refreshReturnUnread]);
 
   const fetchJobs = useCallback(async (showSpinner = true) => {
     if (!driverId) return;
@@ -817,8 +849,9 @@ export default function JobQueueScreen() {
                 <StatsRow jobs={jobs} />
                 <MessagesCard
                   unreadByJob={unreadByJob}
+                  unreadByReturn={unreadByReturn}
                   onPress={() => {
-                    if (newestUnreadJobId) router.push(`/chat/${newestUnreadJobId}`);
+                    if (newestUnread) router.push(newestUnread.kind === 'return' ? `/return-chat/${newestUnread.id}` : `/chat/${newestUnread.id}`);
                   }}
                 />
               </>
@@ -871,6 +904,8 @@ export default function JobQueueScreen() {
                 onLogPickup={(r) => { setLogPickupFor(r); setShowLogPickup(true); }}
                 respondingTo={respondingTo}
                 onRespond={answerPickup}
+                unreadByReturn={unreadByReturn}
+                onOpenMessages={(r) => router.push(`/return-chat/${r.id}`)}
               />
             );
           }
@@ -1255,6 +1290,15 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     fontStyle: 'italic',
   },
+  returnMessages: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs + 2,
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    paddingRight: Spacing.md,
+  },
+  returnMessagesText: { fontFamily: Fonts.medium, color: Colors.accent, fontSize: FontSize.sm },
   returnFooter: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -40,6 +40,24 @@ interface UnreadResponse {
   recent: UnreadMessage[];
 }
 
+/** What's needed to open a return's conversation from anywhere. */
+export interface ReturnThreadRef {
+  id: string;
+  number: number;
+  officeName: string | null;
+}
+
+interface UnreadReturnMessage {
+  id: string;
+  returnId: string;
+  senderRole: "office" | "driver";
+  body: string;
+  createdAt: string;
+  number: number;
+  officeName: string | null;
+  driverName: string | null;
+}
+
 interface DriverActivity {
   key: string;
   kind: "rejected" | "accepted" | "delivered";
@@ -67,6 +85,8 @@ interface Toast {
   key: string;
   kind: "message" | "return" | DriverActivity["kind"];
   jobId: string | null; // null = summary toast for a burst of messages
+  /** A message on a return: clicking opens that conversation. */
+  returnThread?: ReturnThreadRef;
   title: string;
   body: string;
   /**
@@ -102,8 +122,19 @@ interface MessageNotificationsContextType {
   driversChangedAt: number;
   /** Bumped when a message lands on a job, so an open thread can reload at once. */
   messageArrived: { jobId: string; at: number } | null;
-  /** Open returning cases, kept live for the sidebar badge and dashboard. */
+  /** Open returning cases, kept live for the dashboard. */
   returnsSummary: ReturnsSummary;
+  /** Unread messages on returns (the Returning Cases sidebar badge). */
+  returnUnreadTotal: number;
+  unreadByReturn: Record<string, number>;
+  newestUnreadReturn: ReturnThreadRef | null;
+  markReturnRead: (returnId: string, upTo: string) => void;
+  setActiveReturnThread: (returnId: string | null) => void;
+  /** Go to Returning Cases with this conversation open. */
+  openReturnThread: (thread: ReturnThreadRef) => void;
+  pendingOpenReturn: ReturnThreadRef | null;
+  clearPendingOpenReturn: () => void;
+  returnMessageArrived: { returnId: string; at: number } | null;
   /** Bumped whenever a return is logged, dropped off or checked in. */
   returnsChangedAt: number;
   soundEnabled: boolean;
@@ -129,6 +160,15 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   driversChangedAt: 0,
   messageArrived: null,
   returnsSummary: EMPTY_RETURNS,
+  returnUnreadTotal: 0,
+  unreadByReturn: {},
+  newestUnreadReturn: null,
+  markReturnRead: () => {},
+  setActiveReturnThread: () => {},
+  openReturnThread: () => {},
+  pendingOpenReturn: null,
+  clearPendingOpenReturn: () => {},
+  returnMessageArrived: null,
   returnsChangedAt: 0,
   soundEnabled: true,
   setSoundEnabled: () => {},
@@ -149,6 +189,23 @@ function toastFor(m: UnreadMessage): Toast {
     kind: "message",
     jobId: m.jobId,
     title: `${who} · ${m.caseId}`,
+    body: m.body,
+    notifyBody: "New message",
+    color: ROLE_COLOR[m.senderRole],
+  };
+}
+
+function toastForReturnMessage(m: UnreadReturnMessage): Toast {
+  const who =
+    m.senderRole === "office"
+      ? m.officeName ?? "Office"
+      : m.driverName ? `${m.driverName} (driver)` : "Driver";
+  return {
+    key: m.id,
+    kind: "message",
+    jobId: null,
+    returnThread: { id: m.returnId, number: m.number, officeName: m.officeName },
+    title: `${who} · RET-${m.number}`,
     body: m.body,
     notifyBody: "New message",
     color: ROLE_COLOR[m.senderRole],
@@ -289,6 +346,19 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const [messageArrived, setMessageArrived] = useState<{ jobId: string; at: number } | null>(null);
   const [returnsSummary, setReturnsSummary] = useState<ReturnsSummary>(EMPTY_RETURNS);
   const [returnsChangedAt, setReturnsChangedAt] = useState(0);
+  const [unreadByReturn, setUnreadByReturn] = useState<Record<string, number>>({});
+  const [recentReturnThreads, setRecentReturnThreads] = useState<ReturnThreadRef[]>([]);
+  const [pendingOpenReturn, setPendingOpenReturn] = useState<ReturnThreadRef | null>(null);
+  const [returnMessageArrived, setReturnMessageArrived] = useState<{ returnId: string; at: number } | null>(null);
+  const returnUnreadTotal = useMemo(() => Object.values(unreadByReturn).reduce((sum, n) => sum + n, 0), [unreadByReturn]);
+  const newestUnreadReturn = useMemo(
+    () => recentReturnThreads.find((t) => unreadByReturn[t.id]) ?? null,
+    [recentReturnThreads, unreadByReturn]
+  );
+  const seenReturnMessages = useRef<Set<string>>(new Set());
+  const returnMessagesPrimed = useRef(false);
+  const activeReturnThread = useRef<string | null>(null);
+  const deferredReturnRead = useRef<{ returnId: string; upTo: string } | null>(null);
   // Safe to read localStorage on first render: AppShell's Guard only mounts this
   // provider client-side, after auth has loaded.
   const [soundEnabled, setSoundEnabledState] = useState(
@@ -441,6 +511,48 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (soundRef.current) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
+  // Same idea as poll() above, for conversations on returns.
+  const pollReturnMessages = useCallback(async () => {
+    if (!session || !isDispatcher) return;
+    let res: ApiResponse<{ byReturn: Record<string, number>; recent: UnreadReturnMessage[] }>;
+    try {
+      res = await apiFetch("/api/returns/messages/unread");
+    } catch {
+      return;
+    }
+    if (!res.data) return;
+
+    const { byReturn, recent } = res.data;
+    const active = isAway() ? null : activeReturnThread.current;
+    if (active) delete byReturn[active];
+    setUnreadByReturn(byReturn);
+    setRecentReturnThreads(recent.map((m) => ({ id: m.returnId, number: m.number, officeName: m.officeName })));
+
+    const fresh = recent.filter((m) => !seenReturnMessages.current.has(m.id));
+    for (const m of fresh) seenReturnMessages.current.add(m.id);
+    if (!returnMessagesPrimed.current) {
+      returnMessagesPrimed.current = true;
+      return;
+    }
+
+    const toToast = fresh.filter((m) => m.returnId !== active).reverse(); // oldest first
+    if (toToast.length === 0) return;
+    if (toToast.length > MAX_TOASTS) {
+      pushToasts([{
+        key: `return-burst-${toToast[toToast.length - 1].id}`,
+        kind: "return",
+        jobId: null,
+        title: `${toToast.length} new messages`,
+        body: "Open Returning Cases to read them.",
+        notifyBody: "Open Returning Cases to read them.",
+        color: "#185FA5",
+      }]);
+    } else {
+      pushToasts(toToast.map(toastForReturnMessage));
+    }
+    if (soundRef.current) playChime();
+  }, [session, isDispatcher, apiFetch, pushToasts]);
+
   const loadReturnsSummary = useCallback(async () => {
     if (!session || !isDispatcher) return;
     try {
@@ -531,9 +643,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
 
   const pollAll = useCallback(() => {
     poll();
+    pollReturnMessages();
     pollActivity();
     loadReturnsSummary();
-  }, [poll, pollActivity, loadReturnsSummary]);
+  }, [poll, pollReturnMessages, pollActivity, loadReturnsSummary]);
 
   // Realtime: any change to the lab's jobs re-checks driver activity right away and
   // tells open job lists to reload. Polling above still covers a dropped socket.
@@ -561,6 +674,12 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         if (jobId) setMessageArrived({ jobId, at: Date.now() });
         poll();
       })
+      // Server broadcast when anyone sends a message on a return.
+      .on("broadcast", { event: "return_message" }, ({ payload }) => {
+        const returnId = (payload as { returnId?: string } | undefined)?.returnId;
+        if (returnId) setReturnMessageArrived({ returnId, at: Date.now() });
+        pollReturnMessages();
+      })
       // Server broadcast when a driver logs, drops off, or dispatch checks in a return.
       .on("broadcast", { event: "return_changed" }, ({ payload }) => {
         onReturnChanged((payload ?? {}) as { returnId?: string; change?: string; count?: number });
@@ -569,7 +688,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     return () => {
       supabaseBrowser.removeChannel(channel);
     };
-  }, [labId, pollActivity, poll, onReturnChanged]);
+  }, [labId, pollActivity, poll, pollReturnMessages, onReturnChanged]);
 
   // Slower than the message poll: this reloads the whole driver list.
   useEffect(() => {
@@ -604,9 +723,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const baseTitle = useRef<string | null>(null);
   useEffect(() => {
     if (baseTitle.current === null) baseTitle.current = document.title.replace(/^\(\d+\)\s*/, "");
-    document.title = totalUnread > 0 ? `(${totalUnread}) ${baseTitle.current}` : baseTitle.current;
-    setFaviconBadge(totalUnread);
-  }, [totalUnread, pathname]);
+    const unread = totalUnread + returnUnreadTotal;
+    document.title = unread > 0 ? `(${unread}) ${baseTitle.current}` : baseTitle.current;
+    setFaviconBadge(unread);
+  }, [totalUnread, returnUnreadTotal, pathname]);
 
   const markRead = useCallback((jobId: string, upTo: string) => {
     if (isAway()) {
@@ -626,6 +746,30 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     }).catch(() => {});
   }, [apiFetch]);
 
+  const markReturnRead = useCallback((returnId: string, upTo: string) => {
+    if (isAway()) {
+      deferredReturnRead.current = { returnId, upTo };
+      return;
+    }
+    deferredReturnRead.current = null;
+    setUnreadByReturn((prev) => {
+      if (!prev[returnId]) return prev;
+      const next = { ...prev };
+      delete next[returnId];
+      return next;
+    });
+    apiFetch(`/api/returns/${returnId}/messages/read`, {
+      method: "POST",
+      body: JSON.stringify({ upTo }),
+    }).catch(() => {});
+  }, [apiFetch]);
+
+  const setActiveReturnThread = useCallback((returnId: string | null) => {
+    activeReturnThread.current = returnId;
+    if (deferredReturnRead.current?.returnId !== returnId) deferredReturnRead.current = null;
+    if (returnId) setToasts((prev) => prev.filter((t) => t.returnThread?.id !== returnId));
+  }, []);
+
   const setActiveThread = useCallback((jobId: string | null) => {
     activeThread.current = jobId;
     if (deferredRead.current?.jobId !== jobId) deferredRead.current = null;
@@ -641,8 +785,12 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       if (isAway()) return;
       const deferred = deferredRead.current;
       if (deferred) markRead(deferred.jobId, deferred.upTo);
+      const deferredReturn = deferredReturnRead.current;
+      if (deferredReturn) markReturnRead(deferredReturn.returnId, deferredReturn.upTo);
       const active = activeThread.current;
       if (active) setToasts((prev) => prev.filter((t) => t.jobId !== active));
+      const activeReturn = activeReturnThread.current;
+      if (activeReturn) setToasts((prev) => prev.filter((t) => t.returnThread?.id !== activeReturn));
     };
     const onVisibility = () => {
       if (document.hidden) releaseFocus();
@@ -660,7 +808,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       window.removeEventListener("pagehide", releaseFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [markRead]);
+  }, [markRead, markReturnRead]);
 
   const clearPendingOpen = useCallback(() => setPendingOpenJobId(null), []);
   const clearPendingHistory = useCallback(() => setPendingHistoryJobId(null), []);
@@ -670,9 +818,17 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (pathname !== "/jobs") router.push("/jobs");
   }, [pathname, router]);
 
+  const clearPendingOpenReturn = useCallback(() => setPendingOpenReturn(null), []);
+  const openReturnThread = useCallback((thread: ReturnThreadRef) => {
+    setPendingOpenReturn(thread);
+    if (pathname !== "/returns") router.push("/returns");
+  }, [pathname, router]);
+
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if (t.kind === "return") {
+    if (t.returnThread) {
+      openReturnThread(t.returnThread);
+    } else if (t.kind === "return") {
       if (pathname !== "/returns") router.push("/returns");
     } else if ((t.kind === "rejected" || t.kind === "delivered") && t.jobId) {
       setPendingHistoryJobId(t.jobId);
@@ -701,6 +857,15 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         driversChangedAt,
         messageArrived,
         returnsSummary,
+        returnUnreadTotal,
+        unreadByReturn,
+        newestUnreadReturn,
+        markReturnRead,
+        setActiveReturnThread,
+        openReturnThread,
+        pendingOpenReturn,
+        clearPendingOpenReturn,
+        returnMessageArrived,
         returnsChangedAt,
         soundEnabled,
         setSoundEnabled,

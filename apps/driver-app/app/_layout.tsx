@@ -93,6 +93,13 @@ export default function RootLayout() {
               headerBackTitle: 'Job',
             }}
           />
+          <Stack.Screen
+            name="return-chat/[id]"
+            options={{
+              title: 'Messages',
+              headerBackTitle: 'Back',
+            }}
+          />
         </Stack>
         <JobAlerts />
         <StatusBar style="light" />
