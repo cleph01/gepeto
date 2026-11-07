@@ -362,7 +362,7 @@ function ReturnRow({
         background: r.driverId ? "#fff" : "rgba(133,79,11,0.06)",
       }}
     >
-      {(isRequest || !r.driverId) && <option value="">{isRequest ? "Assign driver…" : "Choose driver…"}</option>}
+      {(isRequest || !r.driverId) && <option value="">{!isRequest ? "Choose driver…" : r.driverId ? "Unassigned" : "Assign driver…"}</option>}
       {drivers.map((d) => (
         <option key={d.id} value={d.id}>{d.name}{d.status === "off_duty" ? " (off duty)" : ""}</option>
       ))}
