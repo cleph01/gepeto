@@ -22,6 +22,7 @@ export type ReturnCase = {
   requestedAt: string | null;
   readyAt: string | null;
   checkedInAt: string | null;
+  receivedCount: number | null;
 };
 
 /** What the "Bringing anything back?" block collects. */
@@ -30,6 +31,12 @@ export type ReturnDraft = { bringing: boolean; caseCount: number; caseNumbers: s
 export const EMPTY_RETURN: ReturnDraft = { bringing: false, caseCount: 1, caseNumbers: [], note: '' };
 
 export const returnLabel = (r: Pick<ReturnCase, 'number'>) => `RET-${r.number}`;
+
+export const casesLabel = (n: number) => `${n} case${n === 1 ? '' : 's'}`;
+
+/** The lab's count at check-in isn't what the driver logged. */
+export const countDiffers = (r: { caseCount: number; receivedCount: number | null }) =>
+  r.receivedCount !== null && r.receivedCount !== r.caseCount;
 
 export const RETURN_STATUS_LABEL: Record<ReturnStatus, string> = {
   requested: 'Pickup waiting at the office',

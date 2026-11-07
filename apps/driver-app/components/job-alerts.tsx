@@ -11,6 +11,7 @@ import { useMessages } from '@/context/messages';
 import { getDriverId } from '@/lib/driver';
 import { Colors, FontSize, Radius, Spacing, StatusLabels, Fonts } from '@/constants/theme';
 import { dayLabel, timeLabel } from '@/lib/history';
+import { casesLabel, countDiffers } from '@/lib/returns';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // App-wide job alerts. Mounted once in the root layout so they show over
@@ -26,6 +27,9 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 //   multi    several of office/due/priority changed in one save
 //   message  the lab or office sent a message (tap opens the chat)
 //   pickup   dispatch assigned an office pickup (tap opens the Jobs tab to answer)
+//   checked_in       the lab checked in a return (tap opens it in History). Check-ins
+//                    arriving while the banner is up join it, so a stack is one alert
+//   check_in_undone  the lab undid a check-in (tap opens the Jobs tab)
 //
 // Case number changes update the job quietly (no alert).
 //
@@ -36,7 +40,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 // row change alone can't tell dispatch's status changes from the driver's own.
 // Messages come from MessagesProvider, which skips the chat that's open.
 
-type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi' | 'message' | 'pickup';
+type AlertKind = 'new' | 'stat' | 'unstat' | 'removed' | 'status' | 'office' | 'due' | 'multi' | 'message' | 'pickup' | 'checked_in' | 'check_in_undone';
 type JobAlert = {
   kind: AlertKind;
   jobId: string;
@@ -49,6 +53,7 @@ type JobAlert = {
   from?: 'Lab' | 'Office'; // for 'message'
   body?: string;           // for 'message' and 'pickup'
   returnId?: string;       // for a 'message' on a return, not a job
+  checkIns?: ReturnAlert[]; // for 'checked_in'
 };
 type KnownJob = Pick<Job, 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>;
 
@@ -73,6 +78,25 @@ export type PickupAlert = { returnId: string; label: string; officeName: string;
 const pickupListeners = new Set<(pickup: PickupAlert) => void>();
 export function showPickupAlert(pickup: PickupAlert) {
   pickupListeners.forEach((l) => l(pickup));
+}
+
+// The Jobs tab also hears about check-ins and hands them over. History listens
+// too, so it stays current if that's the tab the driver is on.
+export type ReturnAlert = {
+  event: 'checked_in' | 'undone';
+  returnId: string;
+  label: string;
+  officeName: string;
+  caseCount: number;
+  receivedCount: number | null;
+};
+const returnListeners = new Set<(alert: ReturnAlert) => void>();
+export function showReturnAlert(alert: ReturnAlert) {
+  returnListeners.forEach((l) => l(alert));
+}
+export function onReturnAlert(listener: (alert: ReturnAlert) => void): () => void {
+  returnListeners.add(listener);
+  return () => { returnListeners.delete(listener); };
 }
 
 function remember(row: Pick<Job, 'id' | 'caseId' | 'deliveryAddress' | 'priority' | 'officeId' | 'scheduledAt'>) {
@@ -252,6 +276,28 @@ export function JobAlerts() {
     return () => { pickupListeners.delete(listener); };
   }, []);
 
+  // A return checked in, or that being undone. Routine, so only a light tap,
+  // unless the lab's count differs from the driver's.
+  useEffect(
+    () =>
+      onReturnAlert((r) => {
+        const base = { jobId: r.returnId, caseId: r.label, deliveryAddress: r.officeName, priority: 'standard' as const };
+        if (r.event === 'undone') {
+          setAlert({ kind: 'check_in_undone', ...base });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          return;
+        }
+        setAlert((prev) => ({
+          kind: 'checked_in',
+          ...base,
+          checkIns: [...(prev?.kind === 'checked_in' ? prev.checkIns ?? [] : []).filter((c) => c.returnId !== r.returnId), r],
+        }));
+        if (countDiffers(r)) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }),
+    []
+  );
+
   useEffect(() => {
     Animated.timing(slide, {
       toValue: alert ? 0 : -160,
@@ -263,12 +309,18 @@ export function JobAlerts() {
   if (!alert) return null;
 
   const onJobScreen = pathname === `/job/${alert.jobId}`;
+  const checkIns = alert.checkIns ?? [];
+  const onlyCheckIn = checkIns.length === 1 ? checkIns[0] : null;
+  const differing = checkIns.filter(countDiffers);
   const tap = () => {
     setAlert(null);
     if (alert.kind === 'message') {
       router.push(alert.returnId ? `/return-chat/${alert.returnId}` : `/chat/${alert.jobId}`);
-    } else if (alert.kind === 'pickup') {
+    } else if (alert.kind === 'pickup' || alert.kind === 'check_in_undone') {
       router.navigate('/(tabs)');
+    } else if (alert.kind === 'checked_in') {
+      if (onlyCheckIn) router.push(`/history/return/${onlyCheckIn.returnId}`);
+      else router.navigate('/(tabs)/history');
     } else if (alert.kind === 'removed') {
       // Don't leave the driver on a job that's no longer theirs.
       if (onJobScreen) router.replace('/(tabs)');
@@ -278,7 +330,7 @@ export function JobAlerts() {
     }
   };
 
-  const look = LOOK[alert.kind];
+  const look = differing.length > 0 ? LOOK_COUNT_DIFFERS : LOOK[alert.kind];
   // Lead with what happened; the case ID goes on the second line so a driver
   // with several jobs can still tell which one without tapping.
   const title = {
@@ -292,6 +344,12 @@ export function JobAlerts() {
     multi: 'Job updated',
     message: `Message from ${alert.from ?? 'Lab'}`,
     pickup: 'New pickup',
+    checked_in: !onlyCheckIn
+      ? `${checkIns.length} returns checked in`
+      : countDiffers(onlyCheckIn)
+        ? `Lab counted ${onlyCheckIn.receivedCount}, you logged ${onlyCheckIn.caseCount}`
+        : 'Return checked in',
+    check_in_undone: 'Check-in undone',
   }[alert.kind];
   const detail = {
     new: `${alert.caseId} → ${alert.deliveryAddress}`,
@@ -304,6 +362,11 @@ export function JobAlerts() {
     multi: `${alert.caseId} · ${(alert.changed ?? []).join(', ')}`,
     message: `${alert.caseId} · ${alert.body ?? ''}`,
     pickup: `${alert.deliveryAddress} · ${alert.body ?? ''}`,
+    checked_in: onlyCheckIn
+      ? `${onlyCheckIn.label} · ${onlyCheckIn.officeName}${countDiffers(onlyCheckIn) ? '' : ` · ${casesLabel(onlyCheckIn.receivedCount ?? onlyCheckIn.caseCount)}`}`
+      : `${casesLabel(checkIns.reduce((n, c) => n + (c.receivedCount ?? c.caseCount), 0))} received`
+        + (differing.length === 1 ? ` · count differs on ${differing[0].label}` : differing.length > 1 ? ` · counts differ on ${differing.length}` : ''),
+    check_in_undone: `${alert.caseId} · back on your list, waiting for check-in`,
   }[alert.kind];
   // Only when the tap does something the driver needs to know about.
   const cta = alert.kind === 'new' || alert.kind === 'pickup'
@@ -334,7 +397,7 @@ export function JobAlerts() {
               </View>
             )}
           </View>
-          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={alert.kind === 'message' || alert.kind === 'pickup' ? 2 : 1}>{detail}</Text>
+          <Text style={[styles.detail, { color: look.detail }]} numberOfLines={alert.kind === 'message' || alert.kind === 'pickup' || alert.kind === 'checked_in' || alert.kind === 'check_in_undone' ? 2 : 1}>{detail}</Text>
           {cta && <Text style={[styles.cta, { color: look.cta }]}>{cta}</Text>}
         </View>
         <TouchableOpacity
@@ -382,7 +445,10 @@ const LOOK: Record<AlertKind, Look> = {
   removed: { icon: 'arrow.uturn.left', ...GREY },
   unstat:  { icon: 'arrow.down', ...GREY },
   message: { icon: 'bubble.left.and.bubble.right.fill', ...NAVY, border: MESSAGE_VIOLET },
+  checked_in: { icon: 'checkmark', ...NAVY },
+  check_in_undone: { icon: 'arrow.uturn.left', ...GREY },
 };
+const LOOK_COUNT_DIFFERS: Look = { icon: 'exclamationmark.triangle', ...AMBER };
 
 const styles = StyleSheet.create({
   wrap: {

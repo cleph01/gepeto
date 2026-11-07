@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,50 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { apiGet } from '@/lib/api';
-import { dayLabel, timeLabel, type HistoryEntry, type HistoryPage } from '@/lib/history';
+import { dayLabel, timeLabel, type HistoryEntry, type HistoryPage, type JobHistoryEntry, type ReturnHistoryEntry } from '@/lib/history';
+import { casesLabel, countDiffers } from '@/lib/returns';
+import { onReturnAlert } from '@/components/job-alerts';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // ─── History row ─────────────────────────────────────────────────────────────
 
-function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => void }) {
+function ReturnedRow({ entry, onPress }: { entry: ReturnHistoryEntry; onPress: () => void }) {
+  const differs = countDiffers(entry);
+
+  return (
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <Text style={styles.caseId} numberOfLines={1}>{entry.label}</Text>
+        </View>
+        <View style={styles.cardHeaderRight}>
+          <View style={[styles.kindBadge, differs ? styles.kindCountDiffers : styles.kindDelivered]}>
+            <IconSymbol name={differs ? 'exclamationmark.triangle' : 'checkmark'} size={12} color={differs ? Colors.warning : Colors.success} />
+            <Text style={[styles.kindText, { color: differs ? Colors.warning : Colors.success }]}>Returned</Text>
+          </View>
+        </View>
+      </View>
+
+      <Text style={styles.office} numberOfLines={1}>{entry.officeName ?? 'Office'}</Text>
+      {entry.officeAddress && (
+        <View style={styles.metaRow}>
+          <IconSymbol name="mappin.and.ellipse" size={15} color={Colors.textSecondary} />
+          <Text style={styles.address} numberOfLines={1}>{entry.officeAddress}</Text>
+        </View>
+      )}
+
+      <View style={styles.cardFooter}>
+        <Text style={[styles.itemsSummary, differs && { color: Colors.warning }]} numberOfLines={1}>
+          {differs ? `Lab counted ${entry.receivedCount}, you logged ${entry.caseCount}` : casesLabel(entry.caseCount)}
+        </Text>
+        <Text style={styles.time}>{timeLabel(entry.at)}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function HistoryRow({ entry, onPress }: { entry: JobHistoryEntry; onPress: () => void }) {
   const rejected = entry.kind === 'rejected';
   const items = entry.items ?? [];
 
@@ -104,6 +141,9 @@ export default function HistoryScreen() {
     }, [loadFirstPage])
   );
 
+  // Already on this tab when the lab checks in a return, or undoes one.
+  useEffect(() => onReturnAlert(() => { loadFirstPage(); }), [loadFirstPage]);
+
   const loadMore = async () => {
     if (!nextBefore || loadingMore) return;
     setLoadingMore(true);
@@ -132,7 +172,8 @@ export default function HistoryScreen() {
 
   const openEntry = (entry: HistoryEntry) => {
     Haptics.selectionAsync();
-    if (entry.kind === 'rejected') router.push(`/history/${entry.jobId}`);
+    if (entry.kind === 'returned') router.push(`/history/return/${entry.returnId}`);
+    else if (entry.kind === 'rejected') router.push(`/history/${entry.jobId}`);
     else router.push(`/job/${entry.jobId}`);
   };
 
@@ -153,6 +194,8 @@ export default function HistoryScreen() {
         renderItem={({ item }) =>
           item.type === 'day' ? (
             <Text style={styles.dayTitle}>{item.label}</Text>
+          ) : item.entry.kind === 'returned' ? (
+            <ReturnedRow entry={item.entry} onPress={() => openEntry(item.entry)} />
           ) : (
             <HistoryRow entry={item.entry} onPress={() => openEntry(item.entry)} />
           )
@@ -166,7 +209,7 @@ export default function HistoryScreen() {
               <Text style={styles.emptyTitle}>{error ?? 'Nothing in the last 30 days'}</Text>
               {!error && (
                 <Text style={styles.emptySubtitle}>
-                  Jobs you deliver or reject will show up here.
+                  Jobs you deliver or reject, and returns the lab checks in, will show up here.
                 </Text>
               )}
             </View>
@@ -233,6 +276,7 @@ const styles = StyleSheet.create({
   kindBadge: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, borderWidth: 1, paddingHorizontal: Spacing.md - 2, paddingVertical: 4 },
   kindDelivered: { backgroundColor: Colors.successBg, borderColor: Colors.successBorder },
   kindRejected: { backgroundColor: Colors.dangerBg, borderColor: Colors.dangerBorder },
+  kindCountDiffers: { backgroundColor: Colors.warningBg, borderColor: Colors.warningBorder },
   kindText: { fontSize: FontSize.xs, fontFamily: Fonts.semibold },
   office: { color: Colors.text, fontSize: FontSize.lg, fontFamily: Fonts.semibold, letterSpacing: -0.2 },
   address: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: 14, flexShrink: 1 },

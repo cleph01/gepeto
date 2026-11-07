@@ -15,9 +15,10 @@ export async function notifyDriver(driverId: string, event: string, payload: Rec
   await broadcast(`driver:${driverId}`, event, payload);
 }
 
-// Pickup requests assigned to (or taken off) a driver. A separate topic from
-// `driver:<id>`, which the app's job alerts own and reset on every subscribe.
-// The app only reloads its returns list on this, so a forged message is harmless.
+// Pickup requests assigned to (or taken off) a driver, and their returns being
+// checked in or having that undone. A separate topic from `driver:<id>`, which
+// the app's job alerts own and reset on every subscribe.
+// The app only acts on what its returns list says, so a forged message is harmless.
 export async function notifyDriverPickups(driverId: string, event: string, payload: Record<string, unknown>) {
   await broadcast(`driver-pickups:${driverId}`, event, payload);
 }

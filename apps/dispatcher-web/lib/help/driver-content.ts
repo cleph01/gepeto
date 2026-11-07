@@ -83,6 +83,9 @@ A banner drops in over any screen when something changes. Banners only appear wh
 - **Job removed:** dispatch gave the job to someone else, so it's left your list.
 - **Job updated:** dispatch changed more than one detail.
 - **Message from Lab** or **Message from Office:** tap it to open the conversation.
+- **Return checked in:** the lab has your cases. Several check-ins close together share one banner. Tap it to see the details in History.
+- **Lab counted 2, you logged 3** (with your numbers): the lab's count doesn't match yours, so talk to the front desk.
+- **Check-in undone:** the return is back on your list until the lab checks it in again.
 `,
         },
       ],
@@ -200,7 +203,7 @@ Returns are cases going back to the lab, such as remakes, adjustments or new wor
 1. When you're back at the lab, tap the **Dropped at lab** button.
 2. Tap **Dropped off** to confirm.
 
-The front desk then checks the cases in, and the app shows you when that's done.
+The front desk then checks the cases in. A banner tells you when that's done, and the return moves from your Jobs tab to [History](/help/history-and-photos). If the lab's count is different from yours, the banner says so.
 
 ## Message about a pickup
 
@@ -266,10 +269,14 @@ If you see **Your break didn't start** or **Your break didn't end**, check your 
         {
           slug: "history-and-photos",
           title: "History and drop-off photos",
-          summary: "Find past deliveries, rejected jobs and your photos.",
-          related: ["complete-a-delivery", "accept-or-reject"],
+          summary: "Find past deliveries, rejected jobs, checked-in returns and your photos.",
+          related: ["complete-a-delivery", "accept-or-reject", "pickups-and-returns"],
           body: `
-The **History** tab lists every delivery and rejected job from the last 30 days, grouped by day. Tap **Load older jobs** to go further back.
+The **History** tab lists every delivery, rejected job and checked-in return from the last 30 days, grouped by day. Tap **Load older jobs** to go further back.
+
+## See a checked-in return
+
+Returns are marked **Returned**. Tap one to see when you picked it up and dropped it off, when the lab checked it in, and the lab's count. If the lab's count is different from yours, the row is marked in amber.
 
 ## See a drop-off photo
 

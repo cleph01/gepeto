@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { driverPhotoCutoff } from "@/lib/pod-photos";
+import { returnLabel } from "@/lib/returns";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -12,9 +13,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const REJECTION = { "e.changed_by_role": "driver", "e.to_status": "pending" };
 
 type HistoryRow = { jobId: string; eventId?: string; items: unknown; at: string } & Record<string, unknown>;
+type ReturnRow = {
+  returnId: string;
+  number: number;
+  caseCount: number;
+  receivedCount: number | null;
+  officeName: string | null;
+  officeAddress: string | null;
+  at: string;
+};
 
 // GET /api/driver/history?before=<ISO>
-// The signed-in driver's delivered and rejected jobs for the 30 days before
+// The signed-in driver's delivered and rejected jobs, and returns the lab has
+// checked in, for the 30 days before
 // `before` (default: now), newest first. `nextBefore` is just after the newest
 // older entry, so "Load more" skips empty months; null when nothing is older.
 export async function GET(request: NextRequest) {
@@ -62,7 +73,19 @@ export async function GET(request: NextRequest) {
         "o.name as office_name", "e.created_at as at"
       );
 
-    const [olderDelivered, olderRejected] = await Promise.all([
+    // Read from the return itself, so an undone check-in leaves History on its own.
+    const checkedInScope = { "r.lab_id": user.labId, "r.driver_id": user.driverId, "r.status": "checked_in" };
+    const returned = await db("returns as r")
+      .leftJoin("offices as o", "o.id", "r.office_id")
+      .where(checkedInScope)
+      .andWhere("r.checked_in_at", ">=", since)
+      .andWhere("r.checked_in_at", "<", before)
+      .select(
+        "r.id as return_id", "r.number", "r.case_count", "r.received_count",
+        "o.name as office_name", "o.address as office_address", "r.checked_in_at as at"
+      );
+
+    const [olderDelivered, olderRejected, olderReturned] = await Promise.all([
       db("jobs as j")
         .where({ "j.lab_id": user.labId, "j.driver_id": user.driverId, "j.status": "delivered" })
         .andWhere(deliveredAt, "<", since)
@@ -73,15 +96,21 @@ export async function GET(request: NextRequest) {
         .andWhere("e.created_at", "<", since)
         .max({ at: "e.created_at" })
         .first(),
+      db("returns as r")
+        .where(checkedInScope)
+        .andWhere("r.checked_in_at", "<", since)
+        .max({ at: "r.checked_in_at" })
+        .first(),
     ]);
 
     const parseItems = (items: unknown) => (typeof items === "string" ? JSON.parse(items) : items ?? []);
     const entries = [
       ...delivered.map((r: HistoryRow) => ({ kind: "delivered", key: `d-${r.jobId}`, ...r, items: parseItems(r.items) })),
       ...rejected.map((r: HistoryRow) => ({ kind: "rejected", key: `r-${r.eventId}`, ...r, items: parseItems(r.items), hasPhoto: false })),
+      ...returned.map((r: ReturnRow) => ({ kind: "returned", key: `ret-${r.returnId}`, ...r, label: returnLabel(r.number) })),
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
-    const olderTimes = [olderDelivered?.at, olderRejected?.at].filter(Boolean).map((t) => new Date(t).getTime());
+    const olderTimes = [olderDelivered?.at, olderRejected?.at, olderReturned?.at].filter(Boolean).map((t) => new Date(t).getTime());
     const nextBefore = olderTimes.length ? new Date(Math.max(...olderTimes) + 1).toISOString() : null;
 
     return Response.json({

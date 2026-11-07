@@ -225,6 +225,8 @@ The driver is asked to accept or reject the pickup in the driver app. If they re
 
 > If the count you enter differs from the driver's, Gepeto warns you and keeps the difference in the return's history.
 
+If the driver has the app open, a banner tells them the return is checked in, including any difference in the count. The return also moves to the History tab in their app.
+
 ## Message about a return
 
 Click **Messages** on any return to talk with the office and the driver who has it. A red number on the button, and on **Returning Cases** in the sidebar, counts unread messages. You and the office can keep messaging after check-in. Drivers can read but not reply once it's checked in.
@@ -233,7 +235,7 @@ Click **Messages** on any return to talk with the office and the driver who has 
 
 - **Wrong driver:** until check-in, choose the right driver on the return. They don't need to accept, because this records who has the cases.
 - **Marked dropped off by mistake:** click **Undo drop-off**.
-- **Checked in by mistake:** click **Undo check-in**, then check it in again when you're ready. The earlier details stay in the return's history.
+- **Checked in by mistake:** click **Undo check-in**, then check it in again when you're ready. The earlier details stay in the return's history, and the driver sees the return go back on their list.
 
 ## Find older returns
 

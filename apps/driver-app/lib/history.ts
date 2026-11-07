@@ -1,7 +1,7 @@
 import type { JobItem, JobPriority } from '@gepeto/types';
 
 /** One row in the driver's History tab (from GET /api/driver/history). */
-export type HistoryEntry = {
+export type JobHistoryEntry = {
   kind: 'delivered' | 'rejected';
   key: string;
   jobId: string;
@@ -14,6 +14,21 @@ export type HistoryEntry = {
   /** The driver can still view this delivery's photo (7 days after delivery). */
   hasPhoto: boolean;
 };
+
+/** A return the lab has checked in. */
+export type ReturnHistoryEntry = {
+  kind: 'returned';
+  key: string;
+  returnId: string;
+  label: string;
+  officeName: string | null;
+  officeAddress: string | null;
+  caseCount: number;
+  receivedCount: number | null;
+  at: string;
+};
+
+export type HistoryEntry = JobHistoryEntry | ReturnHistoryEntry;
 
 export type HistoryPage = { entries: HistoryEntry[]; nextBefore: string | null };
 
@@ -28,6 +43,22 @@ export type RejectedJob = {
   scheduledAt: string | null;
   officeName: string | null;
   rejectedAt: string;
+};
+
+/** Read-only summary of a checked-in return (from GET /api/driver/history/returns/[id]). */
+export type ReturnedCases = {
+  id: string;
+  number: number;
+  caseCount: number;
+  receivedCount: number | null;
+  caseId: string | null;
+  caseNumbers: string[];
+  note: string | null;
+  officeName: string | null;
+  officeAddress: string | null;
+  pickedUpAt: string | null;
+  droppedAt: string | null;
+  checkedInAt: string;
 };
 
 /** "Today", "Yesterday", "Tomorrow", or e.g. "Mon, Oct 26" in the driver's local time. */

@@ -50,6 +50,7 @@ export async function POST(
 
     let change: string;
     const refreshDrivers = new Set<string>();
+    let undoneForDriver: string | null = null;
 
     if (body.undo === "drop_off") {
       if (ret.status !== "at_lab") return conflict("Only a return waiting for check-in can go back to the driver.");
@@ -82,7 +83,7 @@ export async function POST(
         await logCorrection(trx, { correction: "undo_check_in", caseId: ret.caseId, receivedCount: ret.receivedCount });
       });
       change = "check_in_undone";
-      if (ret.driverId) refreshDrivers.add(ret.driverId);
+      undoneForDriver = ret.driverId;
     } else if (body.driverId) {
       if (ret.status !== "with_driver" && ret.status !== "at_lab") {
         return conflict("The driver can only be corrected after pickup and before check-in.");
@@ -114,6 +115,8 @@ export async function POST(
     await notifyOffices([ret.officeId], "pickups");
     // The app only reloads its list on these; it alerts only for a new request.
     for (const driverId of refreshDrivers) await notifyDriverPickups(driverId, "pickup_removed", { returnId: id });
+    // This one reloads the list and tells the driver the return is back on it.
+    if (undoneForDriver) await notifyDriverPickups(undoneForDriver, "return_check_in_undone", { returnId: id });
 
     const row = await returnsQuery(user.labId).where("r.id", id).first();
     return Response.json({ data: row, error: null });

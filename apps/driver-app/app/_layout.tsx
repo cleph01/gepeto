@@ -78,6 +78,13 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="history/return/[id]"
+            options={{
+              title: 'Returned Cases',
+              headerBackTitle: 'Back',
+            }}
+          />
+          <Stack.Screen
             name="job/[id]"
             options={{
               title: 'Job Detail',

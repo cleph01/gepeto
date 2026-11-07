@@ -39,7 +39,7 @@ import { DeliveredToast } from '@/components/delivered-toast';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
 import { RETURN_STATUS_LABEL, logReturn, readyLabel, respondToPickup, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
-import { onJobRemoved, showPickupAlert } from '@/components/job-alerts';
+import { onJobRemoved, showPickupAlert, showReturnAlert, type ReturnAlert } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
 // The queue reads office names alongside each job (drivers can read their lab's offices).
@@ -566,8 +566,38 @@ export default function JobQueueScreen() {
     for (const c of supabase.getChannels()) {
       if (c.topic === `realtime:${topic}`) supabase.removeChannel(c);
     }
+    // Check-ins clear the return off this list. The banner goes by what the API
+    // says, so it only shows if the return really is in that state.
+    const announceReturn = async (payload: unknown, event: ReturnAlert['event'], status: ReturnCase['status']) => {
+      const returnId = (payload as { returnId?: string })?.returnId;
+      try {
+        const res = await apiGet<ReturnCase[]>('/api/returns');
+        if (!res.data) return;
+        setReturns(stillOpen(res.data));
+        refreshReturnUnread();
+        const r = res.data.find((x) => x.id === returnId && x.status === status);
+        if (!r) return;
+        showReturnAlert({
+          event,
+          returnId: r.id,
+          label: returnLabel(r),
+          officeName: r.officeName ?? 'Office',
+          caseCount: r.caseCount,
+          receivedCount: r.receivedCount,
+        });
+      } catch {
+        // Offline: the Jobs and History tabs catch up on the next refresh.
+      }
+    };
+
     const channel = supabase
       .channel(topic)
+      .on('broadcast', { event: 'return_checked_in' }, ({ payload }) => {
+        announceReturn(payload, 'checked_in', 'checked_in');
+      })
+      .on('broadcast', { event: 'return_check_in_undone' }, ({ payload }) => {
+        announceReturn(payload, 'undone', 'at_lab');
+      })
       .on('broadcast', { event: 'pickup_assigned' }, async ({ payload }) => {
         const returnId = (payload as { returnId?: string })?.returnId;
         try {
