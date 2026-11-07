@@ -23,7 +23,7 @@ export default function SignupSuccessPage() {
 
         <p style={{ fontSize: 12.5, color: "#9a9a9a", margin: "0 0 30px", lineHeight: 1.5 }}>
           Didn&apos;t receive an email? Check your spam folder or{" "}
-          <a href="mailto:hello@gepeto.com" style={{ color: "#185FA5", textDecoration: "none" }}>
+          <a href="mailto:hello@gepeto.delivery" style={{ color: "#185FA5", textDecoration: "none" }}>
             contact support
           </a>
           .

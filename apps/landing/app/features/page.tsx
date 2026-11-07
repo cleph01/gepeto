@@ -122,7 +122,7 @@ export default function FeaturesPage() {
                 Get Started
               </a>
               <a
-                href="mailto:hello@gepeto.com"
+                href="mailto:hello@gepeto.delivery"
                 className="inline-flex items-center px-5 py-3 rounded-xl text-sm font-semibold text-blue border border-blue/25 hover:bg-white transition-colors"
               >
                 Talk to us
@@ -131,7 +131,7 @@ export default function FeaturesPage() {
           </section>
 
           <p className="print-only text-xs text-gray-500 pt-6 border-t border-gray-200">
-            Questions? hello@gepeto.com · Get started at gepeto.delivery
+            Questions? hello@gepeto.delivery · Get started at gepeto.delivery
           </p>
         </main>
       </div>
@@ -141,7 +141,7 @@ export default function FeaturesPage() {
           <p>© {new Date().getFullYear()} Gepeto. All rights reserved.</p>
           <div className="flex items-center gap-5">
             <Link href="/" className="hover:text-gray-600 transition-colors">Home</Link>
-            <a href="mailto:hello@gepeto.com" className="hover:text-gray-600 transition-colors">Contact</a>
+            <a href="mailto:hello@gepeto.delivery" className="hover:text-gray-600 transition-colors">Contact</a>
             <Link href="/privacy" className="hover:text-gray-600 transition-colors">Privacy</Link>
             <Link href="/terms" className="hover:text-gray-600 transition-colors">Terms</Link>
           </div>

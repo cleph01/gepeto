@@ -56,7 +56,7 @@ export default function PricingPage() {
         <div className="max-w-4xl mx-auto px-5 sm:px-8 py-3 text-center text-sm text-[#124B87]">
           <strong className="font-semibold">Founding labs:</strong> {FOUNDING.percentOff}% off any plan for your first{" "}
           {FOUNDING.months} months. Ask us for a founding-lab code at{" "}
-          <a href="mailto:hello@gepeto.com" className="underline underline-offset-2 font-medium">hello@gepeto.com</a>.
+          <a href="mailto:hello@gepeto.delivery" className="underline underline-offset-2 font-medium">hello@gepeto.delivery</a>.
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export default function PricingPage() {
         </div>
         <p className="mt-4 text-center text-sm text-gray-500">
           Running several locations?{" "}
-          <a href="mailto:hello@gepeto.com" className="font-medium text-blue underline underline-offset-2">Talk to us</a> about one
+          <a href="mailto:hello@gepeto.delivery" className="font-medium text-blue underline underline-offset-2">Talk to us</a> about one
           account for all of them.
         </p>
       </section>
@@ -143,7 +143,7 @@ export default function PricingPage() {
             <a href={`${APP_URL}/signup?plan=growth&interval=month`} className="px-7 py-3.5 bg-white text-gray-900 hover:bg-gray-100 text-sm font-semibold rounded-xl transition-colors">
               Start free trial →
             </a>
-            <a href="mailto:hello@gepeto.com" className="px-7 py-3.5 text-white/80 hover:text-white text-sm font-medium rounded-xl border border-white/20 hover:bg-white/10 transition-colors">
+            <a href="mailto:hello@gepeto.delivery" className="px-7 py-3.5 text-white/80 hover:text-white text-sm font-medium rounded-xl border border-white/20 hover:bg-white/10 transition-colors">
               Talk to us
             </a>
           </div>

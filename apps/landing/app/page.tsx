@@ -429,7 +429,7 @@ function Hero() {
             </a>
           </div>
           <a
-            href="mailto:hello@gepeto.com"
+            href="mailto:hello@gepeto.delivery"
             className="text-sm text-white/35 hover:text-white/55 transition-colors"
           >
             Need a walk-through first? Schedule a demo →
@@ -727,7 +727,7 @@ function CTASection() {
             </a>
           </div>
           <a
-            href="mailto:hello@gepeto.com"
+            href="mailto:hello@gepeto.delivery"
             className="text-sm text-white/35 hover:text-white/55 transition-colors"
           >
             Need a walk-through first? Schedule a demo →
@@ -769,7 +769,7 @@ function Footer() {
         </p>
         <div className="flex items-center gap-5 text-xs text-white/30">
           <a
-            href="mailto:hello@gepeto.com"
+            href="mailto:hello@gepeto.delivery"
             className="hover:text-white/50 transition-colors"
           >
             Contact

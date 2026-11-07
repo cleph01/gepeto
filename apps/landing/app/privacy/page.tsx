@@ -33,10 +33,10 @@ export default function PrivacyPage() {
             In the meantime, if you have any questions about your data or our privacy practices,
             please reach out at{" "}
             <a
-              href="mailto:hello@gepeto.com"
+              href="mailto:hello@gepeto.delivery"
               className="text-blue font-medium hover:underline"
             >
-              hello@gepeto.com
+              hello@gepeto.delivery
             </a>
             .
           </p>

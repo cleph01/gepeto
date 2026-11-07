@@ -32,10 +32,10 @@ export default function TermsPage() {
           <p className="mt-3">
             If you have any questions in the meantime, please contact us at{" "}
             <a
-              href="mailto:hello@gepeto.com"
+              href="mailto:hello@gepeto.delivery"
               className="text-blue font-medium hover:underline"
             >
-              hello@gepeto.com
+              hello@gepeto.delivery
             </a>
             .
           </p>
