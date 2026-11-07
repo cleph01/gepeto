@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { driverAllowance } from "@/lib/billing";
+import { deletionDate } from "@/lib/lab-deletion";
 import { PLANS, isPlanId } from "@/lib/plans";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
     const lab = await db("labs")
       .where({ id: user.labId })
-      .select("plan", "billing_interval", "driver_limit", "extra_drivers", "subscription_status", "trial_ends_at", "current_period_end", "stripe_customer_id")
+      .select("plan", "billing_interval", "driver_limit", "extra_drivers", "subscription_status", "trial_ends_at", "current_period_end", "subscription_ended_at", "stripe_customer_id")
       .first();
     const allowance = await driverAllowance(user.labId);
     return Response.json({
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
         status: lab?.subscriptionStatus ?? null,
         trialEndsAt: lab?.trialEndsAt ?? null,
         currentPeriodEnd: lab?.currentPeriodEnd ?? null,
+        dataDeletedOn: lab?.subscriptionEndedAt ? deletionDate(lab.subscriptionEndedAt).toISOString() : null,
         isOwner: user.labRole === "owner",
         hasSubscription: !!lab?.stripeCustomerId,
         canManage: !!lab?.stripeCustomerId && user.labRole === "owner",

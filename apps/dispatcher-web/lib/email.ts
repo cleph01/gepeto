@@ -100,6 +100,30 @@ export async function sendUnassignedJobAlert(to: string[], data: UnassignedJobDa
   });
 }
 
+export async function sendLabDeletionWarning(to: string[], data: { labName: string; deleteOn: Date }) {
+  const date = data.deleteOn.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+  const body = `
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
+      Your Gepeto data will be deleted after ${date}
+    </h2>
+    <p style="margin:0 0 14px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
+      The subscription for ${escapeHtml(data.labName)} has ended. After ${date}, we'll permanently delete your lab's jobs, returns, messages, delivery photos, and driver and office records, along with your team's and drivers' sign-ins. This can't be undone.
+    </p>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
+      To keep your data, start a plan in Settings before then. To get a copy, email hello@gepeto.delivery.
+    </p>
+    <a href="${getDashboardUrl()}/settings?section=billing" style="display:inline-block;background:#185FA5;color:#ffffff;font-size:13.5px;font-weight:500;padding:9px 18px;border-radius:7px;text-decoration:none;">
+      Open Settings →
+    </a>`;
+
+  return getResend().emails.send({
+    from: FROM,
+    to,
+    subject: `Your Gepeto data will be deleted after ${date}`,
+    html: layout("Your Gepeto data will be deleted", body),
+  });
+}
+
 export async function sendLateDeliveryAlert(to: string[], data: LateDeliveryData) {
   const body = `
     <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">

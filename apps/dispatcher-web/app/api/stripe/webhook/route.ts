@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getDashboardUrl } from "@/lib/email";
+import { subscriptionEndFields } from "@/lib/lab-deletion";
 import { PLANS, isExtraDriverLookupKey, parsePlanLookupKey } from "@/lib/plans";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -168,6 +169,7 @@ async function syncSubscription(sub: Stripe.Subscription) {
     extra_drivers: extraDrivers,
     trial_ends_at: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
     current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+    ...subscriptionEndFields(sub.status, sub.ended_at, lab.subscriptionEndedAt),
   };
   if (plan) {
     updates.plan = plan.plan;

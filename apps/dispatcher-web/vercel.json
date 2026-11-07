@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/pod-photos",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/lab-deletion",
+      "schedule": "0 10 * * *"
     }
   ]
 }

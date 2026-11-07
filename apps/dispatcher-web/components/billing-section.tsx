@@ -15,6 +15,7 @@ interface Billing {
   status: string | null;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
+  dataDeletedOn: string | null;
   isOwner: boolean;
   hasSubscription: boolean;
   canManage: boolean;
@@ -103,7 +104,14 @@ export default function BillingSection({ isMobile }: { isMobile: boolean }) {
             {(b.status === "past_due" || b.status === "unpaid") && (
               <Note tone="danger">Your last payment didn&apos;t go through. Update your card to keep Gepeto running.</Note>
             )}
-            {b.status === "canceled" && <Note tone="info">This subscription has ended. Choose a plan to start again.</Note>}
+            {b.status === "canceled" && (
+              <Note tone="info">
+                This subscription has ended. Choose a plan to start again.
+                {b.dataDeletedOn && (
+                  <> Your lab&apos;s data will be deleted after <strong>{day(b.dataDeletedOn)}</strong>, unless you start a plan before then. To get a copy, email hello@gepeto.delivery.</>
+                )}
+              </Note>
+            )}
 
             {b.driverLimit !== null && (
               <div>
