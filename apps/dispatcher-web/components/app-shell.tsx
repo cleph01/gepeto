@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/context/auth";
 import { MessageNotificationsProvider } from "@/context/message-notifications";
 import { SearchProvider } from "@/context/search";
+import ReadOnlyBanner from "@/components/read-only-banner";
 import Sidebar from "@/components/sidebar";
 
 const isPublicRoute = (pathname: string) =>
@@ -87,7 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <MessageNotificationsProvider>
             <SearchProvider>
             <Sidebar />
-            <main className="main-content">{children}</main>
+            <main className="main-content"><ReadOnlyBanner />{children}</main>
             </SearchProvider>
           </MessageNotificationsProvider>
         )}

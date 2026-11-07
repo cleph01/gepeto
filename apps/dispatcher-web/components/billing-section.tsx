@@ -1,5 +1,8 @@
 "use client";
 
+import { LegalLink } from "@/components/legal-links";
+import { PRIVACY_URL, TERMS_URL } from "@/lib/legal";
+import { PLANS, PLAN_PRICE, type BillingInterval, type PlanId } from "@/lib/plans";
 import { useEffect, useState } from "react";
 import type { ApiResponse } from "@gepeto/types";
 import { useAuth } from "@/context/auth";
@@ -42,6 +45,9 @@ export default function BillingSection({ isMobile }: { isMobile: boolean }) {
   const [b, setB] = useState<Billing | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newPlan, setNewPlan] = useState<PlanId>("growth");
+  const [newInterval, setNewInterval] = useState<BillingInterval>("month");
+  const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
     apiFetch<ApiResponse<Billing>>("/api/billing")
@@ -49,6 +55,21 @@ export default function BillingSection({ isMobile }: { isMobile: boolean }) {
       .catch(() => setError("Couldn't load billing."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const startPlan = async () => {
+    if (!accepted) { setError("Please agree to the Terms of Service and Privacy Policy to continue."); return; }
+    setOpening(true);
+    setError(null);
+    const res = await apiFetch<ApiResponse<{ url: string }>>("/api/billing/restart", {
+      method: "POST",
+      body: JSON.stringify({ plan: newPlan, interval: newInterval, acceptedTerms: accepted }),
+    }).catch(() => null);
+    if (res?.data?.url) window.location.href = res.data.url;
+    else {
+      setError(res?.error?.message ?? "Couldn't start checkout. Try again.");
+      setOpening(false);
+    }
+  };
 
   const openPortal = async () => {
     setOpening(true);
@@ -143,7 +164,40 @@ export default function BillingSection({ isMobile }: { isMobile: boolean }) {
           </>
         )}
 
-        {b?.plan && (
+        {b?.status === "canceled" && b.isOwner && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 16 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>Start a new plan</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <select aria-label="Plan" value={newPlan} onChange={(e) => setNewPlan(e.target.value as PlanId)} style={selectStyle}>
+                {(Object.keys(PLANS) as PlanId[]).map((id) => (
+                  <option key={id} value={id}>{PLANS[id].name}, {PLANS[id].drivers} drivers</option>
+                ))}
+              </select>
+              <select aria-label="Billing" value={newInterval} onChange={(e) => setNewInterval(e.target.value as BillingInterval)} style={selectStyle}>
+                <option value="month">Monthly</option>
+                <option value="year">Annual</option>
+              </select>
+            </div>
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#3a3a3a", lineHeight: 1.45, cursor: "pointer" }}>
+              <input type="checkbox" checked={accepted} onChange={(e) => { setAccepted(e.target.checked); setError(null); }} style={{ marginTop: 2, flexShrink: 0 }} />
+              <span>I agree to the <LegalLink href={TERMS_URL}>Terms of Service</LegalLink> and <LegalLink href={PRIVACY_URL}>Privacy Policy</LegalLink> on behalf of my lab.</span>
+            </label>
+            <div style={{ fontSize: 12, color: "#5F5E5A", lineHeight: 1.5 }}>
+              {PLANS[newPlan].name} starts right away at ${PLAN_PRICE[newPlan][newInterval].toLocaleString("en-US")} per {newInterval} plus any tax, and renews automatically until you cancel in Settings.
+            </div>
+            <div>
+              <button
+                onClick={startPlan}
+                disabled={opening || !b.billingConfigured}
+                style={{ fontSize: 13, fontWeight: 600, padding: "8px 16px", borderRadius: 8, border: "none", color: "#fff", background: opening || !b.billingConfigured ? "#9ab6d6" : "#185FA5", cursor: opening || !b.billingConfigured ? "default" : "pointer" }}
+              >
+                {opening ? "Opening…" : "Start plan"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {b?.plan && b.status !== "canceled" && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={openPortal}
@@ -172,6 +226,8 @@ export default function BillingSection({ isMobile }: { isMobile: boolean }) {
     </div>
   );
 }
+
+const selectStyle: React.CSSProperties = { fontSize: 13, padding: "7px 10px", borderRadius: 8, border: "1px solid rgba(0,0,0,0.15)", background: "#fff", color: "#1a1a1a" };
 
 function Note({ tone, children }: { tone: "info" | "danger"; children: React.ReactNode }) {
   const c = tone === "danger"

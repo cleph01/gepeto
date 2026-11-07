@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { ENDED_STATUSES } from "./lab-deletion";
 import { supabaseAdmin } from "./supabase";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -10,6 +11,35 @@ export type AuthUser = {
   driverId?: string;
   labRole?: "owner" | "dispatcher";
 };
+
+// Once a subscription has ended, a lab is read-only. These writes still work:
+// starting a plan again, opening billing, and marking messages read.
+const ALLOWED_WHEN_READ_ONLY = [
+  /^\/api\/billing\/(portal|restart)$/,
+  /^\/api\/(jobs|returns)\/[^/]+\/messages\/read$/,
+];
+
+// Every write in the API comes through requireAuth, so this is the one place
+// that enforces it. Failed payments don't count: Stripe is still retrying the
+// card, and one bad card shouldn't stop a lab's deliveries.
+async function blockIfReadOnly(request: NextRequest, user: AuthUser) {
+  if (request.method === "GET" || request.method === "HEAD") return;
+  const path = request.nextUrl.pathname;
+  if (ALLOWED_WHEN_READ_ONLY.some((allowed) => allowed.test(path))) return;
+
+  const lab = await db("labs").where({ id: user.labId }).select("subscription_status").first();
+  if (!lab?.subscriptionStatus || !ENDED_STATUSES.includes(lab.subscriptionStatus)) return;
+
+  // A driver's phone stops tracking when told there's nothing to share.
+  if (path === "/api/drivers/location" && user.driverId) {
+    await db("drivers").where({ id: user.driverId, lab_id: user.labId }).update({ current_location: null });
+    throw Response.json({ data: { location: null }, error: null });
+  }
+  throw Response.json(
+    { data: null, error: { code: "READ_ONLY", message: "Your lab's subscription has ended, so Gepeto is read-only. The lab owner can start a plan in Settings." } },
+    { status: 403 }
+  );
+}
 
 /**
  * Extracts and verifies the Bearer token from the Authorization header.
@@ -45,7 +75,9 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   if ((role !== "dispatcher" && role !== "driver") || !labId) {
     const labUser = await db("lab_users").where({ user_id: data.user.id }).first();
     if (labUser) {
-      return { id: data.user.id, role: "dispatcher", labId: labUser.labId, labRole: labUser.labRole };
+      const fallback: AuthUser = { id: data.user.id, role: "dispatcher", labId: labUser.labId, labRole: labUser.labRole };
+      await blockIfReadOnly(request, fallback);
+      return fallback;
     }
     throw new Response(
       JSON.stringify({ data: null, error: { code: "FORBIDDEN", message: "Insufficient role" } }),
@@ -61,5 +93,6 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
     user.labRole = meta.lab_role as AuthUser["labRole"];
   }
 
+  await blockIfReadOnly(request, user);
   return user;
 }

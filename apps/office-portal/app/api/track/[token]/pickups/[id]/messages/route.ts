@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { rateLimited, requireUnlocked } from "@/lib/access";
+import { rateLimited, refuseIfReadOnly, requireUnlocked } from "@/lib/access";
 import { notifyDriverReturnMessage, notifyLab, notifyOfficePage } from "@/lib/realtime";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
@@ -48,6 +48,9 @@ export async function POST(
     const { token, id } = await params;
     const ret = await resolveReturn(token, id);
     if (ret instanceof Response) return ret;
+
+    const readOnly = await refuseIfReadOnly(ret.labId);
+    if (readOnly) return readOnly;
 
     const limited = await rateLimited(request, token, "message", 60, 10 * 60);
     if (limited) return limited;

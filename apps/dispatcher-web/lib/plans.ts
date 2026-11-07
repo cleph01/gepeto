@@ -13,6 +13,13 @@ export const PLANS: Record<PlanId, { name: string; drivers: number; extraDriverK
   pro: { name: "Pro", drivers: 12, extraDriverKey: "extra_driver_pro" },
 };
 
+/** Display prices. Stripe holds the real ones. */
+export const PLAN_PRICE: Record<PlanId, Record<BillingInterval, number>> = {
+  starter: { month: 99, year: 990 },
+  growth: { month: 199, year: 1990 },
+  pro: { month: 349, year: 3490 },
+};
+
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && v in PLANS;
 export const isInterval = (v: unknown): v is BillingInterval => v === "month" || v === "year";
 

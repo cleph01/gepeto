@@ -4,14 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { LegalLink } from "@/components/legal-links";
 import { PRIVACY_URL, TERMS_URL } from "@/lib/legal";
-import { PLANS, TRIAL_DAYS, isInterval, isPlanId, type BillingInterval, type PlanId } from "@/lib/plans";
+import { PLANS, PLAN_PRICE, TRIAL_DAYS, isInterval, isPlanId, type BillingInterval, type PlanId } from "@/lib/plans";
 
-// Display prices (Stripe holds the real ones; see lib/plans.ts).
-const PRICE: Record<PlanId, { month: number; year: number }> = {
-  starter: { month: 99, year: 990 },
-  growth: { month: 199, year: 1990 },
-  pro: { month: 349, year: 3490 },
-};
+const PRICE = PLAN_PRICE;
 
 // Coming from the pricing page: /signup?plan=growth&interval=year
 function initialChoice(): { plan: PlanId; interval: BillingInterval } {

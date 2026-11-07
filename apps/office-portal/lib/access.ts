@@ -29,6 +29,23 @@ export async function isUnlocked(token: string, office: OfficeForToken): Promise
   });
 }
 
+const ENDED_STATUSES = ["canceled", "incomplete_expired"];
+
+/** Whether the lab's subscription has ended. Same rule as dispatcher-web's lib/auth.ts. */
+export async function labIsReadOnly(labId: string): Promise<boolean> {
+  const lab = await db("labs").where({ id: labId }).select("subscription_status").first();
+  return !!lab?.subscriptionStatus && ENDED_STATUSES.includes(lab.subscriptionStatus);
+}
+
+/** For routes that change something: the Response to send if the lab is read-only, otherwise null. */
+export async function refuseIfReadOnly(labId: string): Promise<Response | null> {
+  if (!(await labIsReadOnly(labId))) return null;
+  return Response.json(
+    { data: null, error: { code: "READ_ONLY", message: "This lab's Gepeto subscription isn't active, so nothing new can be sent here. Please call the lab." } },
+    { status: 403 }
+  );
+}
+
 /**
  * For routes behind the code. Returns the office, or the Response to send back:
  * 404 for a bad link, 401 when the code hasn't been entered.

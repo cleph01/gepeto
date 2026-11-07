@@ -79,6 +79,14 @@ export async function POST(request: NextRequest) {
   const existing = await db("lab_users").where({ email }).first();
   if (existing) {
     console.log(`[webhook] skipping duplicate provisioning for ${email}`);
+    // A returning lab restarting its plan: save the Terms it accepted this time.
+    if (customerId && session.metadata?.termsVersion) {
+      await db("labs").where({ id: existing.labId, stripe_customer_id: customerId }).update({
+        terms_version: session.metadata.termsVersion,
+        terms_accepted_at: session.metadata.termsAcceptedAt ?? null,
+        terms_accepted_by_email: email,
+      });
+    }
     return Response.json({ ok: true });
   }
 

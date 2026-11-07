@@ -172,7 +172,7 @@ export function ConversationModal({
   });
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [phone, setPhone] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -231,24 +231,24 @@ export function ConversationModal({
     const body = draft.trim();
     if (!body || sending || !target) return;
     setSending(true);
-    setSendError(false);
+    setSendError(null);
     try {
       const res = await fetch(`/api/track/${token}/${threadPath(target)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body }),
       });
-      const json = res.ok ? await res.json() : null;
-      if (json?.data) {
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.data) {
         // The live update can load this message before the send finishes.
         const current = messages[target] ?? [];
         onMessages(target, current.some((m) => m.id === json.data.id) ? current : [...current, json.data]);
         setDraft("");
       } else {
-        setSendError(true);
+        setSendError(json?.error?.code === "READ_ONLY" ? json.error.message : "Couldn't send. Check your connection and try again.");
       }
     } catch {
-      setSendError(true);
+      setSendError("Couldn't send. Check your connection and try again.");
     } finally {
       setSending(false);
     }
@@ -338,7 +338,7 @@ export function ConversationModal({
               ))}
             </div>
           )}
-          {sendError && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 6 }}>Couldn&apos;t send. Check your connection and try again.</div>}
+          {sendError && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 6 }}>{sendError}</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <input
               value={draft}

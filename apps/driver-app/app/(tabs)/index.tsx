@@ -495,8 +495,18 @@ export default function JobQueueScreen() {
   const [showLogPickup, setShowLogPickup] = useState(false);
   const [logPickupFor, setLogPickupFor] = useState<ReturnCase | null>(null);
   const [dropping, setDropping] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const clearToast = useCallback(() => setToast(null), []);
+
+  // The lab's subscription ended: nothing here can be updated, so say why up front.
+  useFocusEffect(
+    useCallback(() => {
+      apiGet<{ readOnly: boolean }>('/api/lab-status')
+        .then((res) => setReadOnly(res.data?.readOnly ?? false))
+        .catch(() => {});
+    }, [])
+  );
 
   // Pickups and returns still in play. Once the lab checks one in, the driver is done with it.
   const loadReturns = useCallback(async () => {
@@ -846,6 +856,11 @@ export default function JobQueueScreen() {
           if (item.type === 'stats') {
             return (
               <>
+                {readOnly && (
+                  <View style={styles.readOnlyNotice} accessibilityRole="alert">
+                    <Text style={styles.readOnlyText}>Your lab&apos;s Gepeto subscription has ended, so you can&apos;t update jobs or send messages. Check with your lab.</Text>
+                  </View>
+                )}
                 <StatsRow jobs={jobs} />
                 <MessagesCard
                   unreadByJob={unreadByJob}
@@ -1290,6 +1305,15 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     fontStyle: 'italic',
   },
+  readOnlyNotice: {
+    backgroundColor: Colors.warningBg,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  readOnlyText: { fontFamily: Fonts.medium, color: Colors.warningText, fontSize: FontSize.sm, lineHeight: 19 },
   returnMessages: {
     flexDirection: 'row',
     alignItems: 'center',

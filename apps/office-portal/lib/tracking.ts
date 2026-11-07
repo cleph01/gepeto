@@ -46,11 +46,13 @@ async function loadTracking(token: string, version: number) {
       "offices.contact_name as contactName",
       "labs.name as labName",
       "labs.phone as labPhone",
-      "labs.settings as labSettings"
+      "labs.settings as labSettings",
+      "labs.subscription_status as labSubscriptionStatus"
     )
     .first();
   if (!office) return null;
-  const { labSettings, ...officeDetails } = office;
+  const { labSettings, labSubscriptionStatus, ...officeDetails } = office;
+  const readOnly = labSubscriptionStatus === "canceled" || labSubscriptionStatus === "incomplete_expired";
   const alertsAllowed: boolean = labSettings?.notifications?.officeAlerts ?? true;
 
   const jobs = await db("jobs")
@@ -138,5 +140,5 @@ async function loadTracking(token: string, version: number) {
     delete (j as { driverId?: string | null }).driverId;
   }
 
-  return { locked: false as const, office: officeDetails, jobs, recentlyDelivered, pickups, alertsAllowed, liveTopic: officeAccess.liveTopic({ token, version }) as string };
+  return { locked: false as const, office: officeDetails, jobs, recentlyDelivered, pickups, alertsAllowed, readOnly, liveTopic: officeAccess.liveTopic({ token, version }) as string };
 }

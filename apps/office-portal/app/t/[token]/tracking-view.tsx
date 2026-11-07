@@ -56,6 +56,7 @@ interface TrackingData {
   pickups: Pickup[];
   liveTopic: string;
   alertsAllowed: boolean;
+  readOnly: boolean;
 }
 
 // ── Status, in the office's terms ─────────────────────────────────────────────
@@ -429,6 +430,12 @@ export default function TrackingView({
         onDismiss={alerts.dismissToast}
       />
 
+      {data.readOnly && (
+        <div role="status" style={{ background: "#FFF8F0", borderBottom: "1px solid #F5D9B5", color: "#6B3F08", fontSize: 13, lineHeight: 1.45, padding: "9px 20px", textAlign: "center" }}>
+          {office.labName}&apos;s Gepeto subscription isn&apos;t active, so you can&apos;t send messages or request pickups here. Please call the lab.
+        </div>
+      )}
+
       {/* Body */}
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "28px 16px 48px" }}>
 
@@ -444,6 +451,7 @@ export default function TrackingView({
                 : `${jobs.length} case${jobs.length === 1 ? "" : "s"} in progress · ${onTheWay} on the way`}
             </p>
           </div>
+          {!data.readOnly && (
           <button
             onClick={() => setRequesting(true)}
             style={{
@@ -454,6 +462,7 @@ export default function TrackingView({
             <BoxIcon size={15} />
             Request a pickup
           </button>
+          )}
         </div>
 
         {reconnecting && (

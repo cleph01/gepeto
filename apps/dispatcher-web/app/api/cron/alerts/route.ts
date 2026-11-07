@@ -1,3 +1,4 @@
+import { ENDED_STATUSES } from "@/lib/lab-deletion";
 import type { NextRequest } from "next/server";
 import {
   sendUnassignedJobAlert,
@@ -51,7 +52,10 @@ export async function GET(request: NextRequest) {
   let failed = 0;
 
   // Load all labs that have notifications enabled
-  const labs = await db("labs").select("id", "name", "settings");
+  // A lab whose subscription ended is read-only, so it can't act on these.
+  const labs = await db("labs")
+    .where((w: typeof db) => w.whereNull("subscription_status").orWhereNotIn("subscription_status", ENDED_STATUSES))
+    .select("id", "name", "settings");
 
   for (const lab of labs) {
     const settings = lab.settings ?? {};
