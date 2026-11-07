@@ -45,6 +45,10 @@ Use this when you have cases going back to the lab, such as remakes, adjustments
 
 Your request appears under **Pickups for the lab**, where you can follow it until it's checked in at the lab. You can cancel it until a driver is assigned. After that, call the lab.
 
+## Message about a pickup
+
+Click **Messages** on a pickup to talk with the lab and your driver.
+
 ## Find a past delivery
 
 1. Open the **Delivered** tab.

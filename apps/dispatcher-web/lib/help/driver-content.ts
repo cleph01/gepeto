@@ -201,6 +201,10 @@ Returns are cases going back to the lab, such as remakes, adjustments or new wor
 2. Tap **Dropped off** to confirm.
 
 The front desk then checks the cases in, and the app shows you when that's done.
+
+## Message about a pickup
+
+Tap **Messages** on a pickup to talk with the lab and the office. New messages appear as a violet banner. If the pickup moves to another driver, the conversation goes with it.
 `,
         },
       ],
