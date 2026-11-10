@@ -123,9 +123,11 @@ export default function LiveMap({ drivers, jobs, now }: LiveMapProps) {
         rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       />
+      {/* isolation keeps Leaflet's high z-index layers (400+) inside the map,
+          so popups and windows opened over it aren't drawn underneath. */}
       <div
         ref={containerRef}
-        style={{ width: "100%", height: "100%", background: "#1a2535" }}
+        style={{ width: "100%", height: "100%", background: "#1a2535", isolation: "isolate" }}
       />
     </>
   );
