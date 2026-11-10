@@ -32,6 +32,7 @@ import {
 } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
+import { prefetchHelp } from '@/lib/help';
 import { navigate } from '@/lib/navigation';
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
 import { BreakControl } from '@/components/break-control';
@@ -651,6 +652,8 @@ export default function JobQueueScreen() {
   // the spinner it shows first is intended.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  // Keep the guide saved on the phone, so Help opens even without signal.
+  useEffect(() => { prefetchHelp(); }, []);
 
   // Supabase Realtime — subscribe to job changes for this driver
   useEffect(() => {
@@ -850,7 +853,7 @@ export default function JobQueueScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => { fetchJobs(); loadReturns(); }}
+            onRefresh={() => { fetchJobs(); loadReturns(); prefetchHelp(); }}
             tintColor={Colors.accent}
           />
         }

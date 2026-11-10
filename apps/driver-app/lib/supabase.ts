@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { withTimeout } from './fetch-timeout';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -17,6 +18,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: !isServerRender,
     detectSessionInUrl: false,
   },
+  // Every request, including the hourly login-token renewal, gives up after
+  // 20s. Without it, a renewal started with no signal could hang for good, and
+  // every database call waits behind it until the app is restarted.
+  global: { fetch: withTimeout(20_000) },
 });
 
 let channelSeq = 0;

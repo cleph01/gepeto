@@ -24,6 +24,21 @@ export async function clearHelpCache() {
   await AsyncStorage.removeItem(CACHE_KEY).catch(() => {});
 }
 
+// Saves the guide on the phone ahead of time (the Jobs screen calls this), so
+// Help opens in a dead zone even if the driver has never opened it before.
+export async function prefetchHelp() {
+  if (refreshed) return;
+  try {
+    const res = await apiGet<HelpManual>('/api/help');
+    if (!res.data) return;
+    cached = res.data;
+    refreshed = true;
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(res.data));
+  } catch {
+    // No signal: try again next time Jobs loads.
+  }
+}
+
 export function useHelp() {
   const [manual, setManual] = useState<HelpManual | null>(cached);
   const [failed, setFailed] = useState(false);

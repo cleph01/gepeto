@@ -72,6 +72,7 @@ export function ChatThread({
   closedNote,
   quickReplies,
   labLabel = 'Lab',
+  emptyTitle = 'No messages yet',
   emptyText = 'The lab and the office both see what you send here.',
 }: {
   /** Shown in the bar above the conversation, once known. */
@@ -89,7 +90,9 @@ export function ChatThread({
   quickReplies: string[];
   /** What to call the lab's messages. */
   labLabel?: string;
-  /** Under "No messages yet": who will see what the driver sends. */
+  /** Shown when there are no messages. Also used to say they couldn't load. */
+  emptyTitle?: string;
+  /** Under the title: who will see what the driver sends. */
   emptyText?: string;
 }) {
   const insets = useSafeAreaInsets();
@@ -183,7 +186,7 @@ export function ChatThread({
                 <View style={styles.emptyIcon}>
                   <IconSymbol name="bubble.left.and.bubble.right.fill" size={26} color={Colors.accent} />
                 </View>
-                <Text style={styles.emptyTitle}>No messages yet</Text>
+                <Text style={styles.emptyTitle}>{emptyTitle}</Text>
                 <Text style={styles.emptyText}>{emptyText}</Text>
               </View>
             ) : null}

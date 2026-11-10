@@ -77,6 +77,25 @@ function Eyebrow({ title }: { title: string }) {
 
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
+/**
+ * Changes a job. Returns the updated job, or null after telling the driver it
+ * didn't go through (no signal, or the server said no), so a button never
+ * stays stuck spinning.
+ */
+async function patchJob(path: string, body: unknown): Promise<Job | null> {
+  try {
+    const res = await apiPatch<Job>(path, body);
+    if (res.data) return res.data;
+    Alert.alert("Couldn't update", res.error?.message ?? 'Try again.');
+  } catch {
+    Alert.alert("Couldn't update", 'Check your signal and try again.');
+  }
+  return null;
+}
+
+// How often a job screen that couldn't load tries again.
+const RETRY_MS = 10_000;
+
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
@@ -103,18 +122,39 @@ export default function JobDetailScreen() {
     if (caseId) navigation.setOptions({ title: caseId });
   }, [caseId, navigation]);
 
-  // Fetch job
+  // Fetch job. If it can't load, say why instead of spinning forever:
+  // 'offline' (no signal or the server didn't answer) retries on its own;
+  // 'missing' means it's no longer this driver's (reassigned or removed).
+  const [loadError, setLoadError] = useState<'offline' | 'missing' | null>(null);
+  const [loadTry, setLoadTry] = useState(0);
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     supabase
       .from('jobs')
       .select('*')
       .eq('id', id)
       .single()
       .then(({ data, error }) => {
-        if (!error && data) setJob(rowToCamel<Job>(data));
+        if (cancelled) return;
+        if (!error && data) {
+          setJob(rowToCamel<Job>(data));
+          setLoadError(null);
+        } else {
+          // PGRST116: no row. Row-level security hides jobs that aren't this driver's.
+          setLoadError(error?.code === 'PGRST116' ? 'missing' : 'offline');
+        }
       });
-  }, [id]);
+    return () => { cancelled = true; };
+  }, [id, loadTry]);
+
+  // While it couldn't load for lack of signal, keep trying, so the screen
+  // recovers on its own once the phone is back online.
+  useEffect(() => {
+    if (job || loadError !== 'offline') return;
+    const timer = setInterval(() => setLoadTry((n) => n + 1), RETRY_MS);
+    return () => clearInterval(timer);
+  }, [job, loadError]);
 
   // Office name, re-read when dispatch moves the job to another office
   useEffect(() => {
@@ -171,8 +211,8 @@ export default function JobDetailScreen() {
   const handleAccept = async () => {
     if (!job) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const res = await apiPatch<Job>(`/api/jobs/${job.id}/response`, { driverResponse: 'accepted' });
-    if (res.data) setJob(res.data);
+    const updated = await patchJob(`/api/jobs/${job.id}/response`, { driverResponse: 'accepted' });
+    if (updated) setJob(updated);
   };
 
   const handleReject = () => {
@@ -188,9 +228,9 @@ export default function JobDetailScreen() {
             if (!job) return;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             // API resets status to 'pending' and clears driver_id so the dispatcher can reassign
-            const res = await apiPatch<Job>(`/api/jobs/${job.id}/response`, { driverResponse: 'rejected' });
-            if (res.data) {
-              setJob(res.data);
+            const updated = await patchJob(`/api/jobs/${job.id}/response`, { driverResponse: 'rejected' });
+            if (updated) {
+              setJob(updated);
               forgetJob(job.id);
             }
           },
@@ -224,8 +264,8 @@ export default function JobDetailScreen() {
 
     setUpdatingStatus(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, { status: nextStatus });
-    if (res.data) setJob(res.data);
+    const updated = await patchJob(`/api/jobs/${job.id}/status`, { status: nextStatus });
+    if (updated) setJob(updated);
     setUpdatingStatus(false);
   };
 
@@ -250,7 +290,13 @@ export default function JobDetailScreen() {
         timestamp: new Date().toISOString(),
         photoPath,
       },
-    });
+    }).catch(() => null);
+    if (!res) {
+      // No signal: keep the sheet open with what they typed, so they can just tap Confirm again.
+      setSubmittingPod(false);
+      Alert.alert("Couldn't complete the delivery", "Check your signal and try again. The delivery isn't marked yet.");
+      return;
+    }
     if (res.data) {
       // Cases picked up at the door for the lab, logged against this delivery.
       const returnError = await logReturn(returnDraft, job.officeId, job.id);
@@ -272,8 +318,8 @@ export default function JobDetailScreen() {
     if (!job) return;
     setUpdatingStatus(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, { status: 'picked_up' });
-    if (res.data) setJob(res.data);
+    const updated = await patchJob(`/api/jobs/${job.id}/status`, { status: 'picked_up' });
+    if (updated) setJob(updated);
     setUpdatingStatus(false);
   };
 
@@ -281,7 +327,29 @@ export default function JobDetailScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color={Colors.accent} />
+          {loadError === null ? (
+            <ActivityIndicator color={Colors.accent} />
+          ) : (
+            <View style={styles.loadFailed} accessibilityRole="alert">
+              <IconSymbol name={loadError === 'missing' ? 'tray' : 'wifi.slash'} size={30} color={Colors.textSecondary} />
+              <Text style={styles.loadFailedTitle}>
+                {loadError === 'missing' ? "This job isn't on your list anymore" : "Couldn't load this job"}
+              </Text>
+              <Text style={styles.loadFailedText}>
+                {loadError === 'missing'
+                  ? 'Dispatch may have given it to another driver or removed it.'
+                  : "Check your signal. It'll keep trying on its own."}
+              </Text>
+              <TouchableOpacity
+                style={styles.loadFailedBtn}
+                onPress={() => (loadError === 'missing' ? router.replace('/(tabs)') : setLoadTry((n) => n + 1))}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+              >
+                <Text style={styles.loadFailedBtnText}>{loadError === 'missing' ? 'Back to Jobs' : 'Try again'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -588,6 +656,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  loadFailed: { alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.xl, maxWidth: 340 },
+  loadFailedTitle: { fontFamily: Fonts.semibold, color: Colors.text, fontSize: FontSize.lg, textAlign: 'center', marginTop: Spacing.xs },
+  loadFailedText: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm, textAlign: 'center', lineHeight: 20 },
+  loadFailedBtn: {
+    marginTop: Spacing.md,
+    minHeight: 44,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadFailedBtnText: { fontFamily: Fonts.semibold, color: Colors.accent, fontSize: FontSize.md },
   listContent: {
     paddingHorizontal: Spacing.xl - 4,
     paddingTop: Spacing.md,

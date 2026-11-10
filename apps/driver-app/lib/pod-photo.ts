@@ -2,6 +2,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { supabase } from './supabase';
 import { apiGet } from './api';
+import { timeLimit, withTimeout } from './fetch-timeout';
+
+const uploadFetch = withTimeout(45_000);
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL!;
 
@@ -32,12 +35,14 @@ export async function takePodPhoto(): Promise<PodPhoto | null> {
 // Sends the JPEG bytes as the whole body: Expo's fetch doesn't accept React
 // Native's { uri } FormData files ("Unsupported FormDataPart").
 export async function uploadPodPhoto(photo: PodPhoto): Promise<{ path: string } | { error: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
   const binary = atob(photo.base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   try {
-    const res = await fetch(`${BASE_URL}/api/driver/pod-photo`, {
+    // The login token may need renewing over the network, so it's time-limited too.
+    const { data: { session } } = await timeLimit(supabase.auth.getSession(), 15_000);
+    // A photo can take a while on weak signal, but not forever.
+    const res = await uploadFetch(`${BASE_URL}/api/driver/pod-photo`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${session?.access_token ?? ''}`, 'Content-Type': 'image/jpeg' },
       body: bytes,

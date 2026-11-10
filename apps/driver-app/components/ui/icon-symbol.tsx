@@ -29,6 +29,7 @@ const MAPPING = {
   'gearshape': 'settings',
   'mappin.and.ellipse': 'place',
   'tray': 'inbox',
+  'wifi.slash': 'wifi-off',
   'pause.circle': 'pause-circle-outline',
   'checkmark': 'check',
   'xmark': 'close',
