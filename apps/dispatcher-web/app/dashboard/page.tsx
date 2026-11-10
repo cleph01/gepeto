@@ -11,12 +11,14 @@ import { useRouter } from "next/navigation";
 import type { ApiResponse } from "@gepeto/types";
 import { SortHeader, byRank, byText, byTime, sortRows, useSort, type Comparators } from "@/lib/sorting";
 import { DriverReplyTag } from "@/components/driver-reply-tag";
+import { MessageThreadModal } from "@/components/message-thread-modal";
 
 import { BreakPill } from "@/components/break-pill";
 const LiveMap = lazy(() => import("@/components/live-map"));
 
 type ApiJob = {
   id: string; caseId: string; officeName: string; driverName: string | null;
+  officeId: string | null; driverId: string | null;
   priority: "stat" | "standard"; status: "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
   driverResponse: string;
   createdAt: string; updatedAt: string; deliveryLat: number | null; deliveryLng: number | null;
@@ -75,6 +77,7 @@ export default function DashboardPage() {
   // Until the first load lands, show "Loading" rather than zeros and empty lists.
   const [loaded, setLoaded]   = useState(false);
   const [jobFilter, setJobFilter] = useState<"all" | "stat" | "in_transit" | "pending" | "delivered">("all");
+  const [messagesJob, setMessagesJob] = useState<Job | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -188,6 +191,7 @@ export default function DashboardPage() {
           <SearchTrigger width={220} />
           {/* New Job button */}
           <button
+            onClick={() => router.push("/jobs?new=1")}
             style={{
               background: "#185FA5",
               color: "white",
@@ -331,7 +335,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 filteredJobs.map((job, i) => (
-                  <JobRow key={job.id} job={job} isLast={i === filteredJobs.length - 1} />
+                  <JobRow key={job.id} job={job} isLast={i === filteredJobs.length - 1} onClick={() => setMessagesJob(job)} />
                 ))
               )}
             </div>
@@ -482,11 +486,34 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {messagesJob && <JobMessagesModal job={messagesJob} onClose={() => setMessagesJob(null)} />}
     </div>
   );
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+// Same thread popup as the Jobs page, so the dispatcher can message from here,
+// including privately to just the office or just the driver.
+function JobMessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
+  const { markRead, setActiveThread, messageArrived } = useMessageNotifications();
+  return (
+    <MessageThreadModal
+      subtitle={`${job.caseId} · ${job.officeName}`}
+      path={`/api/jobs/${job.id}/messages`}
+      arrivedAt={messageArrived?.jobId === job.id ? messageArrived.at : 0}
+      onActive={(open) => setActiveThread(open ? job.id : null)}
+      onRead={(upTo) => markRead(job.id, upTo)}
+      onClose={onClose}
+      privateWith={{
+        jobId: job.id,
+        office: job.officeId ? { id: job.officeId, name: job.officeName } : undefined,
+        driver: job.driverId ? { id: job.driverId, name: job.driverName ?? "Driver" } : undefined,
+      }}
+    />
+  );
+}
 
 function MetricCard({
   value,
@@ -576,6 +603,8 @@ type Job = {
   caseId: string;
   officeName: string;
   driverName: string | null;
+  officeId: string | null;
+  driverId: string | null;
   priority: "stat" | "standard";
   status: "pending" | "assigned" | "picked_up" | "in_transit" | "arrived" | "delivered";
   driverResponse: string;
@@ -601,10 +630,17 @@ function timeAgo(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function JobRow({ job, isLast }: { job: Job; isLast: boolean }) {
+function JobRow({ job, isLast, onClick }: { job: Job; isLast: boolean; onClick: () => void }) {
   const status = STATUS_CONFIG[job.status];
   return (
     <div
+      onClick={onClick}
+      // A button for the keyboard, too: Tab to it, Enter or Space opens it.
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      aria-label={`Open messages for ${job.caseId}`}
+      title="Open messages"
       style={{
         display: "grid",
         gridTemplateColumns: JOB_COLUMNS,

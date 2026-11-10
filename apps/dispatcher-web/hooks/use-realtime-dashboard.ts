@@ -11,6 +11,8 @@ interface DashboardJob {
   caseId: string;
   officeName: string;
   driverName: string | null;
+  officeId: string | null;
+  driverId: string | null;
   priority: "stat" | "standard";
   status: JobStatus;
   driverResponse: string;
