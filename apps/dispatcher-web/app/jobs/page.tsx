@@ -1704,6 +1704,15 @@ export default function JobsPage() {
   const [offices, setOffices]         = useState<OfficeOption[]>([]);
   const [drivers, setDrivers]         = useState<DriverOption[]>([]);
   const [showNewJob, setShowNewJob]   = useState(false);
+
+  // The dashboard's New Job button links here with ?new=1.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("new") !== "1") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowNewJob(true);
+    window.history.replaceState(null, "", "/jobs");
+  }, []);
+
   const [statusJob, setStatusJob]     = useState<Job | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [historyJob, setHistoryJob]   = useState<Job | null>(null);
