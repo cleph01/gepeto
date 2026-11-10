@@ -9,17 +9,19 @@ import { UnreadBadge, useMessageNotifications } from "@/context/message-notifica
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useVisibleArea } from "@/hooks/use-visible-area";
 
-// Private conversations between the lab and each office. Case conversations,
+// Private conversations between the lab and each office or driver. Case conversations,
 // which the driver sees too, stay on each job's Messages button.
 
 interface Conversation {
-  kind: "office";
+  kind: "office" | "driver";
   id: string;
   name: string;
-  lastMessage: { senderRole: "dispatcher" | "office"; body: string; createdAt: string } | null;
+  lastMessage: { senderRole: "dispatcher" | "office" | "driver"; body: string; createdAt: string } | null;
   unread: number;
   activeCases: CaseRef[];
 }
+
+const keyOf = (c: { kind: string; id: string }) => `${c.kind}:${c.id}`;
 
 function shortTime(iso: string) {
   const d = new Date(iso);
@@ -30,7 +32,7 @@ function shortTime(iso: string) {
 
 export default function MessagesPage() {
   const { apiFetch } = useAuth();
-  const { unreadByOffice, directMessageArrived, jobsChangedAt, pendingOpenOffice, clearPendingOpenOffice } = useMessageNotifications();
+  const { unreadByPrivate, directMessageArrived, jobsChangedAt, pendingOpenPrivate, clearPendingOpenPrivate } = useMessageNotifications();
   const bp = useBreakpoint();
   const isMobile = bp === "mobile";
   const visible = useVisibleArea();
@@ -56,32 +58,35 @@ export default function MessagesPage() {
     load();
   }, [load, directMessageArrived, jobsChangedAt]);
 
-  // A toast or alert asked for this office. The request lives in the shared
+  // A toast or alert asked for this conversation ("office:<id>" or "driver:<id>"). The request lives in the shared
   // context, so it has to be handed over here.
   useEffect(() => {
-    if (!pendingOpenOffice) return;
+    if (!pendingOpenPrivate) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelected(pendingOpenOffice);
-    clearPendingOpenOffice();
-  }, [pendingOpenOffice, clearPendingOpenOffice]);
+    setSelected(pendingOpenPrivate);
+    clearPendingOpenPrivate();
+  }, [pendingOpenPrivate, clearPendingOpenPrivate]);
 
   // Until one is picked, desktop shows the most recent conversation.
   const mostRecent = (list ?? [])
     .filter((c) => c.lastMessage)
-    .sort((a, b) => b.lastMessage!.createdAt.localeCompare(a.lastMessage!.createdAt))[0]?.id ?? null;
-  const selectedId = selected ?? (isMobile ? null : mostRecent);
+    .sort((a, b) => b.lastMessage!.createdAt.localeCompare(a.lastMessage!.createdAt))[0];
+  const selectedKey = selected ?? (isMobile || !mostRecent ? null : keyOf(mostRecent));
 
-  // Unread first, then most recent, then everyone else by name.
+  // Within each section: unread first, then most recent, then everyone else by name.
   const sorted = (list ?? [])
     .filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => {
-      const ua = unreadByOffice[a.id] ?? 0, ub = unreadByOffice[b.id] ?? 0;
+      const ua = unreadByPrivate[keyOf(a)] ?? 0, ub = unreadByPrivate[keyOf(b)] ?? 0;
       if (!!ua !== !!ub) return ua ? -1 : 1;
       const ta = a.lastMessage?.createdAt ?? "", tb = b.lastMessage?.createdAt ?? "";
       if (ta !== tb) return tb.localeCompare(ta);
       return a.name.localeCompare(b.name);
     });
-  const current = list?.find((c) => c.id === selectedId) ?? null;
+  const sections = ([["office", "Offices"], ["driver", "Drivers"]] as const)
+    .map(([kind, label]) => ({ kind, label, rows: sorted.filter((c) => c.kind === kind) }))
+    .filter((sec) => sec.rows.length > 0);
+  const current = list?.find((c) => keyOf(c) === selectedKey) ?? null;
   const showList = !isMobile || !current;
   const showThread = !isMobile || !!current;
 
@@ -111,7 +116,7 @@ export default function MessagesPage() {
             <HelpLink slug="private-messages" topic="private messages" />
           </div>
           <p style={{ fontSize: 11.5, color: "#5F5E5A", margin: 0, display: "flex", alignItems: "center", gap: 5 }}>
-            <LockIcon color={PRIVATE_COLOR} /> Private conversations with your offices
+            <LockIcon color={PRIVATE_COLOR} /> Private conversations with your offices and drivers
           </p>
         </div>
       </header>}
@@ -126,8 +131,8 @@ export default function MessagesPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Find an office…"
-                aria-label="Find an office"
+                placeholder="Find an office or driver…"
+                aria-label="Find an office or driver"
                 style={{ width: "100%", boxSizing: "border-box", padding: "7px 10px", fontSize: 13, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 7, outline: "none", color: "#1a1a1a" }}
               />
             </div>
@@ -135,15 +140,19 @@ export default function MessagesPage() {
               {error && !list && <div style={{ padding: 20, fontSize: 12.5, color: "#A32D2D" }}>Couldn&apos;t load conversations. Retrying when something changes.</div>}
               {!list && !error && <div style={{ padding: 20, fontSize: 12.5, color: "#9a9a9a" }}>Loading…</div>}
               {list && sorted.length === 0 && (
-                <div style={{ padding: 20, fontSize: 12.5, color: "#9a9a9a" }}>{list.length === 0 ? "Add an office on the Offices page to message it here." : "No office matches."}</div>
+                <div style={{ padding: 20, fontSize: 12.5, color: "#9a9a9a" }}>{list.length === 0 ? "Add an office or driver to message them here." : "Nobody matches."}</div>
               )}
-              {sorted.map((c) => {
-                const on = c.id === selectedId;
-                const unread = unreadByOffice[c.id] ?? 0;
+              {sections.map((sec) => (
+                <div key={sec.kind} role="group" aria-label={sec.label}>
+                <div style={{ padding: "10px 12px 4px", fontSize: 10.5, fontWeight: 600, color: "#9a9a9a", textTransform: "uppercase", letterSpacing: "0.05em" }}>{sec.label}</div>
+              {sec.rows.map((c) => {
+                const key = keyOf(c);
+                const on = key === selectedKey;
+                const unread = unreadByPrivate[key] ?? 0;
                 return (
                   <button
-                    key={c.id}
-                    onClick={() => setSelected(c.id)}
+                    key={key}
+                    onClick={() => setSelected(key)}
                     aria-current={on ? "true" : undefined}
                     style={{
                       width: "100%", textAlign: "left", display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px",
@@ -164,6 +173,8 @@ export default function MessagesPage() {
                   </button>
                 );
               })}
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -175,18 +186,17 @@ export default function MessagesPage() {
           }}>
             {current ? (
               <PrivateThread
-                key={current.id}
-                officeId={current.id}
-                officeName={current.name}
+                key={keyOf(current)}
+                party={{ kind: current.kind, id: current.id, name: current.name }}
                 activeCases={current.activeCases}
                 onBack={isMobile ? () => setSelected(null) : undefined}
                 compact={keyboardUp}
               />
             ) : (
               <div style={{ margin: "auto", textAlign: "center", padding: 24, maxWidth: 340 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", marginBottom: 6 }}>Pick an office</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", marginBottom: 6 }}>Pick a conversation</div>
                 <div style={{ fontSize: 12.5, color: "#5F5E5A", lineHeight: 1.5 }}>
-                  Messages here are private between your lab and that office. To include the driver, use Messages on the case in Jobs.
+                  Messages here are private between your lab and that office or driver. To include everyone on a case, use Messages on the case in Jobs.
                 </div>
               </div>
             )}

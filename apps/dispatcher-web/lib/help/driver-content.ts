@@ -218,7 +218,7 @@ Tap **Messages** on a pickup to talk with the lab and the office. New messages a
         {
           slug: "messages",
           title: "Message the lab and office",
-          summary: "Send a message about a job, or use a one-tap reply.",
+          summary: "Send a message about a job, use a one-tap reply, or message dispatch privately.",
           related: ["alerts-and-changes", "complete-a-delivery"],
           body: `
 Each job has its own conversation. Both the lab and the office can read it.
@@ -237,6 +237,14 @@ Pressing Return only starts a new line, so a stray tap won't send a half-written
 ## When you can't send
 
 Once a job is delivered, its messages are read-only. If a job is given to someone else, its messages are hidden from you.
+
+## Message dispatch privately
+
+For anything just between you and the lab, such as running late on your whole route or needing a call, tap **Dispatch** at the top of the Jobs screen. Only the lab's dispatch sees that conversation. Offices never do.
+
+- A red number on **Dispatch** means dispatch has written to you. A banner also shows if the app is open.
+- Dispatch may tag a message with a case number when it's about one job.
+- For anything the office should see too, use the job's own **Messages** instead.
 `,
         },
         {

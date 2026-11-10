@@ -1040,7 +1040,11 @@ function MessagesModal({ job, onClose }: { job: Job; onClose: () => void }) {
       onActive={(open) => setActiveThread(open ? job.id : null)}
       onRead={(upTo) => markRead(job.id, upTo)}
       onClose={onClose}
-      privateWith={job.officeId ? { officeId: job.officeId, officeName: job.office, jobId: job.id } : undefined}
+      privateWith={{
+        jobId: job.id,
+        office: job.officeId ? { id: job.officeId, name: job.office } : undefined,
+        driver: job.driverId ? { id: job.driverId, name: job.driver ?? "Driver" } : undefined,
+      }}
     />
   );
 }

@@ -3,15 +3,16 @@
 import { useEffect, useState } from "react";
 import type { ApiResponse } from "@gepeto/types";
 import { useAuth } from "@/context/auth";
-import { useMessageNotifications } from "@/context/message-notifications";
+import { privateThreadPath, useMessageNotifications } from "@/context/message-notifications";
 
-// The lab's private thread with one office. Nobody else sees it: not the
-// drivers, not other offices. Shown on the Messages page.
+// The lab's private thread with one office or one driver. Nobody else sees
+// it: an office's isn't shown to drivers, a driver's isn't shown to offices.
+// Shown on the Messages page.
 
 export interface PrivateMessage {
   // camelCased by @gepeto/db
   id: string;
-  senderRole: "dispatcher" | "office";
+  senderRole: "dispatcher" | "office" | "driver";
   body: string;
   createdAt: string;
   aboutCaseId: string | null;
@@ -34,8 +35,11 @@ export function LockIcon({ size = 11, color = "currentColor" }: { size?: number;
   );
 }
 
-const COLOR = { dispatcher: "#185FA5", office: "#854F0B" } as const;
-const BG = { dispatcher: "rgba(24,95,165,0.10)", office: "rgba(133,79,11,0.10)" } as const;
+const COLOR = { dispatcher: "#185FA5", office: "#854F0B", driver: "#3B6D11" } as const;
+const BG = { dispatcher: "rgba(24,95,165,0.10)", office: "rgba(133,79,11,0.10)", driver: "rgba(59,109,17,0.10)" } as const;
+
+/** Who a private thread is with. */
+export type PrivateParty = { kind: "office" | "driver"; id: string; name: string };
 
 function dayAndTime(iso: string) {
   const d = new Date(iso);
@@ -44,9 +48,8 @@ function dayAndTime(iso: string) {
   return sameDay ? time : `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 
-export function PrivateThread({ officeId, officeName, activeCases, onBack, compact = false }: {
-  officeId: string;
-  officeName: string;
+export function PrivateThread({ party, activeCases, onBack, compact = false }: {
+  party: PrivateParty;
   /** This office's cases in progress, for the About picker. */
   activeCases: CaseRef[];
   /** Phones: back to the list. */
@@ -55,13 +58,16 @@ export function PrivateThread({ officeId, officeName, activeCases, onBack, compa
   compact?: boolean;
 }) {
   const { apiFetch } = useAuth();
-  const { markOfficeRead, setActiveOfficeThread, directMessageArrived } = useMessageNotifications();
+  const { markPrivateRead, setActivePrivateThread, directMessageArrived } = useMessageNotifications();
   const [messages, setMessages] = useState<PrivateMessage[] | null>(null);
   const [draft, setDraft] = useState("");
   const [about, setAbout] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const path = `/api/direct-messages/offices/${officeId}`;
+  const thread = `${party.kind}:${party.id}`;
+  const path = privateThreadPath(thread);
+  const name = party.name;
+  const isOffice = party.kind === "office";
 
   const load = () => {
     apiFetch<ApiResponse<PrivateMessage[]>>(path).then((res) => {
@@ -69,29 +75,29 @@ export function PrivateThread({ officeId, officeName, activeCases, onBack, compa
     }).catch(() => {});
   };
 
-  // Keyed by office where it's used, so each office starts fresh. The live
+  // Keyed by thread where it's used, so each one starts fresh. The live
   // signal does most of the work; the slow poll covers a dropped connection.
   useEffect(() => {
     load();
     const id = setInterval(load, 15_000);
-    setActiveOfficeThread(officeId);
+    setActivePrivateThread(thread);
     return () => {
       clearInterval(id);
-      setActiveOfficeThread(null);
+      setActivePrivateThread(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officeId]);
+  }, [thread]);
 
   useEffect(() => {
-    if (directMessageArrived?.officeId === officeId) load();
+    if (directMessageArrived?.thread === thread) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [directMessageArrived]);
 
   const newestAt = messages?.length ? messages[messages.length - 1].createdAt : null;
   useEffect(() => {
-    if (newestAt) markOfficeRead(officeId, newestAt);
+    if (newestAt) markPrivateRead(thread, newestAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officeId, newestAt]);
+  }, [thread, newestAt]);
 
   // A case that's since been delivered drops out of the picker.
   const aboutCase = activeCases.find((c) => c.id === about) ?? null;
@@ -131,10 +137,12 @@ export function PrivateThread({ officeId, officeName, activeCases, onBack, compa
           </button>
         )}
         <div style={{ minWidth: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: "#1a1a1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{officeName}</h2>
+          <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: "#1a1a1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</h2>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: PRIVATE_COLOR, marginTop: 1 }}>
             <LockIcon />
-            {compact ? "Private · drivers don\u2019t see this" : <>Private: only your lab and this office see this. Drivers don&apos;t.</>}
+            {isOffice
+              ? compact ? "Private · drivers don\u2019t see this" : <>Private: only your lab and this office see this. Drivers don&apos;t.</>
+              : compact ? "Private · offices don\u2019t see this" : <>Private: only your lab and this driver see this. Offices don&apos;t.</>}
           </div>
         </div>
       </div>
@@ -145,8 +153,10 @@ export function PrivateThread({ officeId, officeName, activeCases, onBack, compa
           {messages === null && <div style={{ fontSize: 12.5, color: "#9a9a9a", textAlign: "center", padding: "24px 0" }}>Loading…</div>}
           {messages?.length === 0 && (
             <div style={{ fontSize: 12.5, color: "#9a9a9a", textAlign: "center", padding: "24px 12px", lineHeight: 1.5 }}>
-              No private messages with {officeName} yet.<br />
-              For anything the driver should see, use the case&apos;s Messages on the Jobs page.
+              No private messages with {name} yet.<br />
+              {isOffice
+                ? <>For anything the driver should see, use the case&apos;s Messages on the Jobs page.</>
+                : <>For anything the office should see, use the case&apos;s Messages on the Jobs page.</>}
             </div>
           )}
           {messages?.map((m) => {
@@ -154,7 +164,7 @@ export function PrivateThread({ officeId, officeName, activeCases, onBack, compa
             return (
               <div key={m.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "82%" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 2 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 600, color: COLOR[m.senderRole] }}>{mine ? "You (Dispatch)" : officeName}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: COLOR[m.senderRole] }}>{mine ? "You (Dispatch)" : name}</span>
                   <span style={{ fontSize: 10.5, color: "#9a9a9a" }}>· {dayAndTime(m.createdAt)}</span>
                   {m.aboutCaseId && (
                     <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: "#5F5E5A", background: "#F1F1EF", borderRadius: 4, padding: "0 5px" }}>{m.aboutCaseId}</span>
@@ -199,8 +209,8 @@ export function PrivateThread({ officeId, officeName, activeCases, onBack, compa
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
             className="chat-input"
-            placeholder={`Private message to ${officeName}…`}
-            aria-label={`Private message to ${officeName}`}
+            placeholder={`Private message to ${name}…`}
+            aria-label={`Private message to ${name}`}
             style={{ flex: 1, minWidth: 0, padding: "8px 11px", fontSize: 13.5, border: `1px solid ${PRIVATE_COLOR}55`, borderRadius: 8, outline: "none", color: "#1a1a1a", background: "#fff" }}
           />
           <button

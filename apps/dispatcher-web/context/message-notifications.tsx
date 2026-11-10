@@ -58,13 +58,21 @@ interface UnreadReturnMessage {
   driverName: string | null;
 }
 
-/** A private message from an office to dispatch (direct_messages). */
+/** A private message to dispatch from an office or a driver (direct_messages). */
 interface UnreadDirectMessage {
   id: string;
-  officeId: string;
+  /** "office:<id>" or "driver:<id>" */
+  thread: string;
+  senderRole: "office" | "driver";
   body: string;
   createdAt: string;
-  officeName: string | null;
+  partyName: string | null;
+}
+
+/** The API path for a private thread: "office:<id>" → /api/direct-messages/offices/<id>. */
+export function privateThreadPath(thread: string) {
+  const [kind, id] = thread.split(":");
+  return `/api/direct-messages/${kind}s/${id}`;
 }
 
 interface DriverActivity {
@@ -96,8 +104,8 @@ interface Toast {
   jobId: string | null; // null = summary toast for a burst of messages
   /** A message on a return: clicking opens that conversation. */
   returnThread?: ReturnThreadRef;
-  /** A private message from this office: clicking opens it on the Messages page. */
-  officeThread?: string;
+  /** A private message in this thread ("office:<id>" or "driver:<id>"): clicking opens it on the Messages page. */
+  privateThread?: string;
   title: string;
   body: string;
   /**
@@ -150,17 +158,18 @@ interface MessageNotificationsContextType {
   returnsChangedAt: number;
   /** Unread private messages from offices (the Messages sidebar badge). */
   directUnreadTotal: number;
-  unreadByOffice: Record<string, number>;
-  markOfficeRead: (officeId: string, upTo: string) => void;
+  /** Unread counts by private thread ("office:<id>" or "driver:<id>"). */
+  unreadByPrivate: Record<string, number>;
+  markPrivateRead: (thread: string, upTo: string) => void;
   /** Set while an office's private thread is on screen. */
-  setActiveOfficeThread: (officeId: string | null) => void;
+  setActivePrivateThread: (thread: string | null) => void;
   /** Go to the Messages page with this office's private thread open. */
-  openOfficeThread: (officeId: string) => void;
-  /** An office thread the Messages page should open (set by openOfficeThread). */
-  pendingOpenOffice: string | null;
-  clearPendingOpenOffice: () => void;
+  openPrivateThread: (thread: string) => void;
+  /** A private thread the Messages page should open (set by openPrivateThread). */
+  pendingOpenPrivate: string | null;
+  clearPendingOpenPrivate: () => void;
   /** Bumped when a private message lands, so the Messages page can reload. */
-  directMessageArrived: { officeId: string; at: number } | null;
+  directMessageArrived: { thread: string; at: number } | null;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
   desktopNotificationStatus: DesktopNotificationStatus;
@@ -195,12 +204,12 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   returnMessageArrived: null,
   returnsChangedAt: 0,
   directUnreadTotal: 0,
-  unreadByOffice: {},
-  markOfficeRead: () => {},
-  setActiveOfficeThread: () => {},
-  openOfficeThread: () => {},
-  pendingOpenOffice: null,
-  clearPendingOpenOffice: () => {},
+  unreadByPrivate: {},
+  markPrivateRead: () => {},
+  setActivePrivateThread: () => {},
+  openPrivateThread: () => {},
+  pendingOpenPrivate: null,
+  clearPendingOpenPrivate: () => {},
   directMessageArrived: null,
   soundEnabled: true,
   setSoundEnabled: () => {},
@@ -249,11 +258,11 @@ function toastForDirectMessage(m: UnreadDirectMessage): Toast {
     key: m.id,
     kind: "message",
     jobId: null,
-    officeThread: m.officeId,
-    title: `${m.officeName ?? "Office"} · Private`,
+    privateThread: m.thread,
+    title: `${m.partyName ?? (m.senderRole === "office" ? "Office" : "Driver")} · Private`,
     body: m.body,
     notifyBody: "New private message",
-    color: ROLE_COLOR.office,
+    color: ROLE_COLOR[m.senderRole],
   };
 }
 
@@ -400,13 +409,13 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     () => recentReturnThreads.find((t) => unreadByReturn[t.id]) ?? null,
     [recentReturnThreads, unreadByReturn]
   );
-  const [unreadByOffice, setUnreadByOffice] = useState<Record<string, number>>({});
-  const directUnreadTotal = useMemo(() => Object.values(unreadByOffice).reduce((sum, n) => sum + n, 0), [unreadByOffice]);
-  const [directMessageArrived, setDirectMessageArrived] = useState<{ officeId: string; at: number } | null>(null);
+  const [unreadByPrivate, setUnreadByPrivate] = useState<Record<string, number>>({});
+  const directUnreadTotal = useMemo(() => Object.values(unreadByPrivate).reduce((sum, n) => sum + n, 0), [unreadByPrivate]);
+  const [directMessageArrived, setDirectMessageArrived] = useState<{ thread: string; at: number } | null>(null);
   const seenDirectMessages = useRef<Set<string>>(new Set());
   const directMessagesPrimed = useRef(false);
-  const activeOfficeThread = useRef<string | null>(null);
-  const deferredOfficeRead = useRef<{ officeId: string; upTo: string } | null>(null);
+  const activePrivateThread = useRef<string | null>(null);
+  const deferredPrivateRead = useRef<{ thread: string; upTo: string } | null>(null);
   const seenReturnMessages = useRef<Set<string>>(new Set());
   const returnMessagesPrimed = useRef(false);
   const activeReturnThread = useRef<string | null>(null);
@@ -605,10 +614,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (soundRef.current) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
-  // Same idea again, for offices' private threads with dispatch.
+  // Same idea again, for offices' and drivers' private threads with dispatch.
   const pollDirectMessages = useCallback(async () => {
     if (!session || !isDispatcher) return;
-    let res: ApiResponse<{ byOffice: Record<string, number>; recent: UnreadDirectMessage[] }>;
+    let res: ApiResponse<{ byThread: Record<string, number>; recent: UnreadDirectMessage[] }>;
     try {
       res = await apiFetch("/api/direct-messages/unread");
     } catch {
@@ -616,10 +625,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     }
     if (!res.data) return;
 
-    const { byOffice, recent } = res.data;
-    const active = isAway() ? null : activeOfficeThread.current;
-    if (active) delete byOffice[active];
-    setUnreadByOffice(byOffice);
+    const { byThread, recent } = res.data;
+    const active = isAway() ? null : activePrivateThread.current;
+    if (active) delete byThread[active];
+    setUnreadByPrivate(byThread);
 
     const fresh = recent.filter((m) => !seenDirectMessages.current.has(m.id));
     for (const m of fresh) seenDirectMessages.current.add(m.id);
@@ -628,14 +637,14 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       return;
     }
 
-    const toToast = fresh.filter((m) => m.officeId !== active).reverse(); // oldest first
+    const toToast = fresh.filter((m) => m.thread !== active).reverse(); // oldest first
     if (toToast.length === 0) return;
     if (toToast.length > MAX_TOASTS) {
       pushToasts([{
         key: `direct-burst-${toToast[toToast.length - 1].id}`,
         kind: "message",
         jobId: null,
-        officeThread: toToast[toToast.length - 1].officeId,
+        privateThread: toToast[toToast.length - 1].thread,
         title: `${toToast.length} new private messages`,
         body: "Open Messages to read them.",
         notifyBody: "Open Messages to read them.",
@@ -777,8 +786,8 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       })
       // Server broadcast when dispatch or an office sends a private message.
       .on("broadcast", { event: "direct_message" }, ({ payload }) => {
-        const officeId = (payload as { officeId?: string } | undefined)?.officeId;
-        if (officeId) setDirectMessageArrived({ officeId, at: Date.now() });
+        const thread = (payload as { thread?: string } | undefined)?.thread;
+        if (thread) setDirectMessageArrived({ thread, at: Date.now() });
         pollDirectMessages();
       })
       // Server broadcast when a driver logs, drops off, or dispatch checks in a return.
@@ -865,28 +874,28 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     }).catch(() => {});
   }, [apiFetch]);
 
-  const markOfficeRead = useCallback((officeId: string, upTo: string) => {
+  const markPrivateRead = useCallback((thread: string, upTo: string) => {
     if (isAway()) {
-      deferredOfficeRead.current = { officeId, upTo };
+      deferredPrivateRead.current = { thread, upTo };
       return;
     }
-    deferredOfficeRead.current = null;
-    setUnreadByOffice((prev) => {
-      if (!prev[officeId]) return prev;
+    deferredPrivateRead.current = null;
+    setUnreadByPrivate((prev) => {
+      if (!prev[thread]) return prev;
       const next = { ...prev };
-      delete next[officeId];
+      delete next[thread];
       return next;
     });
-    apiFetch(`/api/direct-messages/offices/${officeId}/read`, {
+    apiFetch(`${privateThreadPath(thread)}/read`, {
       method: "POST",
       body: JSON.stringify({ upTo }),
     }).catch(() => {});
   }, [apiFetch]);
 
-  const setActiveOfficeThread = useCallback((officeId: string | null) => {
-    activeOfficeThread.current = officeId;
-    if (deferredOfficeRead.current?.officeId !== officeId) deferredOfficeRead.current = null;
-    if (officeId) setToasts((prev) => prev.filter((t) => t.officeThread !== officeId));
+  const setActivePrivateThread = useCallback((thread: string | null) => {
+    activePrivateThread.current = thread;
+    if (deferredPrivateRead.current?.thread !== thread) deferredPrivateRead.current = null;
+    if (thread) setToasts((prev) => prev.filter((t) => t.privateThread !== thread));
   }, []);
 
   const setActiveReturnThread = useCallback((returnId: string | null) => {
@@ -912,10 +921,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       if (deferred) markRead(deferred.jobId, deferred.upTo);
       const deferredReturn = deferredReturnRead.current;
       if (deferredReturn) markReturnRead(deferredReturn.returnId, deferredReturn.upTo);
-      const deferredOffice = deferredOfficeRead.current;
-      if (deferredOffice) markOfficeRead(deferredOffice.officeId, deferredOffice.upTo);
-      const activeOffice = activeOfficeThread.current;
-      if (activeOffice) setToasts((prev) => prev.filter((t) => t.officeThread !== activeOffice));
+      const deferredPrivate = deferredPrivateRead.current;
+      if (deferredPrivate) markPrivateRead(deferredPrivate.thread, deferredPrivate.upTo);
+      const activePrivate = activePrivateThread.current;
+      if (activePrivate) setToasts((prev) => prev.filter((t) => t.privateThread !== activePrivate));
       const active = activeThread.current;
       if (active) setToasts((prev) => prev.filter((t) => t.jobId !== active));
       const activeReturn = activeReturnThread.current;
@@ -937,7 +946,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       window.removeEventListener("pagehide", releaseFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [markRead, markReturnRead, markOfficeRead]);
+  }, [markRead, markReturnRead, markPrivateRead]);
 
   const clearPendingOpen = useCallback(() => setPendingOpenJobId(null), []);
   const clearPendingHistory = useCallback(() => setPendingHistoryJobId(null), []);
@@ -953,17 +962,17 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (pathname !== "/returns") router.push("/returns");
   }, [pathname, router]);
 
-  const [pendingOpenOffice, setPendingOpenOffice] = useState<string | null>(null);
-  const clearPendingOpenOffice = useCallback(() => setPendingOpenOffice(null), []);
-  const openOfficeThread = useCallback((officeId: string) => {
-    setPendingOpenOffice(officeId);
+  const [pendingOpenPrivate, setPendingOpenPrivate] = useState<string | null>(null);
+  const clearPendingOpenPrivate = useCallback(() => setPendingOpenPrivate(null), []);
+  const openPrivateThread = useCallback((thread: string) => {
+    setPendingOpenPrivate(thread);
     if (pathname !== "/messages") router.push("/messages");
   }, [pathname, router]);
 
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if (t.officeThread) {
-      openOfficeThread(t.officeThread);
+    if (t.privateThread) {
+      openPrivateThread(t.privateThread);
     } else if (t.returnThread) {
       openReturnThread(t.returnThread);
     } else if (t.kind === "return") {
@@ -1006,12 +1015,12 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         returnMessageArrived,
         returnsChangedAt,
         directUnreadTotal,
-        unreadByOffice,
-        markOfficeRead,
-        setActiveOfficeThread,
-        openOfficeThread,
-        pendingOpenOffice,
-        clearPendingOpenOffice,
+        unreadByPrivate,
+        markPrivateRead,
+        setActivePrivateThread,
+        openPrivateThread,
+        pendingOpenPrivate,
+        clearPendingOpenPrivate,
         directMessageArrived,
         soundEnabled,
         setSoundEnabled,

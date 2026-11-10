@@ -101,6 +101,13 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="dispatch"
+            options={{
+              title: 'Dispatch',
+              headerBackTitle: 'Jobs',
+            }}
+          />
+          <Stack.Screen
             name="return-chat/[id]"
             options={{
               title: 'Messages',

@@ -29,6 +29,12 @@ export async function notifyDriverReturnMessage(driverId: string, payload: Recor
   await broadcast(`driver-return-messages:${driverId}`, "message", payload);
 }
 
+// A private message from dispatch to this driver. Carries nothing: the app
+// re-reads its own thread through the API, so a forged signal shows nothing.
+export async function notifyDriverDirectMessage(driverId: string) {
+  await broadcast(`driver-direct-messages:${driverId}`, "message", {});
+}
+
 // Driver-to-dispatch: the dashboard listens on `lab:<labId>` so a driver's
 // accept, reject or status step shows up without waiting for the poll.
 // (postgres_changes alone proved unreliable for the dispatcher's session.)

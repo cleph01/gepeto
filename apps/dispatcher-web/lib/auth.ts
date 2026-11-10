@@ -17,7 +17,8 @@ export type AuthUser = {
 const ALLOWED_WHEN_READ_ONLY = [
   /^\/api\/billing\/(portal|restart)$/,
   /^\/api\/(jobs|returns)\/[^/]+\/messages\/read$/,
-  /^\/api\/direct-messages\/offices\/[^/]+\/read$/,
+  /^\/api\/direct-messages\/(offices|drivers)\/[^/]+\/read$/,
+  /^\/api\/driver\/dispatch\/read$/,
 ];
 
 // Every write in the API comes through requireAuth, so this is the one place

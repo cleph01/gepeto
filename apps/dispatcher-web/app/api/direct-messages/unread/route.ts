@@ -1,30 +1,33 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { forbidden, unreadOfficeMessages } from "@/lib/direct-messages";
+import { THREAD_SQL, forbidden, unreadForDispatcher } from "@/lib/direct-messages";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const db = require("@gepeto/db");
 
 const RECENT_LIMIT = 20;
 
 // GET /api/direct-messages/unread
-// Dispatcher only. Per-office unread counts on private threads, plus the newest
-// unread messages (the client decides what to toast).
+// Dispatcher only. Unread counts per private thread ("office:<id>" or
+// "driver:<id>"), plus the newest unread messages (the client decides what to toast).
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     if (user.role !== "dispatcher") return forbidden();
 
     const [counts, recent] = await Promise.all([
-      unreadOfficeMessages(user.id, user.labId).groupBy("m.office_id").select("m.office_id").count("* as count"),
-      unreadOfficeMessages(user.id, user.labId)
-        .join("offices as o", "m.office_id", "o.id")
+      unreadForDispatcher(user.id, user.labId).groupByRaw(THREAD_SQL).select(db.raw(`${THREAD_SQL} as thread`)).count("* as count"),
+      unreadForDispatcher(user.id, user.labId)
+        .leftJoin("offices as o", "m.office_id", "o.id")
+        .leftJoin("drivers as d", "m.driver_id", "d.id")
         .orderBy("m.created_at", "desc")
         .limit(RECENT_LIMIT)
-        .select("m.id", "m.office_id", "m.body", "m.created_at", "o.name as office_name"),
+        .select("m.id", db.raw(`${THREAD_SQL} as thread`), "m.sender_role", "m.body", "m.created_at", db.raw("COALESCE(o.name, d.name) as party_name")),
     ]);
 
-    const byOffice: Record<string, number> = {};
-    for (const row of counts as { officeId: string; count: string | number }[]) byOffice[row.officeId] = Number(row.count);
+    const byThread: Record<string, number> = {};
+    for (const row of counts as { thread: string; count: string | number }[]) byThread[row.thread] = Number(row.count);
 
-    return Response.json({ data: { byOffice, recent }, error: null });
+    return Response.json({ data: { byThread, recent }, error: null });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[GET /api/direct-messages/unread]", err);

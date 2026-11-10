@@ -20,6 +20,10 @@ import { getDriverId } from '@/lib/driver';
 // unread list, so a forged signal shows nothing. A slow check covers a missed one.
 
 const RETURN_POLL_MS = 30_000;
+const DISPATCH_POLL_MS = 30_000;
+
+/** A private message from dispatch, for the banner. Offices never see these. */
+export type IncomingDispatchMessage = { id: string; body: string; createdAt: string };
 
 /** A lab or office message on a return, for the banner. */
 export type IncomingReturnMessage = {
@@ -51,6 +55,15 @@ interface MessagesContextType {
   refreshReturnUnread: () => void;
   /** Changes when a message lands on one of this driver's returns. */
   returnMessageTick: number;
+  /** Unread private messages from dispatch (the Dispatch button's badge). */
+  dispatchUnread: number;
+  /** The Dispatch screen is showing: its messages are read as they arrive. */
+  setDispatchOpen: (open: boolean) => void;
+  markDispatchRead: (upTo: string) => void;
+  /** Called for each new private message from dispatch, unless the Dispatch screen is open. */
+  onIncomingDispatch: (listener: (message: IncomingDispatchMessage) => void) => () => void;
+  /** Changes when dispatch sends this driver a private message. */
+  dispatchMessageTick: number;
 }
 
 const MessagesContext = createContext<MessagesContextType>({
@@ -66,6 +79,11 @@ const MessagesContext = createContext<MessagesContextType>({
   onIncomingReturn: () => () => {},
   refreshReturnUnread: () => {},
   returnMessageTick: 0,
+  dispatchUnread: 0,
+  setDispatchOpen: () => {},
+  markDispatchRead: () => {},
+  onIncomingDispatch: () => () => {},
+  dispatchMessageTick: 0,
 });
 
 export function MessagesProvider({ children }: { children: React.ReactNode }) {
@@ -83,6 +101,12 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   const returnListeners = useRef(new Set<(message: IncomingReturnMessage) => void>());
   const seenReturnMessages = useRef(new Set<string>());
   const returnsPrimed = useRef(false); // the first check only records what's already unread
+  const [dispatchUnread, setDispatchUnread] = useState(0);
+  const [dispatchMessageTick, setDispatchMessageTick] = useState(0);
+  const dispatchOpen = useRef(false);
+  const dispatchListeners = useRef(new Set<(message: IncomingDispatchMessage) => void>());
+  const seenDispatchMessages = useRef(new Set<string>());
+  const dispatchPrimed = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -120,6 +144,72 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Offline: keep the last counts.
     }
+  }, []);
+
+  // Dispatch's private thread with this driver. Same pattern as returns: the
+  // server signals `driver-direct-messages:<driverId>` and this re-reads the
+  // count through the API, so a forged signal shows nothing.
+  const refreshDispatch = useCallback(async () => {
+    try {
+      const res = await apiGet<{ count: number; recent: IncomingDispatchMessage[] }>('/api/driver/dispatch/unread');
+      if (!res.data) return;
+      const { count, recent } = res.data;
+      setDispatchUnread(dispatchOpen.current ? 0 : count);
+      const fresh = recent.filter((m) => !seenDispatchMessages.current.has(m.id));
+      for (const m of fresh) seenDispatchMessages.current.add(m.id);
+      if (!dispatchPrimed.current) {
+        dispatchPrimed.current = true;
+        return;
+      }
+      if (fresh[0] && !dispatchOpen.current) dispatchListeners.current.forEach((l) => l(fresh[0])); // newest first
+    } catch {
+      // Offline: keep the last count.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!driverId) {
+      seenDispatchMessages.current = new Set();
+      dispatchPrimed.current = false;
+      setDispatchUnread(0);
+      return;
+    }
+    refreshDispatch();
+    const topic = `driver-direct-messages:${driverId}`;
+    for (const c of supabase.getChannels()) {
+      if (c.topic === `realtime:${topic}`) supabase.removeChannel(c);
+    }
+    const channel = supabase
+      .channel(topic)
+      .on('broadcast', { event: 'message' }, () => {
+        setDispatchMessageTick((t) => t + 1);
+        refreshDispatch();
+      })
+      .subscribe();
+    const timer = setInterval(refreshDispatch, DISPATCH_POLL_MS);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshDispatch();
+    });
+    return () => {
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+      sub.remove();
+    };
+  }, [driverId, refreshDispatch]);
+
+  const setDispatchOpen = useCallback((open: boolean) => {
+    dispatchOpen.current = open;
+    if (open) setDispatchUnread(0);
+  }, []);
+
+  const markDispatchRead = useCallback((upTo: string) => {
+    setDispatchUnread(0);
+    apiPost('/api/driver/dispatch/read', { upTo }).catch(() => {});
+  }, []);
+
+  const onIncomingDispatch = useCallback((listener: (message: IncomingDispatchMessage) => void) => {
+    dispatchListeners.current.add(listener);
+    return () => { dispatchListeners.current.delete(listener); };
   }, []);
 
   useEffect(() => {
@@ -249,7 +339,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   }, [unreadByJob, latestByJob, unreadByReturn, latestByReturn]);
 
   return (
-    <MessagesContext.Provider value={{ unreadByJob, unreadByReturn, newestUnread, setActiveChat, activeChat, markRead, onIncoming, setActiveReturnChat, markReturnRead, onIncomingReturn, refreshReturnUnread: refreshReturns, returnMessageTick }}>
+    <MessagesContext.Provider value={{ unreadByJob, unreadByReturn, newestUnread, setActiveChat, activeChat, markRead, onIncoming, setActiveReturnChat, markReturnRead, onIncomingReturn, refreshReturnUnread: refreshReturns, returnMessageTick, dispatchUnread, setDispatchOpen, markDispatchRead, onIncomingDispatch, dispatchMessageTick }}>
       {children}
     </MessagesContext.Provider>
   );

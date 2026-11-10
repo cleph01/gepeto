@@ -81,7 +81,7 @@ export async function POST(
       })
       .returning(["id", "sender_role", "body", "created_at"]);
 
-    await notifyLab(office.labId, "direct_message", { officeId: office.id });
+    await notifyLab(office.labId, "direct_message", { thread: `office:${office.id}`, officeId: office.id });
     await notifyOfficePage(token, office.accessVersion, "messages");
 
     return Response.json({ data: { ...message, aboutCaseId: about?.caseId ?? null }, error: null }, { status: 201 });

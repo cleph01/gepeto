@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth";
-import { useMessageNotifications } from "@/context/message-notifications";
+import { privateThreadPath, useMessageNotifications } from "@/context/message-notifications";
 import { LockIcon, PRIVATE_BG, PRIVATE_COLOR } from "@/components/private-thread";
 import type { ApiResponse } from "@gepeto/types";
 
@@ -12,6 +12,9 @@ import type { ApiResponse } from "@gepeto/types";
 
 type MessageSenderRole = "dispatcher" | "driver" | "office";
 
+type PrivateKind = "office" | "driver";
+type PrivateTarget = { id: string; name: string };
+
 interface ThreadMessage {
   id: string;
   // @gepeto/db auto-camelCases every query result (see packages/db/db.js
@@ -20,8 +23,8 @@ interface ThreadMessage {
   senderRole: MessageSenderRole;
   body: string;
   createdAt: string;
-  /** From the lab's private thread with the office: the driver can't see it. */
-  isPrivate?: boolean;
+  /** From the lab's private thread with the office (the driver can't see it) or with the driver (the office can't). */
+  isPrivate?: PrivateKind;
 }
 
 const SENDER_LABEL: Record<MessageSenderRole, string> = {
@@ -102,27 +105,34 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
   onRead: (upTo: string) => void;
   onClose: () => void;
   /**
-   * Jobs only: also show, and allow sending, private messages with the office
-   * about this case. Those sit in the office's private thread, which the
-   * driver never sees.
+   * Jobs only: also show, and allow sending, private messages about this case
+   * with the office or the driver. Those sit in that person's private thread
+   * with the lab: the driver never sees the office's, the office never sees
+   * the driver's.
    */
-  privateWith?: { officeId: string; officeName: string; jobId: string };
+  privateWith?: { jobId: string; office?: PrivateTarget; driver?: PrivateTarget };
 }) {
   const { apiFetch } = useAuth();
   const { directMessageArrived } = useMessageNotifications();
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [privateMessages, setPrivateMessages] = useState<ThreadMessage[]>([]);
-  const [to, setTo] = useState<"everyone" | "office">("everyone");
-  const privatePath = privateWith ? `/api/direct-messages/offices/${privateWith.officeId}` : null;
+  const [to, setTo] = useState<"everyone" | PrivateKind>("everyone");
+  const privatePath = (kind: PrivateKind) => {
+    const target = privateWith?.[kind];
+    return target ? privateThreadPath(`${kind}:${target.id}`) : null;
+  };
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   const loadPrivate = () => {
-    if (!privatePath || !privateWith) return;
-    apiFetch<ApiResponse<ThreadMessage[]>>(`${privatePath}?aboutJobId=${privateWith.jobId}`).then((res) => {
-      if (res.data) setPrivateMessages(res.data.map((m) => ({ ...m, isPrivate: true })));
-    }).catch(() => {});
+    if (!privateWith) return;
+    const kinds = (["office", "driver"] as const).filter((k) => privateWith[k]);
+    if (kinds.length === 0) return;
+    Promise.all(kinds.map((kind) =>
+      apiFetch<ApiResponse<ThreadMessage[]>>(`${privatePath(kind)}?aboutJobId=${privateWith.jobId}`)
+        .then((res) => (res.data ?? []).map((m) => ({ ...m, isPrivate: kind })))
+    )).then((lists) => setPrivateMessages(lists.flat())).catch(() => {});
   };
 
   const load = () => {
@@ -133,7 +143,8 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
   };
 
   useEffect(() => {
-    if (privateWith && directMessageArrived?.officeId === privateWith.officeId) loadPrivate();
+    const thread = directMessageArrived?.thread;
+    if (privateWith && thread && (["office", "driver"] as const).some((k) => privateWith[k] && thread === `${k}:${privateWith[k]!.id}`)) loadPrivate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [directMessageArrived]);
 
@@ -168,17 +179,17 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
     if (!body || sending) return;
     setSending(true);
     setSendError(null);
-    const toOffice = to === "office" && privatePath && privateWith;
+    const privateTo = to !== "everyone" && privateWith?.[to] ? to : null;
     try {
-      const res = await apiFetch<ApiResponse<ThreadMessage>>(toOffice ? privatePath : path, {
+      const res = await apiFetch<ApiResponse<ThreadMessage>>(privateTo ? privatePath(privateTo)! : path, {
         method: "POST",
-        body: JSON.stringify(toOffice ? { body, aboutJobId: privateWith.jobId } : { body }),
+        body: JSON.stringify(privateTo ? { body, aboutJobId: privateWith!.jobId } : { body }),
       });
       if (res.data) {
         // The live update can load this message before the send finishes.
-        const sent = toOffice ? { ...res.data, isPrivate: true } : res.data;
+        const sent = privateTo ? { ...res.data, isPrivate: privateTo } : res.data;
         const add = (prev: ThreadMessage[]) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]);
-        if (toOffice) setPrivateMessages(add);
+        if (privateTo) setPrivateMessages(add);
         else setMessages(add);
         setDraft("");
       } else {
@@ -191,7 +202,16 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
     }
   };
 
-  const sendingPrivate = to === "office" && !!privateWith;
+  const privateTarget = to !== "everyone" ? privateWith?.[to] ?? null : null;
+  // Who can't see a private message: the driver for the office's, the office for the driver's.
+  const leftOut = to === "office" ? "driver" : "office";
+  const toOptions: [("everyone" | PrivateKind), string][] = privateWith
+    ? [
+        ["everyone", "Office + driver"],
+        ...(privateWith.office ? [["office", `${privateWith.office.name} only`] as ["office", string]] : []),
+        ...(privateWith.driver ? [["driver", `${privateWith.driver.name} only`] as ["driver", string]] : []),
+      ]
+    : [];
   const timeline = privateMessages.length
     ? [...messages, ...privateMessages].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     : messages;
@@ -246,8 +266,11 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
                   {SENDER_LABEL[m.senderRole]}
                 </span>
                 {m.isPrivate && (
-                  <span title="Private with the office. The driver can't see this." style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: PRIVATE_COLOR }}>
-                    <LockIcon size={10} /> Private
+                  <span
+                    title={m.isPrivate === "office" ? "Private with the office. The driver can't see this." : "Private with the driver. The office can't see this."}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: PRIVATE_COLOR }}
+                  >
+                    <LockIcon size={10} /> Private · {m.isPrivate === "office" ? "office" : "driver"}
                   </span>
                 )}
               </div>
@@ -267,9 +290,9 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
         {privateWith && (
           <div role="radiogroup" aria-label="Send to" style={{ padding: "10px 20px 0", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
             <span style={{ fontSize: 11.5, color: "#5F5E5A" }}>To:</span>
-            {([["everyone", "Office + driver"], ["office", `${privateWith.officeName} only`]] as const).map(([value, label]) => {
+            {toOptions.map(([value, label]) => {
               const on = to === value;
-              const color = value === "office" ? PRIVATE_COLOR : "#185FA5";
+              const color = value !== "everyone" ? PRIVATE_COLOR : "#185FA5";
               return (
                 <button
                   key={value}
@@ -278,11 +301,11 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
                   onClick={() => setTo(value)}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, padding: "3px 9px", borderRadius: 20, cursor: "pointer",
-                    border: `1px solid ${on ? color : "rgba(0,0,0,0.12)"}`, background: on ? (value === "office" ? PRIVATE_BG : "#EBF2FA") : "#fff",
+                    border: `1px solid ${on ? color : "rgba(0,0,0,0.12)"}`, background: on ? (value !== "everyone" ? PRIVATE_BG : "#EBF2FA") : "#fff",
                     color: on ? color : "#3a3a3a", fontWeight: on ? 600 : 400, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}
                 >
-                  {value === "office" && <LockIcon size={10} />}
+                  {value !== "everyone" && <LockIcon size={10} />}
                   {label}
                 </button>
               );
@@ -295,11 +318,11 @@ export function MessageThreadModal({ subtitle, path, arrivedAt, onActive, onRead
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
-            placeholder={sendingPrivate ? `Private to ${privateWith!.officeName}. The driver won't see this…` : "Reply to office / driver…"}
-            aria-label={sendingPrivate ? `Private message to ${privateWith!.officeName}` : "Message the office and driver"}
+            placeholder={privateTarget ? `Private to ${privateTarget.name}. The ${leftOut} won't see this…` : "Reply to office / driver…"}
+            aria-label={privateTarget ? `Private message to ${privateTarget.name}` : "Message the office and driver"}
             style={{
-              width: "100%", padding: "8px 11px", fontSize: 13.5, border: `1px solid ${sendingPrivate ? `${PRIVATE_COLOR}88` : "rgba(0,0,0,0.14)"}`,
-              borderRadius: 8, outline: "none", color: "#1a1a1a", background: sendingPrivate ? PRIVATE_BG : "#fff", boxSizing: "border-box",
+              width: "100%", padding: "8px 11px", fontSize: 13.5, border: `1px solid ${privateTarget ? `${PRIVATE_COLOR}88` : "rgba(0,0,0,0.14)"}`,
+              borderRadius: 8, outline: "none", color: "#1a1a1a", background: privateTarget ? PRIVATE_BG : "#fff", boxSizing: "border-box",
             }}
           />
           <button

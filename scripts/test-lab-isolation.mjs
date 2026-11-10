@@ -123,6 +123,12 @@ async function cleanup() {
     await db("direct_message_reads").whereIn("thread", made.offices.map((id) => `office:${id}`)).del();
     await db("direct_messages").whereIn("office_id", made.offices).del();
   }
+  if (made.drivers.length) {
+    await db("direct_message_reads").whereIn("thread", made.drivers.map((id) => `driver:${id}`)).del();
+    await db("direct_messages").whereIn("driver_id", made.drivers).del();
+  }
+  // The seed driver's own private thread gets one marked test message.
+  await db("direct_messages").where("body", "like", "ZZOWN%").del();
   if (made.drivers.length) await db("drivers").whereIn("id", made.drivers).del();
   if (made.offices.length) await db("offices").whereIn("id", made.offices).del();
   if (made.labs.length) await db("labs").whereIn("id", made.labs).del();
@@ -154,6 +160,7 @@ async function seed(labId) {
   await db("messages").insert({ job_id: open.id, sender_role: "office", body: `${mark} message` });
   await db("return_messages").insert({ return_id: withDriver.id, lab_id: labId, sender_role: "office", body: `${mark} message` });
   await db("direct_messages").insert({ lab_id: labId, office_id: office.id, sender_role: "office", about_job_id: open.id, body: `${mark} private` });
+  await db("direct_messages").insert({ lab_id: labId, driver_id: driver.id, sender_role: "dispatcher", about_job_id: open.id, body: `${mark} for driver only` });
   await db("job_status_events").insert({ job_id: open.id, lab_id: labId, from_status: "pending", to_status: "assigned", changed_by_role: "dispatcher" }).catch(() => {});
   return { office, driver, open, delivered, request, withDriver, checkedIn };
 }
@@ -219,6 +226,9 @@ async function main() {
     ["GET", "direct-messages/offices/[id]", `/api/direct-messages/offices/${B.office.id}`],
     ["POST", "direct-messages/offices/[id]", `/api/direct-messages/offices/${B.office.id}`, { body: "attack" }],
     ["POST", "direct-messages/offices/[id]/read", `/api/direct-messages/offices/${B.office.id}/read`, FAKE],
+    ["GET", "direct-messages/drivers/[id]", `/api/direct-messages/drivers/${B.driver.id}`],
+    ["POST", "direct-messages/drivers/[id]", `/api/direct-messages/drivers/${B.driver.id}`, { body: "attack" }],
+    ["POST", "direct-messages/drivers/[id]/read", `/api/direct-messages/drivers/${B.driver.id}/read`, FAKE],
     // Lab A's own rows, pointing at lab B's.
     ["POST", "jobs", "/api/jobs", { caseId: `${A_MARK}-attack1`, officeId: B.office.id, pickupAddress: "x", deliveryAddress: "y", items: [{ description: "x", flags: [] }], priority: "standard" }],
     ["POST", "jobs", "/api/jobs", { caseId: `${A_MARK}-attack2`, officeId: A.office.id, driverId: B.driver.id, pickupAddress: "x", deliveryAddress: "y", items: [{ description: "x", flags: [] }], priority: "standard" }],
@@ -229,6 +239,7 @@ async function main() {
     ["POST", "returns/[id]/check-in", `/api/returns/${A.withDriver.id}/check-in`, { receivedCount: 1, caseId: "x", sourceJobId: B.open.id }],
     ["POST", "returns/request", "/api/returns/request", { officeId: B.office.id, caseCount: 1, note: `${A_MARK} attack` }],
     ["POST", "direct-messages/offices/[id]", `/api/direct-messages/offices/${A.office.id}`, { body: `${A_MARK} attack`, aboutJobId: B.open.id }],
+    ["POST", "direct-messages/drivers/[id]", `/api/direct-messages/drivers/${A.driver.id}`, { body: `${A_MARK} attack`, aboutJobId: B.open.id }],
   ];
   for (const [method, route, path, body] of asDispatcher) {
     covered.add(`${method} ${route}`);
@@ -262,6 +273,7 @@ async function main() {
     ["GET", "direct-messages", "/api/direct-messages", true],
     ["GET", "direct-messages/unread", "/api/direct-messages/unread", true],
     ["GET", "direct-messages/offices/[id]", `/api/direct-messages/offices/${A.office.id}?aboutJobId=${B.open.id}`, false],
+    ["GET", "direct-messages/drivers/[id]", `/api/direct-messages/drivers/${A.driver.id}`, true],
     ["GET", "returns/summary", "/api/returns/summary", false],
     ["GET", "jobs/driver-activity", "/api/jobs/driver-activity", false],
     ["GET", "team", "/api/team", false],
@@ -298,6 +310,8 @@ async function main() {
       ["POST", "returns/[id]/messages", `/api/returns/${t.withDriver.id}/messages`, { body: "attack" }],
       ["POST", "returns/[id]/messages/read", `/api/returns/${t.withDriver.id}/messages/read`, FAKE],
       ["POST", "returns/[id]/response", `/api/returns/${t.request.id}/response`, { driverResponse: "accepted" }],
+      // Their own thread, about someone else's case.
+      ["POST", "driver/dispatch", "/api/driver/dispatch", { body: `${A_MARK} attack`, aboutJobId: t.open.id }],
     ];
     for (const [method, route, path, body] of asDriver) {
       covered.add(`${method} ${route}`);
@@ -317,12 +331,27 @@ async function main() {
   for (const [route, path] of [
     ["driver/history", "/api/driver/history"], ["driver/messages/unread", "/api/driver/messages/unread"], ["driver/break", "/api/driver/break"],
     ["driver/settings", "/api/driver/settings"], ["jobs", "/api/jobs"], ["returns", "/api/returns"], ["returns/messages/unread", "/api/returns/messages/unread"], ["lab-status", "/api/lab-status"],
+    ["driver/dispatch", "/api/driver/dispatch"], ["driver/dispatch/unread", "/api/driver/dispatch/unread"],
   ]) {
     covered.add(`GET ${route}`);
     const res = await call(API, "GET", path, { token: driver });
     check(`driver list works: ${path}`, res.status === 200, [res.status, res.text]);
     check(`driver list hides others' work: ${path}`, !res.text.includes(B_MARK) && !res.text.includes(A_MARK), res.text);
   }
+
+  // A driver's own private thread: they see dispatch's message to them, and nobody else's.
+  const driverId = claims(driver).user_metadata?.driver_id ?? claims(driver).app_metadata?.driver_id;
+  if (!driverId) throw new Error("Couldn't find the seed driver's id");
+  await db("direct_messages").insert({ lab_id: labA, driver_id: driverId, sender_role: "dispatcher", body: "ZZOWN hello" });
+  const ownThread = await call(API, "GET", "/api/driver/dispatch", { token: driver });
+  check("driver sees their own private thread", ownThread.status === 200 && ownThread.text.includes("ZZOWN hello"), [ownThread.status, ownThread.text.slice(0, 200)]);
+  check("driver's thread has nothing of other drivers' or offices'", !ownThread.text.includes(A_MARK) && !ownThread.text.includes(B_MARK), ownThread.text.slice(0, 300));
+  const ownUnread = JSON.parse((await call(API, "GET", "/api/driver/dispatch/unread", { token: driver })).text).data;
+  check("driver's unread counts dispatch's message", ownUnread?.count >= 1 && ownUnread.recent.some((m) => m.body === "ZZOWN hello"), ownUnread);
+  const sent = await call(API, "POST", "/api/driver/dispatch", { token: driver, body: { body: "ZZOWN reply" } });
+  check("driver can reply to dispatch", sent.status === 201, [sent.status, sent.text]);
+  const dispatcherSees = await call(API, "GET", `/api/direct-messages/drivers/${driverId}`, { token: dispatcher });
+  check("dispatch sees the driver's reply", dispatcherSees.text.includes("ZZOWN reply"), dispatcherSees.text.slice(0, 200));
 
   // Roles: each side is kept out of the other's routes.
   const dispatcherOnly = [
@@ -333,6 +362,7 @@ async function main() {
     ["GET", `/api/jobs/${A.open.id}/history`], ["GET", `/api/returns/${A.withDriver.id}/history`], ["POST", `/api/returns/${A.request.id}/assign`, {}], ["POST", `/api/returns/${A.request.id}/cancel`, {}],
     ["GET", "/api/direct-messages"], ["GET", "/api/direct-messages/unread"], ["GET", `/api/direct-messages/offices/${A.office.id}`],
     ["POST", `/api/direct-messages/offices/${A.office.id}`, { body: "attack" }], ["POST", `/api/direct-messages/offices/${A.office.id}/read`, FAKE],
+    ["GET", `/api/direct-messages/drivers/${A.driver.id}`], ["POST", `/api/direct-messages/drivers/${A.driver.id}`, { body: "attack" }], ["POST", `/api/direct-messages/drivers/${A.driver.id}/read`, FAKE],
     ["POST", `/api/returns/${A.withDriver.id}/check-in`, {}], ["POST", `/api/returns/${A.withDriver.id}/correct`, {}], ["PATCH", `/api/drivers/${A.driver.id}`, {}], ["POST", `/api/drivers/${A.driver.id}/resend`, {}],
     ["PATCH", `/api/offices/${A.office.id}`, {}], ["POST", `/api/offices/${A.office.id}/email-code`, {}], ["POST", `/api/offices/${A.office.id}/email-link`, {}], ["POST", `/api/offices/${A.office.id}/reset-code`, {}],
     ["POST", `/api/offices/${A.office.id}/reset-link`, {}], ["PATCH", `/api/jobs/${A.open.id}`, {}],
@@ -346,6 +376,7 @@ async function main() {
   const driverOnly = [
     ["PATCH", "/api/drivers/location", { lat: 1, lng: 1 }], ["POST", "/api/driver/break", {}], ["GET", "/api/driver/break"], ["GET", "/api/driver/history"], ["GET", "/api/driver/messages/unread"], ["POST", "/api/driver/pod-photo", {}],
     ["PATCH", `/api/jobs/${A.open.id}/response`, { driverResponse: "rejected" }], ["POST", `/api/returns/${A.request.id}/response`, { driverResponse: "accepted" }], ["POST", "/api/returns/drop", {}], ["POST", "/api/returns", { officeId: A.office.id, caseCount: 1, note: `${A_MARK} attack` }],
+    ["GET", "/api/driver/dispatch"], ["POST", "/api/driver/dispatch", { body: "attack" }], ["POST", "/api/driver/dispatch/read", FAKE], ["GET", "/api/driver/dispatch/unread"],
   ];
   for (const [method, path, body] of driverOnly) {
     covered.add(`${method} ${routeOf(path)}`);
@@ -393,6 +424,7 @@ async function main() {
     const privateThread = await call(OFFICE, "GET", `${T}/dispatch/messages`, { cookie });
     check("office private thread works", privateThread.status === 200 && privateThread.text.includes(`${A_MARK} private`), [privateThread.status, privateThread.text.slice(0, 200)]);
     check("office private thread hides lab B", !privateThread.text.includes(B_MARK), privateThread.text.slice(0, 200));
+    check("office never sees dispatch's private thread with a driver", !privateThread.text.includes("for driver only") && !own.text.includes("for driver only"), privateThread.text.slice(0, 200));
     const caseThread = await call(OFFICE, "GET", `${T}/jobs/${A.open.id}/messages`, { cookie });
     check("private messages stay out of the case thread", caseThread.status === 200 && !caseThread.text.includes("private"), caseThread.text.slice(0, 200));
     const delivered = await call(OFFICE, "GET", `${T}/delivered`, { cookie });

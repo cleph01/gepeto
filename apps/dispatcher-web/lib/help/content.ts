@@ -195,37 +195,37 @@ Click **History** on the job to see each status change and edit, who made it and
       articles: [
         {
           slug: "private-messages",
-          title: "Message an office privately",
-          summary: "Talk with an office without the driver seeing it.",
+          title: "Message an office or driver privately",
+          summary: "Talk with one office or one driver without anyone else seeing it.",
           related: ["follow-and-change-a-job", "alerts-and-notifications", "office-access"],
           body: `
-Each office has a private conversation with your lab. Only your lab and that office can see it. Drivers never do, and neither do other offices. Open it from [Messages](/messages) in the sidebar.
+Each office and each driver has a private conversation with your lab. Open them from [Messages](/messages) in the sidebar, where offices and drivers are listed in their own sections.
 
 ## Who sees which conversation
 
 - **A case's conversation** (Messages on a job): your lab, the office and the driver.
-- **An office's private conversation** (the Messages page): your lab and that office only.
+- **An office's private conversation**: your lab and that office only. Drivers never see it.
+- **A driver's private conversation**: your lab and that driver only. Offices never see it.
 
 Offices and drivers can't message each other privately. Anything between them goes in the case conversation, where you can see it.
 
 ## Send a private message
 
 1. Click **Messages** in the sidebar.
-2. Choose the office. Use **Find an office** if the list is long.
+2. Choose the office or driver. Use **Find an office or driver** if the list is long.
 3. To name a case, click it next to **About**. Leave it on **General** for anything else.
 4. Type your message and click **Send**.
 
-You can also send one from a job: open its **Messages**, set **To:** to **Office only**, and send. It goes into the office's private conversation, tagged with that case.
+You can also send one from a job: open its **Messages** and set **To:** to the office only or the driver only. It goes into that person's private conversation, tagged with the case. Private messages show in the job's Messages with a lock and who they're private with.
 
-## Reply to an office
+## Replies
 
-When an office writes to you privately, you get an alert and a count beside **Messages** in the sidebar. Click the alert to open the conversation. The office sees your reply under **Message the lab** on its tracking page.
+When an office or driver writes to you privately, you get an alert and a count beside **Messages** in the sidebar. Click the alert to open the conversation.
+
+- An office sees your messages under **Message the lab** on its tracking page.
+- A driver sees them under **Dispatch** at the top of the Jobs screen in the driver app, with a red count and a banner while the app is open.
 
 > Use case numbers rather than patient names in messages.
-
-## Drivers
-
-Private conversations with drivers are coming with a driver app update. Until then, message drivers in the case conversation.
 `,
         },
       ],

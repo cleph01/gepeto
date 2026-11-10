@@ -486,7 +486,7 @@ type Row =
 export default function JobQueueScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { unreadByJob, unreadByReturn, newestUnread, refreshReturnUnread } = useMessages();
+  const { unreadByJob, unreadByReturn, newestUnread, refreshReturnUnread, dispatchUnread } = useMessages();
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
@@ -879,7 +879,25 @@ export default function JobQueueScreen() {
               </View>
             </View>
             <Text style={styles.eyebrow}>Today</Text>
-            <Text style={styles.headerTitle} accessibilityRole="header">My Jobs</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.headerTitle} accessibilityRole="header">My Jobs</Text>
+              {/* The driver's private conversation with dispatch. Offices never see it. */}
+              <TouchableOpacity
+                style={[styles.dispatchBtn, dispatchUnread > 0 && styles.dispatchBtnUnread]}
+                onPress={() => router.push('/dispatch')}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={`Message dispatch privately${dispatchUnread > 0 ? `, ${dispatchUnread} unread` : ''}`}
+              >
+                <IconSymbol name="bubble.left.and.bubble.right.fill" size={15} color={Colors.accent} />
+                <Text style={styles.dispatchText}>Dispatch</Text>
+                {dispatchUnread > 0 && (
+                  <View style={styles.dispatchBadge}>
+                    <Text style={styles.unreadBadgeText}>{dispatchUnread > 9 ? '9+' : dispatchUnread}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         }
         renderItem={({ item }) => {
@@ -1083,6 +1101,29 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
+  dispatchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  dispatchBtnUnread: { borderColor: Colors.accent },
+  dispatchText: { fontFamily: Fonts.semibold, color: Colors.text, fontSize: FontSize.sm },
+  dispatchBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   helpBtn: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   headerDate: {
     fontFamily: Fonts.regular,

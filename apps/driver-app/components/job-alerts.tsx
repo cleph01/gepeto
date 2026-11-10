@@ -50,7 +50,8 @@ type JobAlert = {
   status?: Job['status'];
   scheduledAt?: string | null;
   changed?: string[]; // for 'multi': what changed, in words
-  from?: 'Lab' | 'Office'; // for 'message'
+  from?: 'Lab' | 'Office' | 'Dispatch'; // for 'message'
+  dispatch?: boolean;      // a private message from dispatch: tap opens the Dispatch screen
   body?: string;           // for 'message' and 'pickup'
   returnId?: string;       // for a 'message' on a return, not a job
   checkIns?: ReturnAlert[]; // for 'checked_in'
@@ -117,7 +118,7 @@ export function JobAlerts() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
-  const { onIncoming, onIncomingReturn } = useMessages();
+  const { onIncoming, onIncomingReturn, onIncomingDispatch } = useMessages();
   const driverId = getDriverId(session);
   const [alert, setAlert] = useState<JobAlert | null>(null);
   const [slide] = useState(() => new Animated.Value(-160));
@@ -259,6 +260,25 @@ export function JobAlerts() {
     [onIncomingReturn]
   );
 
+  // A private message from dispatch (offices never see these).
+  useEffect(
+    () =>
+      onIncomingDispatch((msg) => {
+        setAlert({
+          kind: 'message',
+          jobId: msg.id,
+          dispatch: true,
+          caseId: 'Private',
+          deliveryAddress: 'Dispatch',
+          priority: 'standard',
+          from: 'Dispatch',
+          body: msg.body,
+        });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }),
+    [onIncomingDispatch]
+  );
+
   // An office pickup assigned to this driver. It can wait, so it never blocks the screen.
   useEffect(() => {
     const listener = (p: PickupAlert) => {
@@ -315,7 +335,7 @@ export function JobAlerts() {
   const tap = () => {
     setAlert(null);
     if (alert.kind === 'message') {
-      router.push(alert.returnId ? `/return-chat/${alert.returnId}` : `/chat/${alert.jobId}`);
+      router.push(alert.dispatch ? '/dispatch' : alert.returnId ? `/return-chat/${alert.returnId}` : `/chat/${alert.jobId}`);
     } else if (alert.kind === 'pickup' || alert.kind === 'check_in_undone') {
       router.navigate('/(tabs)');
     } else if (alert.kind === 'checked_in') {

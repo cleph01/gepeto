@@ -22,7 +22,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 // One conversation with the lab and office, for a job or a return. The screen
 // that shows it loads the messages; this draws them and sends new ones.
 
-export type ChatMessage = { id: string; senderRole: SenderRole; body: string; createdAt: string };
+export type ChatMessage = { id: string; senderRole: SenderRole; body: string; createdAt: string; aboutCaseId?: string | null };
 
 // Ids for messages shown before the server confirms them.
 let optimisticSeq = 0;
@@ -35,14 +35,19 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
-function MessageBubble({ message, isOwn }: { message: ChatMessage; isOwn: boolean }) {
+function MessageBubble({ message, isOwn, labLabel }: { message: ChatMessage; isOwn: boolean; labLabel: string }) {
   const fromOffice = message.senderRole === 'office';
   return (
     <View style={[styles.bubbleWrapper, isOwn ? styles.bubbleRight : styles.bubbleLeft]}>
-      {!isOwn && (
-        <Text style={[styles.bubbleSender, fromOffice && styles.bubbleSenderOffice]}>
-          {fromOffice ? 'Office' : 'Lab'}
-        </Text>
+      {(!isOwn || message.aboutCaseId) && (
+        <View style={[styles.bubbleMeta, isOwn && styles.bubbleMetaOwn]}>
+          {!isOwn && (
+            <Text style={[styles.bubbleSender, fromOffice && styles.bubbleSenderOffice]}>
+              {fromOffice ? 'Office' : labLabel}
+            </Text>
+          )}
+          {message.aboutCaseId ? <Text style={styles.aboutCase}>{message.aboutCaseId}</Text> : null}
+        </View>
       )}
       <View style={[styles.bubble, isOwn ? styles.bubbleDriver : styles.bubbleOther]}>
         <Text style={[styles.bubbleText, isOwn ? styles.bubbleTextOwn : styles.bubbleTextOther]}>
@@ -66,6 +71,8 @@ export function ChatThread({
   sendPath,
   closedNote,
   quickReplies,
+  labLabel = 'Lab',
+  emptyText = 'The lab and the office both see what you send here.',
 }: {
   /** Shown in the bar above the conversation, once known. */
   title?: string | null;
@@ -80,6 +87,10 @@ export function ChatThread({
   closedNote: string | null;
   /** One tap sends these, so a driver on the road can answer without typing. */
   quickReplies: string[];
+  /** What to call the lab's messages. */
+  labLabel?: string;
+  /** Under "No messages yet": who will see what the driver sends. */
+  emptyText?: string;
 }) {
   const insets = useSafeAreaInsets();
   const [messageText, setMessageText] = useState('');
@@ -159,7 +170,7 @@ export function ChatThread({
               item.type === 'day' ? (
                 <Text style={styles.dayLabel}>{item.label}</Text>
               ) : (
-                <MessageBubble message={item.message} isOwn={item.message.senderRole === 'driver'} />
+                <MessageBubble message={item.message} isOwn={item.message.senderRole === 'driver'} labLabel={labLabel} />
               )
             }
           />
@@ -173,7 +184,7 @@ export function ChatThread({
                   <IconSymbol name="bubble.left.and.bubble.right.fill" size={26} color={Colors.accent} />
                 </View>
                 <Text style={styles.emptyTitle}>No messages yet</Text>
-                <Text style={styles.emptyText}>The lab and the office both see what you send here.</Text>
+                <Text style={styles.emptyText}>{emptyText}</Text>
               </View>
             ) : null}
           </View>
@@ -286,6 +297,17 @@ const styles = StyleSheet.create({
   bubbleLeft: { alignSelf: 'flex-start', alignItems: 'flex-start' },
   bubbleSender: { fontFamily: Fonts.semibold, color: Colors.accent, fontSize: FontSize.xs, paddingHorizontal: Spacing.sm },
   bubbleSenderOffice: { color: Colors.warning },
+  bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bubbleMetaOwn: { justifyContent: 'flex-end', paddingRight: Spacing.sm },
+  aboutCase: {
+    fontFamily: Fonts.medium,
+    fontSize: 10,
+    color: Colors.textSecondary,
+    backgroundColor: Colors.cardElevated,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    overflow: 'hidden',
+  },
   bubble: { borderRadius: 18, paddingHorizontal: Spacing.md + 2, paddingVertical: Spacing.sm + 2 },
   bubbleDriver: { backgroundColor: Colors.primary, borderBottomRightRadius: Radius.sm },
   bubbleOther: {
