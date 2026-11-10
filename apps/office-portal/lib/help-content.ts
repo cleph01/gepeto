@@ -32,6 +32,12 @@ Click **Message** beside a driver to open the conversation. The lab and the driv
 
 > Use case numbers rather than patient names in messages.
 
+## Message the lab privately
+
+Click **Message the lab** at the top of the page for a conversation with just the lab. Drivers never see it. Use it for anything that isn't for the driver, such as billing questions or a change to an order. To name a case, click it next to **About**.
+
+A red count on **Message the lab** means the lab has replied.
+
 ## Request a pickup
 
 Use this when you have cases going back to the lab, such as remakes, adjustments or new work.

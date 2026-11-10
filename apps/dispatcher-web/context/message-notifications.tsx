@@ -58,6 +58,15 @@ interface UnreadReturnMessage {
   driverName: string | null;
 }
 
+/** A private message from an office to dispatch (direct_messages). */
+interface UnreadDirectMessage {
+  id: string;
+  officeId: string;
+  body: string;
+  createdAt: string;
+  officeName: string | null;
+}
+
 interface DriverActivity {
   key: string;
   kind: "rejected" | "accepted" | "delivered";
@@ -87,6 +96,8 @@ interface Toast {
   jobId: string | null; // null = summary toast for a burst of messages
   /** A message on a return: clicking opens that conversation. */
   returnThread?: ReturnThreadRef;
+  /** A private message from this office: clicking opens it on the Messages page. */
+  officeThread?: string;
   title: string;
   body: string;
   /**
@@ -137,6 +148,19 @@ interface MessageNotificationsContextType {
   returnMessageArrived: { returnId: string; at: number } | null;
   /** Bumped whenever a return is logged, dropped off or checked in. */
   returnsChangedAt: number;
+  /** Unread private messages from offices (the Messages sidebar badge). */
+  directUnreadTotal: number;
+  unreadByOffice: Record<string, number>;
+  markOfficeRead: (officeId: string, upTo: string) => void;
+  /** Set while an office's private thread is on screen. */
+  setActiveOfficeThread: (officeId: string | null) => void;
+  /** Go to the Messages page with this office's private thread open. */
+  openOfficeThread: (officeId: string) => void;
+  /** An office thread the Messages page should open (set by openOfficeThread). */
+  pendingOpenOffice: string | null;
+  clearPendingOpenOffice: () => void;
+  /** Bumped when a private message lands, so the Messages page can reload. */
+  directMessageArrived: { officeId: string; at: number } | null;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
   desktopNotificationStatus: DesktopNotificationStatus;
@@ -170,6 +194,14 @@ const MessageNotificationsContext = createContext<MessageNotificationsContextTyp
   clearPendingOpenReturn: () => {},
   returnMessageArrived: null,
   returnsChangedAt: 0,
+  directUnreadTotal: 0,
+  unreadByOffice: {},
+  markOfficeRead: () => {},
+  setActiveOfficeThread: () => {},
+  openOfficeThread: () => {},
+  pendingOpenOffice: null,
+  clearPendingOpenOffice: () => {},
+  directMessageArrived: null,
   soundEnabled: true,
   setSoundEnabled: () => {},
   desktopNotificationStatus: "unsupported",
@@ -209,6 +241,19 @@ function toastForReturnMessage(m: UnreadReturnMessage): Toast {
     body: m.body,
     notifyBody: "New message",
     color: ROLE_COLOR[m.senderRole],
+  };
+}
+
+function toastForDirectMessage(m: UnreadDirectMessage): Toast {
+  return {
+    key: m.id,
+    kind: "message",
+    jobId: null,
+    officeThread: m.officeId,
+    title: `${m.officeName ?? "Office"} · Private`,
+    body: m.body,
+    notifyBody: "New private message",
+    color: ROLE_COLOR.office,
   };
 }
 
@@ -355,6 +400,13 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     () => recentReturnThreads.find((t) => unreadByReturn[t.id]) ?? null,
     [recentReturnThreads, unreadByReturn]
   );
+  const [unreadByOffice, setUnreadByOffice] = useState<Record<string, number>>({});
+  const directUnreadTotal = useMemo(() => Object.values(unreadByOffice).reduce((sum, n) => sum + n, 0), [unreadByOffice]);
+  const [directMessageArrived, setDirectMessageArrived] = useState<{ officeId: string; at: number } | null>(null);
+  const seenDirectMessages = useRef<Set<string>>(new Set());
+  const directMessagesPrimed = useRef(false);
+  const activeOfficeThread = useRef<string | null>(null);
+  const deferredOfficeRead = useRef<{ officeId: string; upTo: string } | null>(null);
   const seenReturnMessages = useRef<Set<string>>(new Set());
   const returnMessagesPrimed = useRef(false);
   const activeReturnThread = useRef<string | null>(null);
@@ -553,6 +605,48 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (soundRef.current) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
+  // Same idea again, for offices' private threads with dispatch.
+  const pollDirectMessages = useCallback(async () => {
+    if (!session || !isDispatcher) return;
+    let res: ApiResponse<{ byOffice: Record<string, number>; recent: UnreadDirectMessage[] }>;
+    try {
+      res = await apiFetch("/api/direct-messages/unread");
+    } catch {
+      return;
+    }
+    if (!res.data) return;
+
+    const { byOffice, recent } = res.data;
+    const active = isAway() ? null : activeOfficeThread.current;
+    if (active) delete byOffice[active];
+    setUnreadByOffice(byOffice);
+
+    const fresh = recent.filter((m) => !seenDirectMessages.current.has(m.id));
+    for (const m of fresh) seenDirectMessages.current.add(m.id);
+    if (!directMessagesPrimed.current) {
+      directMessagesPrimed.current = true;
+      return;
+    }
+
+    const toToast = fresh.filter((m) => m.officeId !== active).reverse(); // oldest first
+    if (toToast.length === 0) return;
+    if (toToast.length > MAX_TOASTS) {
+      pushToasts([{
+        key: `direct-burst-${toToast[toToast.length - 1].id}`,
+        kind: "message",
+        jobId: null,
+        officeThread: toToast[toToast.length - 1].officeId,
+        title: `${toToast.length} new private messages`,
+        body: "Open Messages to read them.",
+        notifyBody: "Open Messages to read them.",
+        color: "#185FA5",
+      }]);
+    } else {
+      pushToasts(toToast.map(toastForDirectMessage));
+    }
+    if (soundRef.current) playChime();
+  }, [session, isDispatcher, apiFetch, pushToasts]);
+
   const loadReturnsSummary = useCallback(async () => {
     if (!session || !isDispatcher) return;
     try {
@@ -644,9 +738,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const pollAll = useCallback(() => {
     poll();
     pollReturnMessages();
+    pollDirectMessages();
     pollActivity();
     loadReturnsSummary();
-  }, [poll, pollReturnMessages, pollActivity, loadReturnsSummary]);
+  }, [poll, pollReturnMessages, pollDirectMessages, pollActivity, loadReturnsSummary]);
 
   // Realtime: any change to the lab's jobs re-checks driver activity right away and
   // tells open job lists to reload. Polling above still covers a dropped socket.
@@ -680,6 +775,12 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         if (returnId) setReturnMessageArrived({ returnId, at: Date.now() });
         pollReturnMessages();
       })
+      // Server broadcast when dispatch or an office sends a private message.
+      .on("broadcast", { event: "direct_message" }, ({ payload }) => {
+        const officeId = (payload as { officeId?: string } | undefined)?.officeId;
+        if (officeId) setDirectMessageArrived({ officeId, at: Date.now() });
+        pollDirectMessages();
+      })
       // Server broadcast when a driver logs, drops off, or dispatch checks in a return.
       .on("broadcast", { event: "return_changed" }, ({ payload }) => {
         onReturnChanged((payload ?? {}) as { returnId?: string; change?: string; count?: number });
@@ -688,7 +789,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     return () => {
       supabaseBrowser.removeChannel(channel);
     };
-  }, [labId, pollActivity, poll, pollReturnMessages, onReturnChanged]);
+  }, [labId, pollActivity, poll, pollReturnMessages, pollDirectMessages, onReturnChanged]);
 
   // Slower than the message poll: this reloads the whole driver list.
   useEffect(() => {
@@ -723,10 +824,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const baseTitle = useRef<string | null>(null);
   useEffect(() => {
     if (baseTitle.current === null) baseTitle.current = document.title.replace(/^\(\d+\)\s*/, "");
-    const unread = totalUnread + returnUnreadTotal;
+    const unread = totalUnread + returnUnreadTotal + directUnreadTotal;
     document.title = unread > 0 ? `(${unread}) ${baseTitle.current}` : baseTitle.current;
     setFaviconBadge(unread);
-  }, [totalUnread, returnUnreadTotal, pathname]);
+  }, [totalUnread, returnUnreadTotal, directUnreadTotal, pathname]);
 
   const markRead = useCallback((jobId: string, upTo: string) => {
     if (isAway()) {
@@ -764,6 +865,30 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     }).catch(() => {});
   }, [apiFetch]);
 
+  const markOfficeRead = useCallback((officeId: string, upTo: string) => {
+    if (isAway()) {
+      deferredOfficeRead.current = { officeId, upTo };
+      return;
+    }
+    deferredOfficeRead.current = null;
+    setUnreadByOffice((prev) => {
+      if (!prev[officeId]) return prev;
+      const next = { ...prev };
+      delete next[officeId];
+      return next;
+    });
+    apiFetch(`/api/direct-messages/offices/${officeId}/read`, {
+      method: "POST",
+      body: JSON.stringify({ upTo }),
+    }).catch(() => {});
+  }, [apiFetch]);
+
+  const setActiveOfficeThread = useCallback((officeId: string | null) => {
+    activeOfficeThread.current = officeId;
+    if (deferredOfficeRead.current?.officeId !== officeId) deferredOfficeRead.current = null;
+    if (officeId) setToasts((prev) => prev.filter((t) => t.officeThread !== officeId));
+  }, []);
+
   const setActiveReturnThread = useCallback((returnId: string | null) => {
     activeReturnThread.current = returnId;
     if (deferredReturnRead.current?.returnId !== returnId) deferredReturnRead.current = null;
@@ -787,6 +912,10 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       if (deferred) markRead(deferred.jobId, deferred.upTo);
       const deferredReturn = deferredReturnRead.current;
       if (deferredReturn) markReturnRead(deferredReturn.returnId, deferredReturn.upTo);
+      const deferredOffice = deferredOfficeRead.current;
+      if (deferredOffice) markOfficeRead(deferredOffice.officeId, deferredOffice.upTo);
+      const activeOffice = activeOfficeThread.current;
+      if (activeOffice) setToasts((prev) => prev.filter((t) => t.officeThread !== activeOffice));
       const active = activeThread.current;
       if (active) setToasts((prev) => prev.filter((t) => t.jobId !== active));
       const activeReturn = activeReturnThread.current;
@@ -808,7 +937,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       window.removeEventListener("pagehide", releaseFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [markRead, markReturnRead]);
+  }, [markRead, markReturnRead, markOfficeRead]);
 
   const clearPendingOpen = useCallback(() => setPendingOpenJobId(null), []);
   const clearPendingHistory = useCallback(() => setPendingHistoryJobId(null), []);
@@ -824,9 +953,18 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (pathname !== "/returns") router.push("/returns");
   }, [pathname, router]);
 
+  const [pendingOpenOffice, setPendingOpenOffice] = useState<string | null>(null);
+  const clearPendingOpenOffice = useCallback(() => setPendingOpenOffice(null), []);
+  const openOfficeThread = useCallback((officeId: string) => {
+    setPendingOpenOffice(officeId);
+    if (pathname !== "/messages") router.push("/messages");
+  }, [pathname, router]);
+
   const openFromToast = (t: Toast) => {
     dismissToast(t.key);
-    if (t.returnThread) {
+    if (t.officeThread) {
+      openOfficeThread(t.officeThread);
+    } else if (t.returnThread) {
       openReturnThread(t.returnThread);
     } else if (t.kind === "return") {
       if (pathname !== "/returns") router.push("/returns");
@@ -867,6 +1005,14 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         clearPendingOpenReturn,
         returnMessageArrived,
         returnsChangedAt,
+        directUnreadTotal,
+        unreadByOffice,
+        markOfficeRead,
+        setActiveOfficeThread,
+        openOfficeThread,
+        pendingOpenOffice,
+        clearPendingOpenOffice,
+        directMessageArrived,
         soundEnabled,
         setSoundEnabled,
         desktopNotificationStatus,

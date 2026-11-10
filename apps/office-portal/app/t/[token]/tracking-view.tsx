@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import JobMap from "./job-map";
-import { ChatIcon, ConversationModal, unreadCount, unreadForJobs, type Message } from "./messages";
+import { ChatIcon, ConversationModal, DISPATCH_THREAD, DispatchThreadModal, unreadCount, unreadForJobs, type Message } from "./messages";
 import { AlertToasts, AlertsGear, useOfficeAlerts, useTabUnread } from "./alerts";
 import DeliveredView from "./delivered-view";
 import { BoxIcon, PickupsSection, RequestPickupModal, type Pickup } from "./pickups";
@@ -157,6 +157,7 @@ export default function TrackingView({
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [openPickup, setOpenPickup] = useState<string | null>(null);
+  const [openDispatch, setOpenDispatch] = useState(false);
   const [tab, setTab] = useState<"active" | "delivered">("active");
   const [requesting, setRequesting] = useState(false);
   // Bumped on live job changes so the Delivered tab refetches too.
@@ -193,7 +194,8 @@ export default function TrackingView({
         const isPickup = thread.startsWith(PICKUP_THREAD);
         const id = isPickup ? thread.slice(PICKUP_THREAD.length) : thread;
         try {
-          const res = await fetch(`/api/track/${token}/${isPickup ? "pickups" : "jobs"}/${id}/messages`);
+          const path = thread === DISPATCH_THREAD ? "dispatch/messages" : `${isPickup ? "pickups" : "jobs"}/${id}/messages`;
+          const res = await fetch(`/api/track/${token}/${path}`);
           const json = res.ok ? await res.json() : null;
           return [id, (json?.data ?? null) as Message[] | null] as const;
         } catch {
@@ -214,7 +216,8 @@ export default function TrackingView({
     return () => clearInterval(id);
   }, [refresh]);
 
-  const jobIds = [...data.jobs.map((j) => j.id), ...data.pickups.map((p) => `${PICKUP_THREAD}${p.id}`)].join(",");
+  // The private thread with the lab loads alongside the case threads, for its badge.
+  const jobIds = [DISPATCH_THREAD, ...data.jobs.map((j) => j.id), ...data.pickups.map((p) => `${PICKUP_THREAD}${p.id}`)].join(",");
 
   // Live updates: the lab's server signals this page's channel whenever something
   // on this page changes (driver assigned or reassigned, status steps, new or
@@ -306,7 +309,12 @@ export default function TrackingView({
     setMessages((prev) => ({ ...prev, [jobId]: list }));
     setSeenTick((t) => t + 1);
   }, []);
+  const setDispatchMessages = useCallback((list: Message[]) => setJobMessages(DISPATCH_THREAD, list), [setJobMessages]);
   const openConversationFor = useCallback((jobId: string) => {
+    if (jobId === DISPATCH_THREAD) {
+      setOpenDispatch(true);
+      return;
+    }
     if (dataRef.current.pickups.some((p) => p.id === jobId)) {
       setTab("active");
       setOpenPickup(jobId);
@@ -324,7 +332,7 @@ export default function TrackingView({
     allowed: data.alertsAllowed,
     labName: office.labName,
     messages,
-    openJobIds: [...(conversation ? conversation.jobs.map((j) => j.id) : []), ...(openPickup ? [openPickup] : [])],
+    openJobIds: [...(conversation ? conversation.jobs.map((j) => j.id) : []), ...(openPickup ? [openPickup] : []), ...(openDispatch ? [DISPATCH_THREAD] : [])],
     onOpenJob: openConversationFor,
     jobs,
     recentlyDelivered: data.recentlyDelivered,
@@ -334,12 +342,14 @@ export default function TrackingView({
   const totalUnread =
     unreadForJobs(messages, jobs.filter((j) => !conversation?.jobs.some((c) => c.id === j.id)).map((j) => j.id)) +
     unreadForJobs(messages, pickups.filter((p) => p.id !== openPickup).map((p) => p.id));
+  const dispatchUnread = openDispatch ? 0 : unreadCount(messages[DISPATCH_THREAD], DISPATCH_THREAD);
   const pickupInConversation = openPickup ? pickups.find((p) => p.id === openPickup) ?? null : null;
-  useTabUnread(totalUnread);
+  useTabUnread(totalUnread + dispatchUnread);
   const closeRequest = useCallback(() => setRequesting(false), []);
   const closeConversation = useCallback(() => {
     setOpenGroup(null);
     setOpenPickup(null);
+    setOpenDispatch(false);
     setSeenTick((t) => t + 1);
   }, []);
 
@@ -396,6 +406,27 @@ export default function TrackingView({
             </span>
           </a>
         )}
+        <button
+          onClick={() => setOpenDispatch(true)}
+          aria-label={dispatchUnread > 0 ? `Message the lab, ${dispatchUnread} new` : "Message the lab"}
+          title="Message the lab (private)"
+          style={{
+            position: "relative", flexShrink: 0, display: "flex", alignItems: "center", gap: 7, cursor: "pointer",
+            color: "#185FA5", border: "1px solid #C0D9F0", borderRadius: 8, padding: "0 11px 0 10px", height: 38,
+            background: dispatchUnread > 0 ? "#EBF2FA" : "#fff", fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <ChatIcon size={15} />
+          <span className="office-call-text" style={{ whiteSpace: "nowrap" }}>Message the lab</span>
+          {dispatchUnread > 0 && (
+            <span aria-hidden="true" style={{
+              position: "absolute", top: -6, right: -6, background: "#D93025", color: "white", fontSize: 10, fontWeight: 700,
+              minWidth: 17, height: 17, lineHeight: "17px", borderRadius: 9, textAlign: "center", padding: "0 4px", boxSizing: "border-box",
+            }}>
+              {dispatchUnread}
+            </span>
+          )}
+        </button>
         {data.alertsAllowed && (
           <AlertsGear
             soundOn={alerts.soundOn}
@@ -423,6 +454,7 @@ export default function TrackingView({
       <AlertToasts
         toasts={alerts.toasts}
         caseIdFor={(jobId) => {
+          if (jobId === DISPATCH_THREAD) return "Private";
           const pickup = pickups.find((p) => p.id === jobId);
           return pickup ? `RET-${pickup.number}` : jobs.find((j) => j.id === jobId)?.caseId;
         }}
@@ -543,6 +575,17 @@ export default function TrackingView({
 
       {requesting && (
         <RequestPickupModal token={token} onClose={closeRequest} onSent={refresh} />
+      )}
+
+      {openDispatch && (
+        <DispatchThreadModal
+          token={token}
+          labName={office.labName}
+          cases={jobs.map((j) => ({ jobId: j.id, caseId: j.caseId }))}
+          messages={messages[DISPATCH_THREAD]}
+          onMessages={setDispatchMessages}
+          onClose={closeConversation}
+        />
       )}
 
       {pickupInConversation && (

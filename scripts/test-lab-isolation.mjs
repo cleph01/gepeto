@@ -119,6 +119,10 @@ async function cleanup() {
     await db("job_edit_events").whereIn("job_id", jobIds).del();
     await db("jobs").whereIn("id", jobIds).del();
   }
+  if (made.offices.length) {
+    await db("direct_message_reads").whereIn("thread", made.offices.map((id) => `office:${id}`)).del();
+    await db("direct_messages").whereIn("office_id", made.offices).del();
+  }
   if (made.drivers.length) await db("drivers").whereIn("id", made.drivers).del();
   if (made.offices.length) await db("offices").whereIn("id", made.offices).del();
   if (made.labs.length) await db("labs").whereIn("id", made.labs).del();
@@ -149,6 +153,7 @@ async function seed(labId) {
   const checkedIn = await ret({ status: "checked_in", driver_id: driver.id, driver_response: "accepted", picked_up_at: new Date().toISOString(), checked_in_at: new Date().toISOString(), received_count: 1, case_id: `${mark}-CASE` });
   await db("messages").insert({ job_id: open.id, sender_role: "office", body: `${mark} message` });
   await db("return_messages").insert({ return_id: withDriver.id, lab_id: labId, sender_role: "office", body: `${mark} message` });
+  await db("direct_messages").insert({ lab_id: labId, office_id: office.id, sender_role: "office", about_job_id: open.id, body: `${mark} private` });
   await db("job_status_events").insert({ job_id: open.id, lab_id: labId, from_status: "pending", to_status: "assigned", changed_by_role: "dispatcher" }).catch(() => {});
   return { office, driver, open, delivered, request, withDriver, checkedIn };
 }
@@ -166,6 +171,7 @@ async function snapshot(labId, b) {
     db("return_events").where({ lab_id: labId }).orderBy("id"),
     db("job_status_events").where({ lab_id: labId }).orderBy("id"),
     db("job_edit_events").where({ lab_id: labId }).orderBy("id"),
+    db("direct_messages").where({ lab_id: labId }).orderBy("id"),
   ]);
   return JSON.stringify(rows);
 }
@@ -210,6 +216,9 @@ async function main() {
     ["POST", "returns/[id]/messages", `/api/returns/${B.withDriver.id}/messages`, { body: "attack" }],
     ["POST", "returns/[id]/messages/read", `/api/returns/${B.withDriver.id}/messages/read`, FAKE],
     ["POST", "team/[id]/resend", `/api/team/${randomUUID()}/resend`, {}],
+    ["GET", "direct-messages/offices/[id]", `/api/direct-messages/offices/${B.office.id}`],
+    ["POST", "direct-messages/offices/[id]", `/api/direct-messages/offices/${B.office.id}`, { body: "attack" }],
+    ["POST", "direct-messages/offices/[id]/read", `/api/direct-messages/offices/${B.office.id}/read`, FAKE],
     // Lab A's own rows, pointing at lab B's.
     ["POST", "jobs", "/api/jobs", { caseId: `${A_MARK}-attack1`, officeId: B.office.id, pickupAddress: "x", deliveryAddress: "y", items: [{ description: "x", flags: [] }], priority: "standard" }],
     ["POST", "jobs", "/api/jobs", { caseId: `${A_MARK}-attack2`, officeId: A.office.id, driverId: B.driver.id, pickupAddress: "x", deliveryAddress: "y", items: [{ description: "x", flags: [] }], priority: "standard" }],
@@ -219,6 +228,7 @@ async function main() {
     ["POST", "returns/[id]/correct", `/api/returns/${A.withDriver.id}/correct`, { driverId: B.driver.id }],
     ["POST", "returns/[id]/check-in", `/api/returns/${A.withDriver.id}/check-in`, { receivedCount: 1, caseId: "x", sourceJobId: B.open.id }],
     ["POST", "returns/request", "/api/returns/request", { officeId: B.office.id, caseCount: 1, note: `${A_MARK} attack` }],
+    ["POST", "direct-messages/offices/[id]", `/api/direct-messages/offices/${A.office.id}`, { body: `${A_MARK} attack`, aboutJobId: B.open.id }],
   ];
   for (const [method, route, path, body] of asDispatcher) {
     covered.add(`${method} ${route}`);
@@ -249,6 +259,9 @@ async function main() {
     ["GET", "reports/export", "/api/reports/export?type=offices", true],
     ["GET", "messages/unread", "/api/messages/unread", true],
     ["GET", "returns/messages/unread", "/api/returns/messages/unread", true],
+    ["GET", "direct-messages", "/api/direct-messages", true],
+    ["GET", "direct-messages/unread", "/api/direct-messages/unread", true],
+    ["GET", "direct-messages/offices/[id]", `/api/direct-messages/offices/${A.office.id}?aboutJobId=${B.open.id}`, false],
     ["GET", "returns/summary", "/api/returns/summary", false],
     ["GET", "jobs/driver-activity", "/api/jobs/driver-activity", false],
     ["GET", "team", "/api/team", false],
@@ -318,6 +331,8 @@ async function main() {
     ["GET", "/api/billing"], ["POST", "/api/billing/portal", {}], ["POST", "/api/billing/restart", {}], ["GET", "/api/search?q=x"], ["GET", "/api/reports"], ["GET", "/api/reports/export?type=jobs"],
     ["GET", "/api/returns/summary"], ["GET", "/api/jobs/driver-activity"], ["GET", "/api/messages/unread"], ["POST", "/api/jobs", {}], ["POST", "/api/returns/request", {}],
     ["GET", `/api/jobs/${A.open.id}/history`], ["GET", `/api/returns/${A.withDriver.id}/history`], ["POST", `/api/returns/${A.request.id}/assign`, {}], ["POST", `/api/returns/${A.request.id}/cancel`, {}],
+    ["GET", "/api/direct-messages"], ["GET", "/api/direct-messages/unread"], ["GET", `/api/direct-messages/offices/${A.office.id}`],
+    ["POST", `/api/direct-messages/offices/${A.office.id}`, { body: "attack" }], ["POST", `/api/direct-messages/offices/${A.office.id}/read`, FAKE],
     ["POST", `/api/returns/${A.withDriver.id}/check-in`, {}], ["POST", `/api/returns/${A.withDriver.id}/correct`, {}], ["PATCH", `/api/drivers/${A.driver.id}`, {}], ["POST", `/api/drivers/${A.driver.id}/resend`, {}],
     ["PATCH", `/api/offices/${A.office.id}`, {}], ["POST", `/api/offices/${A.office.id}/email-code`, {}], ["POST", `/api/offices/${A.office.id}/email-link`, {}], ["POST", `/api/offices/${A.office.id}/reset-code`, {}],
     ["POST", `/api/offices/${A.office.id}/reset-link`, {}], ["PATCH", `/api/jobs/${A.open.id}`, {}],
@@ -365,6 +380,7 @@ async function main() {
       ["GET", `${T}/pickups/${B.withDriver.id}/messages`],
       ["POST", `${T}/pickups/${B.withDriver.id}/messages`, { body: "attack" }],
       ["POST", `${T}/pickups/${B.request.id}/cancel`, {}],
+      ["POST", `${T}/dispatch/messages`, { body: `${A_MARK} attack`, aboutJobId: B.open.id }],
     ];
     for (const [method, path, body] of officeAttacks) {
       const res = await call(OFFICE, method, path, { cookie, body });
@@ -374,11 +390,16 @@ async function main() {
     const own = await call(OFFICE, "GET", T, { cookie });
     check("office page works", own.status === 200, own.status);
     check("office page hides lab B", !own.text.includes(B_MARK), own.text.slice(0, 200));
+    const privateThread = await call(OFFICE, "GET", `${T}/dispatch/messages`, { cookie });
+    check("office private thread works", privateThread.status === 200 && privateThread.text.includes(`${A_MARK} private`), [privateThread.status, privateThread.text.slice(0, 200)]);
+    check("office private thread hides lab B", !privateThread.text.includes(B_MARK), privateThread.text.slice(0, 200));
+    const caseThread = await call(OFFICE, "GET", `${T}/jobs/${A.open.id}/messages`, { cookie });
+    check("private messages stay out of the case thread", caseThread.status === 200 && !caseThread.text.includes("private"), caseThread.text.slice(0, 200));
     const delivered = await call(OFFICE, "GET", `${T}/delivered`, { cookie });
     check("office history hides lab B", !delivered.text.includes(B_MARK), delivered.text.slice(0, 200));
 
     const otherToken = `/api/track/${B.office.trackingToken}`;
-    for (const [method, path, body] of [["GET", `${otherToken}/jobs/${B.open.id}/messages`], ["GET", `${otherToken}/delivered`], ["POST", `${otherToken}/pickups`, { caseCount: 1 }], ["GET", `${otherToken}/photo/${B.delivered.id}`]]) {
+    for (const [method, path, body] of [["GET", `${otherToken}/jobs/${B.open.id}/messages`], ["GET", `${otherToken}/dispatch/messages`], ["GET", `${otherToken}/delivered`], ["POST", `${otherToken}/pickups`, { caseCount: 1 }], ["GET", `${otherToken}/photo/${B.delivered.id}`]]) {
       const res = await call(OFFICE, method, path, { cookie, body });
       check(`one office's unlock doesn't open another: ${method} ${path.replace(otherToken, "")}`, res.status === 401, [res.status, res.text]);
     }

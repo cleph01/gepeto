@@ -72,7 +72,7 @@ Gepeto alerts you on screen and can also notify you when you're working somewher
 
 While Gepeto is open, a pop-up and a chime tell you when a driver accepts, rejects or delivers a job, when someone sends a message, and when an office requests a pickup. Click an alert to go straight to it.
 
-Unread messages also show as a count beside **Jobs** in the sidebar and on the Gepeto browser tab.
+Unread messages also show as a count in the sidebar and on the Gepeto browser tab: beside **Jobs** for case conversations, and beside **Messages** for [private messages](/help/private-messages) from offices.
 
 ## Turn on desktop notifications
 
@@ -138,7 +138,7 @@ Gepeto alerts you, returns the job to **Pending** and removes the driver. Assign
           slug: "follow-and-change-a-job",
           title: "Follow and change a job",
           summary: "Read job statuses, fix details, reassign drivers and check a job's history.",
-          related: ["create-a-job", "returning-cases"],
+          related: ["create-a-job", "returning-cases", "private-messages"],
           body: `
 The [Jobs](/jobs) page updates on its own as drivers work, so you don't need to refresh it.
 
@@ -176,11 +176,56 @@ Click the value on the job, change it and save.
 
 ## Message the driver and office
 
-Click **Messages** on the job to open its conversation. The driver and the office can both see it. An office can read and reply once it has [tracking access](/help/office-access).
+Click **Messages** on the job to open its conversation. Use **To:** under the messages to choose who sees what you send:
+
+- **Office + driver:** the case conversation. The driver and the office both see it.
+- **Office only:** a [private message](/help/private-messages) to the office about this case. The driver never sees it. It's marked **Private** in the conversation.
+
+An office can read and reply once it has [tracking access](/help/office-access).
 
 ## Check what happened to a job
 
 Click **History** on the job to see each status change and edit, who made it and when. Driver rejections are listed too. On a delivered job, **Proof of Delivery** shows who received it and any photo the driver took.
+`,
+        },
+      ],
+    },
+    {
+      title: "Messages",
+      articles: [
+        {
+          slug: "private-messages",
+          title: "Message an office privately",
+          summary: "Talk with an office without the driver seeing it.",
+          related: ["follow-and-change-a-job", "alerts-and-notifications", "office-access"],
+          body: `
+Each office has a private conversation with your lab. Only your lab and that office can see it. Drivers never do, and neither do other offices. Open it from [Messages](/messages) in the sidebar.
+
+## Who sees which conversation
+
+- **A case's conversation** (Messages on a job): your lab, the office and the driver.
+- **An office's private conversation** (the Messages page): your lab and that office only.
+
+Offices and drivers can't message each other privately. Anything between them goes in the case conversation, where you can see it.
+
+## Send a private message
+
+1. Click **Messages** in the sidebar.
+2. Choose the office. Use **Find an office** if the list is long.
+3. To name a case, click it next to **About**. Leave it on **General** for anything else.
+4. Type your message and click **Send**.
+
+You can also send one from a job: open its **Messages**, set **To:** to **Office only**, and send. It goes into the office's private conversation, tagged with that case.
+
+## Reply to an office
+
+When an office writes to you privately, you get an alert and a count beside **Messages** in the sidebar. Click the alert to open the conversation. The office sees your reply under **Message the lab** on its tracking page.
+
+> Use case numbers rather than patient names in messages.
+
+## Drivers
+
+Private conversations with drivers are coming with a driver app update. Until then, message drivers in the case conversation.
 `,
         },
       ],

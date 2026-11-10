@@ -53,6 +53,12 @@ body {
   }
 }
 
+/* iOS zooms into any text box under 16px when you tap it, which knocks
+   chat layouts out from under the keyboard. */
+@media (max-width: 1023px) {
+  .chat-input { font-size: 16px !important; }
+}
+
 /* Stats grid — 4 cols desktop, 2 cols mobile/tablet */
 .stats-grid {
   display: grid;

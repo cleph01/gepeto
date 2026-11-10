@@ -12,6 +12,22 @@ export interface Message {
   senderRole: SenderRole;
   body: string;
   createdAt: string;
+  /** Private thread with the lab only: the case a message is about, if any. */
+  aboutCaseId?: string | null;
+}
+
+/** Where this page keeps the office's private thread with the lab, alongside case threads. */
+export const DISPATCH_THREAD = "dispatch";
+
+const PRIVATE_COLOR = "#6B4FA0";
+
+export function LockIcon({ size = 11 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <rect x="2.25" y="5.25" width="7.5" height="5.25" rx="1" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M4 5.25V4a2 2 0 014 0v1.25" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 const SENDER_LABEL: Record<SenderRole, string> = {
@@ -348,6 +364,212 @@ export function ConversationModal({
               aria-label="Message"
               autoFocus={!phone}
               style={{ flex: 1, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, padding: "9px 11px", fontSize: 14, color: "#1a1a1a", outline: "none" }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={sending || !draft.trim()}
+              style={{
+                border: "none", borderRadius: 8, padding: "9px 16px", fontSize: 13.5, fontWeight: 600, color: "white",
+                background: sending || !draft.trim() ? "#9ab6d6" : "#185FA5", cursor: sending || !draft.trim() ? "default" : "pointer",
+              }}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Private thread with the lab ───────────────────────────────────────────────
+// Just this office and the lab's dispatch: drivers never see it. Anything the
+// driver should know goes in the driver's conversation instead.
+
+export function DispatchThreadModal({
+  token,
+  labName,
+  cases,
+  messages,
+  onMessages,
+  onClose,
+}: {
+  token: string;
+  labName: string;
+  /** Cases in progress, for the optional About picker. */
+  cases: ConversationCase[];
+  messages: Message[] | undefined;
+  onMessages: (list: Message[]) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [about, setAbout] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [phone, setPhone] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const path = `/api/track/${token}/dispatch/messages`;
+  const list = messages ?? [];
+  const aboutCase = cases.find((c) => c.jobId === about) ?? null;
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(path);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.data) onMessages(json.data);
+    } catch {
+      // silent — next poll catches up
+    }
+  }, [path, onMessages]);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 10_000);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const check = () => setPhone(window.innerWidth < 600);
+    check();
+    window.addEventListener("resize", check);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", check);
+      document.body.style.overflow = overflow;
+    };
+  }, [load, onClose]);
+
+  const newest = list.at(-1)?.id;
+  useEffect(() => {
+    markSeen(list, DISPATCH_THREAD);
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newest]);
+
+  async function handleSend() {
+    const body = draft.trim();
+    if (!body || sending) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body, aboutJobId: aboutCase?.jobId ?? null }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.data) {
+        onMessages(list.some((m) => m.id === json.data.id) ? list : [...list, json.data]);
+        setDraft("");
+      } else {
+        setSendError(json?.error?.code === "READ_ONLY" ? json.error.message : "Couldn't send. Check your connection and try again.");
+      }
+    } catch {
+      setSendError("Couldn't send. Check your connection and try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 5000, background: "rgba(0,0,0,0.35)",
+        display: "flex", alignItems: phone ? "stretch" : "center", justifyContent: "center",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Private messages with ${labName}`}
+        style={{
+          background: "#fff", width: "100%", maxWidth: phone ? "none" : 480,
+          height: phone ? "100%" : "auto", maxHeight: phone ? "none" : "82vh",
+          margin: phone ? 0 : "0 16px", borderRadius: phone ? 0 : 14,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1a1a1a" }}>Message {labName}</h2>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: PRIVATE_COLOR, display: "flex", alignItems: "center", gap: 5 }}>
+              <LockIcon /> Private: only you and the lab see this. Drivers don&apos;t.
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="Close messages" style={{ background: "none", border: "none", cursor: "pointer", color: "#9a9a9a", padding: 4, display: "flex" }}>
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div ref={listRef} style={{ flex: 1, minHeight: 160, overflowY: "auto", padding: "12px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {list.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "#9a9a9a", textAlign: "center", padding: "24px 8px", lineHeight: 1.5 }}>
+              No messages yet. Use this for anything just between you and the lab.
+              {" "}To include your driver, use <strong style={{ fontWeight: 600 }}>Message</strong> on the driver&apos;s card.
+            </div>
+          )}
+          {list.map((m) => {
+            const mine = m.senderRole === "office";
+            return (
+              <div key={m.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "85%" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 2 }}>
+                  <RoleIcon role={m.senderRole} color={ROLE_COLOR[m.senderRole]} />
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: ROLE_COLOR[m.senderRole] }}>{mine ? "You" : labName}</span>
+                  <span style={{ fontSize: 10.5, color: "#9a9a9a" }}>
+                    · {new Date(m.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </span>
+                  {m.aboutCaseId && (
+                    <span style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: "#5F5E5A", background: "#F1F1EF", borderRadius: 4, padding: "0 5px" }}>
+                      {m.aboutCaseId}
+                    </span>
+                  )}
+                </div>
+                <div style={{ background: ROLE_BG[m.senderRole], color: "#1a1a1a", borderRadius: 10, padding: "7px 11px", fontSize: 13.5, lineHeight: 1.4, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                  {m.body}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: "10px 18px 16px", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+          {cases.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              <span style={{ fontSize: 11.5, color: "#5F5E5A" }}>About:</span>
+              {[{ jobId: null as string | null, caseId: "General" }, ...cases].map((c) => {
+                const on = (aboutCase?.jobId ?? null) === c.jobId;
+                return (
+                  <button
+                    key={c.jobId ?? "general"}
+                    onClick={() => setAbout(c.jobId)}
+                    aria-pressed={on}
+                    style={{
+                      fontSize: 11.5, fontFamily: c.jobId ? "ui-monospace, monospace" : "inherit", padding: "3px 9px", borderRadius: 20, cursor: "pointer",
+                      border: `1px solid ${on ? "#185FA5" : "rgba(0,0,0,0.12)"}`,
+                      background: on ? "#EBF2FA" : "#fff", color: on ? "#185FA5" : "#3a3a3a", fontWeight: on ? 600 : 400,
+                    }}
+                  >
+                    {c.caseId}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {sendError && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 6 }}>{sendError}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
+              placeholder="Private message to the lab…"
+              aria-label="Private message to the lab"
+              autoFocus={!phone}
+              style={{ flex: 1, minWidth: 0, border: `1px solid ${PRIVATE_COLOR}66`, borderRadius: 8, padding: "9px 11px", fontSize: 14, color: "#1a1a1a", outline: "none" }}
             />
             <button
               onClick={handleSend}

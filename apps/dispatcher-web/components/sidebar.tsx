@@ -43,6 +43,15 @@ const navLinks = [
     ),
   },
   {
+    href: "/messages",
+    label: "Messages",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M2 3.5C2 2.67 2.67 2 3.5 2h9c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5H7l-3 3v-3H3.5C2.67 11 2 10.33 2 9.5v-6Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" fill="none" />
+      </svg>
+    ),
+  },
+  {
     href: "/drivers",
     label: "Drivers",
     icon: (
@@ -139,7 +148,7 @@ function NavContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const { totalUnread, returnUnreadTotal } = useMessageNotifications();
+  const { totalUnread, returnUnreadTotal, directUnreadTotal } = useMessageNotifications();
   return (
     <>
       {/* Logo */}
@@ -185,6 +194,7 @@ function NavContent({
               {link.label}
               {link.href === "/jobs" && <UnreadBadge count={totalUnread} style={{ marginLeft: "auto", boxShadow: "none" }} />}
               {link.href === "/returns" && <UnreadBadge count={returnUnreadTotal} style={{ marginLeft: "auto", boxShadow: "none" }} />}
+              {link.href === "/messages" && <UnreadBadge count={directUnreadTotal} style={{ marginLeft: "auto", boxShadow: "none" }} />}
             </Link>
           );
         })}
@@ -237,7 +247,7 @@ function UserArea() {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { totalUnread, returnUnreadTotal } = useMessageNotifications();
+  const { totalUnread, returnUnreadTotal, directUnreadTotal } = useMessageNotifications();
   const [isMobile, setIsMobile] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -280,7 +290,7 @@ export default function Sidebar() {
               position: "relative",
             }}
           >
-            {(totalUnread > 0 || returnUnreadTotal > 0) && (
+            {(totalUnread > 0 || returnUnreadTotal > 0 || directUnreadTotal > 0) && (
               <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: "50%", background: "#D93025", boxShadow: "0 0 0 2px #fff" }} />
             )}
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
