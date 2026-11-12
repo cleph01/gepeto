@@ -484,6 +484,10 @@ function ReturnRow({
     </div>
   );
 
+  const duringJob = r.pickedUpDuringCaseId && (
+    <div style={{ fontSize: 11.5, color: "#9a9a9a", marginTop: 2 }}>During delivery of {r.pickedUpDuringCaseId}</div>
+  );
+
   if (stacked) {
     return (
       <div style={{ padding: "12px 14px", borderBottom: isLast ? "none" : "1px solid rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -491,7 +495,10 @@ function ReturnRow({
           <span style={{ fontSize: 12.5, fontWeight: 600, color: "#185FA5", fontFamily: "monospace" }}>RET-{r.number}</span>
           {status}
         </div>
-        <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>{r.officeName ?? "Office"}</div>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1a1a" }}>{r.officeName ?? "Office"}</div>
+          {duringJob}
+        </div>
         {driverCell}
         {cases}
         {when}
@@ -508,9 +515,7 @@ function ReturnRow({
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13, color: "#1a1a1a", fontWeight: 500 }}>{r.officeName ?? "Office"}</div>
-        {r.pickedUpDuringCaseId && (
-          <div style={{ fontSize: 11.5, color: "#9a9a9a", marginTop: 2 }}>During delivery of {r.pickedUpDuringCaseId}</div>
-        )}
+        {duringJob}
       </div>
       <div style={{ minWidth: 0 }}>{driverCell}</div>
       {cases}
