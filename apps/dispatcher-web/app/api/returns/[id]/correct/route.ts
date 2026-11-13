@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { notifyDriverPickups, notifyLab, notifyOffices } from "@/lib/realtime";
-import { returnsQuery } from "@/lib/returns";
+import { joinCaseIds, returnsQuery } from "@/lib/returns";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -15,6 +15,8 @@ const conflict = (message: string) =>
 //                           Records who has them, so there's nothing to accept.
 //   { undo: "drop_off" }    at_lab back to with_driver
 //   { undo: "check_in" }    checked_in back to at_lab, clearing what check-in recorded
+//   { caseIds: string[] }   new lab case numbers for a checked-in return; blank
+//                           boxes get a Gepeto number (see joinCaseIds)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -84,6 +86,22 @@ export async function POST(
       });
       change = "check_in_undone";
       undoneForDriver = ret.driverId;
+    } else if (Array.isArray(body.caseIds)) {
+      if (ret.status !== "checked_in") return conflict("Case numbers can be changed once the return is checked in.");
+      const caseId = joinCaseIds(body.caseIds, ret.number);
+      if (!caseId) {
+        return Response.json({ data: null, error: { code: "BAD_REQUEST", message: "Too many case numbers for one return." } }, { status: 400 });
+      }
+      if (caseId !== ret.caseId) {
+        await db.transaction(async (trx: typeof db) => {
+          await applied(
+            await trx("returns").where({ ...scope, status: "checked_in" }).update({ case_id: caseId, updated_at: trx.fn.now() }),
+            "This return isn't checked in anymore."
+          );
+          await logCorrection(trx, { correction: "case_numbers", previousCaseId: ret.caseId, caseId });
+        });
+      }
+      change = "case_numbers_changed";
     } else if (body.driverId) {
       if (ret.status !== "with_driver" && ret.status !== "at_lab") {
         return conflict("The driver can only be corrected after pickup and before check-in.");
@@ -108,7 +126,7 @@ export async function POST(
       }
       change = "driver_corrected";
     } else {
-      return Response.json({ data: null, error: { code: "BAD_REQUEST", message: "Choose a driver or something to undo." } }, { status: 400 });
+      return Response.json({ data: null, error: { code: "BAD_REQUEST", message: "Choose a driver, case numbers, or something to undo." } }, { status: 400 });
     }
 
     await notifyLab(user.labId, "return_changed", { returnId: id, change });

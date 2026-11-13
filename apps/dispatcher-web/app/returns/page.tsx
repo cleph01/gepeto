@@ -110,6 +110,7 @@ export default function ReturnsPage() {
     setFilter(searchTarget.status === "checked_in" ? "checked_in" : "open");
   }, [searchTarget]);
   const [checkInFor, setCheckInFor] = useState<ReturnCase | null>(null);
+  const [editCaseIdsFor, setEditCaseIdsFor] = useState<ReturnCase | null>(null);
   const [historyFor, setHistoryFor] = useState<ReturnCase | null>(null);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
@@ -210,6 +211,14 @@ export default function ReturnsPage() {
     });
     if (!ok) return;
     correctReturn(r, { undo: "check_in" });
+  };
+
+  // A checked-in return can sit in either list, so update it wherever it is.
+  const onCaseIdsEdited = (updated: ReturnCase) => {
+    const swap = (list: ReturnCase[]) => list.map((x) => (x.id === updated.id ? updated : x));
+    setReturns(swap);
+    setCheckedIn((prev) => (prev ? swap(prev) : prev));
+    setEditCaseIdsFor(null);
   };
 
   const onRequested = (created: ReturnCase) => {
@@ -343,6 +352,7 @@ export default function ReturnsPage() {
                 onChangeDriver={(driverId) => changeDriver(r, driverId)}
                 onUndoDropOff={() => undoDropOff(r)}
                 onUndoCheckIn={() => undoCheckIn(r)}
+                onEditCaseIds={() => setEditCaseIdsFor(r)}
                 error={rowError?.id === r.id ? rowError.message : null}
               />
               </div>
@@ -353,6 +363,9 @@ export default function ReturnsPage() {
         </div>
       </div>
 
+      {editCaseIdsFor && (
+        <EditCaseNumbersModal r={editCaseIdsFor} onClose={() => setEditCaseIdsFor(null)} onDone={onCaseIdsEdited} />
+      )}
       {checkInFor && (
         <CheckInModal r={checkInFor} onClose={() => setCheckInFor(null)} onDone={onCheckedIn} />
       )}
@@ -374,12 +387,12 @@ const rowGrid: React.CSSProperties = {
 };
 
 function ReturnRow({
-  r, isMobile, stacked, isLast, onCheckIn, onHistory, unread, onMessages, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, error,
+  r, isMobile, stacked, isLast, onCheckIn, onHistory, unread, onMessages, drivers, onAssign, onCancel, onChangeDriver, onUndoDropOff, onUndoCheckIn, onEditCaseIds, error,
 }: {
   r: ReturnCase; isMobile: boolean; stacked: boolean; isLast: boolean; onCheckIn: () => void; onHistory: () => void;
   unread: number; onMessages: () => void;
   drivers: DriverOption[]; onAssign: (driverId: string | null) => void; onCancel: () => void;
-  onChangeDriver: (driverId: string) => void; onUndoDropOff: () => void; onUndoCheckIn: () => void; error: string | null;
+  onChangeDriver: (driverId: string) => void; onUndoDropOff: () => void; onUndoCheckIn: () => void; onEditCaseIds: () => void; error: string | null;
 }) {
   const isRequest = r.status === "requested";
   const canChangeDriver = r.status === "with_driver" || r.status === "at_lab";
@@ -438,6 +451,7 @@ function ReturnRow({
       <div style={{ display: "flex", gap: isMobile ? 4 : 2, marginLeft: stacked ? "auto" : 0, marginRight: -6 }}>
         {isRequest && <button onClick={onCancel} style={linkBtn(isMobile)}>Cancel</button>}
         {r.status === "at_lab" && <button onClick={onUndoDropOff} style={linkBtn(isMobile)}>Undo drop-off</button>}
+        {r.status === "checked_in" && <button onClick={onEditCaseIds} style={linkBtn(isMobile)}>Edit case numbers</button>}
         {r.status === "checked_in" && <button onClick={onUndoCheckIn} style={linkBtn(isMobile)}>Undo check-in</button>}
         <button onClick={onHistory} style={linkBtn(isMobile)}>History</button>
       </div>
@@ -633,8 +647,14 @@ function CheckInModal({ r, onClose, onDone }: {
 }) {
   const { apiFetch } = useAuth();
   const [received, setReceived] = useState(r.caseCount);
-  // A single driver-typed case number is almost certainly the one to use.
-  const [caseId, setCaseId] = useState(r.caseNumbers.length === 1 ? r.caseNumbers[0] : "");
+  // One lab case number per case received, starting from what the driver typed.
+  const [caseIds, setCaseIds] = useState<string[]>(() =>
+    Array.from({ length: Math.max(1, r.caseCount) }, (_, i) => r.caseNumbers[i] ?? "")
+  );
+  const changeReceived = (next: number) => {
+    setReceived(next);
+    setCaseIds((prev) => Array.from({ length: Math.max(1, next) }, (_, i) => prev[i] ?? r.caseNumbers[i] ?? ""));
+  };
   const [sourceJobId, setSourceJobId] = useState("");
   const [jobs, setJobs] = useState<JobOption[] | null>(null);
   const [saving, setSaving] = useState(false);
@@ -653,7 +673,7 @@ function CheckInModal({ r, onClose, onDone }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.id]);
 
-  const typed = new Set([...r.caseNumbers, caseId.trim().toUpperCase()].filter(Boolean));
+  const typed = new Set([...r.caseNumbers, ...caseIds.map((c) => c.trim().toUpperCase())].filter(Boolean));
   const isMatch = (j: JobOption) => typed.has(j.caseId.toUpperCase());
   const options = [...(jobs ?? [])].sort((a, b) =>
     Number(isMatch(b)) - Number(isMatch(a)) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -662,13 +682,12 @@ function CheckInModal({ r, onClose, onDone }: {
   const mismatch = received !== r.caseCount;
 
   const submit = async () => {
-    if (!caseId.trim()) { setError("Enter the lab case number for this return."); return; }
     setSaving(true);
     setError(null);
     try {
       const res = await apiFetch<ApiResponse<ReturnCase>>(`/api/returns/${r.id}/check-in`, {
         method: "POST",
-        body: JSON.stringify({ receivedCount: received, caseId: caseId.trim(), sourceJobId: sourceJobId || null }),
+        body: JSON.stringify({ receivedCount: received, caseIds: caseIds.map((c) => c.trim()), sourceJobId: sourceJobId || null }),
       });
       if (res.data) onDone(res.data);
       else setError(res.error?.message ?? "Couldn't check in this return.");
@@ -696,9 +715,9 @@ function CheckInModal({ r, onClose, onDone }: {
         <div>
           <span style={fieldLabel}>Cases received</span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button aria-label="One fewer" onClick={() => setReceived((n) => Math.max(0, n - 1))} style={stepBtn}>−</button>
+            <button aria-label="One fewer" onClick={() => changeReceived(Math.max(0, received - 1))} style={stepBtn}>−</button>
             <span aria-live="polite" style={{ fontSize: 18, fontWeight: 600, minWidth: 28, textAlign: "center", color: "#1a1a1a" }}>{received}</span>
-            <button aria-label="One more" onClick={() => setReceived((n) => Math.min(99, n + 1))} style={stepBtn}>+</button>
+            <button aria-label="One more" onClick={() => changeReceived(Math.min(99, received + 1))} style={stepBtn}>+</button>
           </div>
           {mismatch && (
             <p style={{ margin: "6px 0 0", fontSize: 12, color: "#854F0B" }}>
@@ -709,26 +728,8 @@ function CheckInModal({ r, onClose, onDone }: {
           )}
         </div>
 
-        {/* Case number */}
-        <div>
-          <label htmlFor="checkin-case" style={fieldLabel}>Lab case number</label>
-          <input
-            id="checkin-case"
-            value={caseId}
-            onChange={(e) => setCaseId(e.target.value)}
-            placeholder="e.g. LAB-2042"
-            style={textInput}
-            autoFocus
-          />
-          {r.caseNumbers.length > 1 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-              {r.caseNumbers.map((n) => (
-                <button key={n} onClick={() => setCaseId(n)} style={{ ...ghostBtn, fontFamily: "monospace", padding: "3px 8px" }}>{n}</button>
-              ))}
-            </div>
-          )}
-          <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9a9a9a" }}>Use your lab&apos;s case number, not patient names.</p>
-        </div>
+        {/* Case numbers: one box per case received */}
+        <CaseNumberBoxes values={caseIds} onChange={setCaseIds} returnNumber={r.number} />
 
         {/* Came back from */}
         <div>
@@ -761,6 +762,104 @@ function CheckInModal({ r, onClose, onDone }: {
           <button onClick={onClose} style={ghostBtn}>Cancel</button>
           <button onClick={submit} disabled={saving} style={{ ...primaryBtn(true), opacity: saving ? 0.6 : 1, padding: "7px 16px" }}>
             {saving ? "Checking in…" : `Check in ${received} case${received === 1 ? "" : "s"}`}
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
+  );
+}
+
+// returns.case_id holds a return's numbers joined by ", " (joinCaseIds in lib/returns).
+const splitCaseIds = (caseId: string | null) => (caseId ? caseId.split(", ").filter(Boolean) : []);
+
+// One box per lab case number. A blank box shows, and saves as, a Gepeto
+// number from the return (joinCaseIds in lib/returns).
+function CaseNumberBoxes({ values, onChange, returnNumber, canAddRemove = false }: {
+  values: string[]; onChange: (next: string[]) => void; returnNumber: number; canAddRemove?: boolean;
+}) {
+  const generated = (i: number) => (values.length === 1 ? `RET-${returnNumber}` : `RET-${returnNumber}-${i + 1}`);
+  const setAt = (i: number, value: string) => onChange(values.map((v, j) => (j === i ? value : v)));
+  return (
+    <div>
+      <label htmlFor="case-number-0" style={fieldLabel}>
+        {values.length === 1 ? "Lab case number" : `Lab case numbers (${values.length})`}
+      </label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {values.map((value, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {values.length > 1 && <span style={{ fontSize: 12, color: "#9a9a9a", minWidth: 16, textAlign: "right" }}>{i + 1}</span>}
+            <input
+              id={`case-number-${i}`}
+              aria-label={values.length > 1 ? `Case ${i + 1} lab case number` : undefined}
+              value={value}
+              onChange={(e) => setAt(i, e.target.value)}
+              placeholder={generated(i)}
+              style={textInput}
+              autoFocus={i === 0}
+            />
+            {canAddRemove && values.length > 1 && (
+              <button
+                aria-label={`Remove case ${i + 1}`}
+                onClick={() => onChange(values.filter((_, j) => j !== i))}
+                style={{ ...ghostBtn, padding: "4px 9px", flexShrink: 0 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {canAddRemove && values.length < 99 && (
+        <button onClick={() => onChange([...values, ""])} style={{ ...ghostBtn, marginTop: 6, padding: "4px 10px" }}>+ Add a case number</button>
+      )}
+      <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#9a9a9a" }}>
+        Use your lab&apos;s case numbers, not patient names. Left blank, a box uses the Gepeto number shown.
+        {values.length > 1 && " One case in two boxes? Enter its number in both."}
+      </p>
+    </div>
+  );
+}
+
+// Changes only the case numbers of a checked-in return, e.g. to replace a
+// Gepeto number with the lab's own. Logged in the return's history.
+function EditCaseNumbersModal({ r, onClose, onDone }: {
+  r: ReturnCase; onClose: () => void; onDone: (updated: ReturnCase) => void;
+}) {
+  const { apiFetch } = useAuth();
+  const [caseIds, setCaseIds] = useState<string[]>(() => {
+    const saved = splitCaseIds(r.caseId);
+    return saved.length > 0 ? saved : [""];
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch<ApiResponse<ReturnCase>>(`/api/returns/${r.id}/correct`, {
+        method: "POST",
+        body: JSON.stringify({ caseIds: caseIds.map((c) => c.trim()) }),
+      });
+      if (res.data) onDone(res.data);
+      else setError(res.error?.message ?? "Couldn't save the case numbers.");
+    } catch {
+      setError("Couldn't reach the server. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ModalFrame title={`Case numbers · RET-${r.number}`} subtitle={`${r.officeName ?? "Office"} · received ${r.receivedCount ?? r.caseCount}`} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <CaseNumberBoxes values={caseIds} onChange={setCaseIds} returnNumber={r.number} canAddRemove />
+        <p style={{ margin: 0, fontSize: 11.5, color: "#9a9a9a" }}>The old numbers stay in the return&apos;s history.</p>
+        {error && <p style={{ margin: 0, fontSize: 12.5, color: "#A32D2D" }}>{error}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onClose} style={ghostBtn}>Cancel</button>
+          <button onClick={submit} disabled={saving} style={{ ...primaryBtn(true), opacity: saving ? 0.6 : 1, padding: "7px 16px" }}>
+            {saving ? "Saving…" : "Save case numbers"}
           </button>
         </div>
       </div>
@@ -935,7 +1034,8 @@ interface ReturnEvent {
   detail: {
     caseCount?: number; receivedCount?: number; caseId?: string; caseNumbers?: string[]; fromStatus?: string;
     requestedCount?: number; fulfilledRequest?: boolean; readyAt?: string | null; driverId?: string | null;
-    correction?: "driver" | "undo_drop_off" | "undo_check_in"; previousDriverName?: string | null;
+    correction?: "driver" | "undo_drop_off" | "undo_check_in" | "case_numbers"; previousDriverName?: string | null;
+    previousCaseId?: string | null;
   } | null;
   actorRole: "driver" | "dispatcher" | "office";
   assignedDriverName: string | null;
@@ -992,6 +1092,15 @@ function describeEvent(e: ReturnEvent): React.ReactNode {
     default:
       if (d.correction === "driver") {
         return <><strong>Driver corrected</strong>{d.previousDriverName ? <> from {d.previousDriverName}</> : null} to <strong>{e.assignedDriverName ?? "another driver"}</strong></>;
+      }
+      if (d.correction === "case_numbers") {
+        return (
+          <>
+            <strong>Case numbers changed</strong>
+            {d.previousCaseId && <> from <span style={{ fontFamily: "monospace" }}>{d.previousCaseId}</span></>}
+            {" "}to <span style={{ fontFamily: "monospace" }}>{d.caseId}</span>
+          </>
+        );
       }
       if (d.correction === "undo_drop_off") return <><strong>Drop-off undone</strong>: back with the driver</>;
       if (d.correction === "undo_check_in") {

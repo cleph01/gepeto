@@ -1,17 +1,17 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { notifyDriverPickups, notifyLab, notifyOffices } from "@/lib/realtime";
-import { returnsQuery } from "@/lib/returns";
+import { MAX_RETURN_CASES, joinCaseIds, returnsQuery } from "@/lib/returns";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
-const MAX_CASES = 99;
+const MAX_CASES = MAX_RETURN_CASES;
 
 // POST /api/returns/[id]/check-in  (dispatcher)
 // Closes out a return at the front desk: confirms how many cases actually
 // arrived, records the lab's case number for it and, optionally, links the
 // outbound job it came back from.
-// Body: { receivedCount, caseId, sourceJobId? }
+// Body: { receivedCount, caseIds: string[], sourceJobId? }  (caseId: string still accepted)
 // Works from at_lab, and from with_driver too, for when the driver handed the
 // cases over without tapping "Dropped off".
 export async function POST(
@@ -30,17 +30,19 @@ export async function POST(
     if (!Number.isInteger(receivedCount) || receivedCount < 0 || receivedCount > MAX_CASES) {
       return Response.json({ data: null, error: { code: "BAD_REQUEST", message: `Received count must be between 0 and ${MAX_CASES}.` } }, { status: 400 });
     }
-    const caseId = typeof body.caseId === "string" ? body.caseId.trim().slice(0, 64) : "";
-    if (!caseId) {
-      return Response.json({ data: null, error: { code: "BAD_REQUEST", message: "Enter the lab case number for this return." } }, { status: 400 });
-    }
-
     const ret = await db("returns").where({ id, lab_id: user.labId }).first();
     if (!ret) {
       return Response.json({ data: null, error: { code: "NOT_FOUND", message: "Return not found" } }, { status: 404 });
     }
     if (ret.status === "checked_in") {
       return Response.json({ data: null, error: { code: "CONFLICT", message: "This return is already checked in." } }, { status: 409 });
+    }
+
+    // One lab case number per case received (caseIds), or a single caseId from
+    // an older page. Blank boxes get a Gepeto number (see joinCaseIds).
+    const caseId = joinCaseIds(Array.isArray(body.caseIds) ? body.caseIds : [body.caseId], ret.number);
+    if (!caseId) {
+      return Response.json({ data: null, error: { code: "BAD_REQUEST", message: "Too many case numbers for one return." } }, { status: 400 });
     }
 
     // Only link a job from this lab that went to the same office.

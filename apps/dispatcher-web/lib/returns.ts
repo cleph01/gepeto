@@ -38,3 +38,23 @@ export function cleanCaseNumbers(input: unknown): string[] {
   }
   return [...seen].slice(0, 50);
 }
+
+export const MAX_RETURN_CASES = 99;
+
+/**
+ * A return's lab case numbers from the check-in or edit boxes, joined for
+ * returns.case_id ("LAB-2042, RET-1085-2"). A blank box gets a Gepeto number
+ * from the return: RET-1085, or RET-1085-1, RET-1085-2 when there are several.
+ * Returns null when they don't fit in the column.
+ */
+export function joinCaseIds(input: unknown, returnNumber: number): string | null {
+  const raw: unknown[] = Array.isArray(input) && input.length > 0 ? input.slice(0, MAX_RETURN_CASES) : [""];
+  const generated = (i: number) => (raw.length === 1 ? `RET-${returnNumber}` : `RET-${returnNumber}-${i + 1}`);
+  // Commas separate the numbers in case_id, so one can't be part of a number.
+  const clean = (v: unknown) => (typeof v === "string" ? v.replace(/,/g, " ").trim().slice(0, 64) : "");
+  const joined = [...new Set(raw.map((v, i) => clean(v) || generated(i)))].join(", ");
+  return joined.length > 255 ? null : joined;
+}
+
+/** The numbers stored by joinCaseIds, as a list. */
+export const splitCaseIds = (caseId: string | null) => (caseId ? caseId.split(", ").filter(Boolean) : []);
