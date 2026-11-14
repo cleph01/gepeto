@@ -121,6 +121,8 @@ interface Toast {
 interface MessageNotificationsContextType {
   totalUnread: number;
   unreadByJob: Record<string, number>;
+  /** True when a return was logged or requested since the dispatcher last visited /returns. */
+  hasNewReturns: boolean;
   /** Mark a thread read up to the newest message the user has seen. */
   markRead: (jobId: string, upTo: string) => void;
   /** Set while a job's messages modal is open — suppresses toasts for it. */
@@ -181,6 +183,7 @@ interface MessageNotificationsContextType {
 const MessageNotificationsContext = createContext<MessageNotificationsContextType>({
   totalUnread: 0,
   unreadByJob: {},
+  hasNewReturns: false,
   markRead: () => {},
   setActiveThread: () => {},
   newestUnreadJobId: null,
@@ -400,6 +403,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
   const [messageArrived, setMessageArrived] = useState<{ jobId: string; at: number } | null>(null);
   const [returnsSummary, setReturnsSummary] = useState<ReturnsSummary>(EMPTY_RETURNS);
   const [returnsChangedAt, setReturnsChangedAt] = useState(0);
+  const [hasNewReturns, setHasNewReturns] = useState(false);
   const [unreadByReturn, setUnreadByReturn] = useState<Record<string, number>>({});
   const [recentReturnThreads, setRecentReturnThreads] = useState<ReturnThreadRef[]>([]);
   const [pendingOpenReturn, setPendingOpenReturn] = useState<ReturnThreadRef | null>(null);
@@ -701,6 +705,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       return;
     }
     if (payload.change === "requested" && payload.returnId) {
+      setHasNewReturns(true);
       try {
         const res = await apiFetch<ApiResponse<{ id: string; caseCount: number; officeName: string | null; note: string | null; readyAt: string | null }[]>>("/api/returns?status=open");
         const r = res.data?.find((x) => x.id === payload.returnId);
@@ -724,6 +729,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       return;
     }
     if (payload.change !== "logged" || !payload.returnId) return;
+    setHasNewReturns(true);
     try {
       // Broadcasts carry only ids; read the return back for the notice.
       const res = await apiFetch<ApiResponse<{ id: string; caseCount: number; officeName: string | null; driverName: string | null; note: string | null; caseNumbers: string[] }[]>>("/api/returns?status=open");
@@ -828,6 +834,11 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [session, pollAll]);
+
+  // Clear the new-returns car icon when the dispatcher visits /returns.
+  useEffect(() => {
+    if (pathname === "/returns" || pathname.startsWith("/returns/")) setHasNewReturns(false);
+  }, [pathname]);
 
   // Unread count in the tab title so it's visible from other tabs.
   const baseTitle = useRef<string | null>(null);
@@ -1003,6 +1014,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         jobsChangedAt,
         driversChangedAt,
         messageArrived,
+        hasNewReturns,
         returnsSummary,
         returnUnreadTotal,
         unreadByReturn,

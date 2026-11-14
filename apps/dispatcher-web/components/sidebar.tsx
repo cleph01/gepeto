@@ -148,7 +148,7 @@ function NavContent({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const { totalUnread, returnUnreadTotal, directUnreadTotal } = useMessageNotifications();
+  const { totalUnread, returnUnreadTotal, directUnreadTotal, hasNewReturns } = useMessageNotifications();
   return (
     <>
       {/* Logo */}
@@ -193,7 +193,18 @@ function NavContent({
               <span style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }}>{link.icon}</span>
               {link.label}
               {link.href === "/jobs" && <UnreadBadge count={totalUnread} style={{ marginLeft: "auto", boxShadow: "none" }} />}
-              {link.href === "/returns" && <UnreadBadge count={returnUnreadTotal} style={{ marginLeft: "auto", boxShadow: "none" }} />}
+              {link.href === "/returns" && (
+                <span style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+                  {hasNewReturns && (
+                    <svg width="16" height="11" viewBox="0 0 16 11" fill="none" aria-label="New returning case" style={{ color: "#185FA5", flexShrink: 0 }}>
+                      <path d="M0.75 6h14.5M1.75 6v2.5h12.5V6M4.5 3.75 6 1h4l1.5 2.75" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="4" cy="9.25" r="1.25" stroke="currentColor" strokeWidth="1.1" />
+                      <circle cx="12" cy="9.25" r="1.25" stroke="currentColor" strokeWidth="1.1" />
+                    </svg>
+                  )}
+                  <UnreadBadge count={returnUnreadTotal} style={{ boxShadow: "none" }} />
+                </span>
+              )}
               {link.href === "/messages" && <UnreadBadge count={directUnreadTotal} style={{ marginLeft: "auto", boxShadow: "none" }} />}
             </Link>
           );
