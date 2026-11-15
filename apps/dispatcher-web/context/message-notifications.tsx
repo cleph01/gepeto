@@ -536,7 +536,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     } else {
       pushToasts(toToast.map(toastFor));
     }
-    if (soundRef.current) playChime();
+    if (soundRef.current && !anotherTabFocused()) playChime();
   }, [session, apiFetch, pushToasts]);
 
   const isDispatcher = session?.user.app_metadata?.role === "dispatcher" || session?.user.user_metadata?.role === "dispatcher";
@@ -573,7 +573,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (fresh.length === 0) return;
     setJobsChangedAt(Date.now()); // in case realtime missed it
     pushToasts(fresh.reverse().slice(-MAX_TOASTS).map(toastForActivity));
-    if (soundRef.current) playChime();
+    if (soundRef.current && !anotherTabFocused()) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
   // Same idea as poll() above, for conversations on returns.
@@ -615,7 +615,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     } else {
       pushToasts(toToast.map(toastForReturnMessage));
     }
-    if (soundRef.current) playChime();
+    if (soundRef.current && !anotherTabFocused()) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
   // Same idea again, for offices' and drivers' private threads with dispatch.
@@ -657,7 +657,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     } else {
       pushToasts(toToast.map(toastForDirectMessage));
     }
-    if (soundRef.current) playChime();
+    if (soundRef.current && !anotherTabFocused()) playChime();
   }, [session, isDispatcher, apiFetch, pushToasts]);
 
   const loadReturnsSummary = useCallback(async () => {
@@ -687,7 +687,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         notifyTag: `return-dropped-${n}-${Math.floor(Date.now() / 10_000)}`,
         color: "#854F0B",
       }]);
-      if (soundRef.current) playChime();
+      if (soundRef.current && !anotherTabFocused()) playChime();
       return;
     }
     if (payload.change === "rejected") {
@@ -701,7 +701,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         notifyTag: `pickup-rejected-${payload.returnId}`,
         color: "#854F0B",
       }]);
-      if (soundRef.current) playChime();
+      if (soundRef.current && !anotherTabFocused()) playChime();
       return;
     }
     if (payload.change === "requested" && payload.returnId) {
@@ -722,7 +722,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
           notifyBody: `${ready} · Assign a driver in Returning Cases.`,
           color: "#854F0B",
         }]);
-        if (soundRef.current) playChime();
+        if (soundRef.current && !anotherTabFocused()) playChime();
       } catch {
         // The badge still updated.
       }
@@ -744,7 +744,7 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
         notifyBody: [r.officeName ?? "From an office", r.caseNumbers.length ? r.caseNumbers.join(", ") : null].filter(Boolean).join(" · "),
         color: "#185FA5",
       }]);
-      if (soundRef.current) playChime();
+      if (soundRef.current && !anotherTabFocused()) playChime();
     } catch {
       // The badge still updated.
     }
