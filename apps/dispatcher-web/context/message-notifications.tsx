@@ -835,10 +835,14 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     };
   }, [session, pollAll]);
 
-  // Clear the new-returns car icon when the dispatcher visits /returns.
+  // Clear the new-returns car icon when the dispatcher is on /returns.
+  // Depends on hasNewReturns so it also fires when the icon is set while
+  // already on /returns (pathname won't change in that case).
   useEffect(() => {
-    if (pathname === "/returns" || pathname.startsWith("/returns/")) setHasNewReturns(false);
-  }, [pathname]);
+    if ((pathname === "/returns" || pathname.startsWith("/returns/")) && hasNewReturns) {
+      setHasNewReturns(false);
+    }
+  }, [pathname, hasNewReturns]);
 
   // Unread count in the tab title so it's visible from other tabs.
   const baseTitle = useRef<string | null>(null);

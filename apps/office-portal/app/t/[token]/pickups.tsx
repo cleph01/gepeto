@@ -35,6 +35,9 @@ function progress(p: Pickup): { label: string; detail: string | null; color: str
       if (p.driverName) {
         return { label: `${p.driverName} will pick it up`, detail: null, color: "#185FA5", bg: "#EBF2FA", border: "#C0D9F0" };
       }
+      if (p.hasDriver) {
+        return { label: "Driver assigned", detail: "Awaiting confirmation", color: "#185FA5", bg: "#EBF2FA", border: "#C0D9F0" };
+      }
       return {
         label: "Waiting for a driver",
         detail: p.readyAt && new Date(p.readyAt) > new Date() ? `Ready after ${fmtTime(p.readyAt)}` : "Ready now",
