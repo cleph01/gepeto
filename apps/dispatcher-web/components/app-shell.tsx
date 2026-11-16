@@ -9,7 +9,7 @@ import ReadOnlyBanner from "@/components/read-only-banner";
 import Sidebar from "@/components/sidebar";
 
 const isPublicRoute = (pathname: string) =>
-  pathname === "/login" || pathname.startsWith("/signup");
+  pathname === "/login" || pathname.startsWith("/signup") || pathname === "/forgot-password";
 
 // /accept-invite is a special case: Supabase's invite link establishes a real
 // session (via detectSessionInUrl), so `session` is truthy there — but unlike
