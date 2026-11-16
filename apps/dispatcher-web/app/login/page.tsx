@@ -192,6 +192,13 @@ export default function LoginPage() {
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>
+
+          <a
+            href="/forgot-password"
+            style={{ textAlign: "center", fontSize: 12.5, color: "#185FA5", textDecoration: "none" }}
+          >
+            Forgot password?
+          </a>
         </form>
         <LegalLinks style={{ padding: "0 28px 20px", textAlign: "center" }} />
       </div>
