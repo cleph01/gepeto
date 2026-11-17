@@ -32,6 +32,9 @@ async function upsertAuthUser(email, password, metadata) {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
+    // Role and lab go in app_metadata: only the server can set it. requireAuth()
+    // ignores user_metadata, which users can edit themselves.
+    app_metadata: metadata,
     user_metadata: metadata,
     email_confirm: true,
   });
