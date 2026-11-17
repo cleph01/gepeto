@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl } from "@/lib/email";
+import { getDashboardUrl, sendInviteEmail } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -64,20 +64,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Create Supabase Auth user and send invite email first — lab_users.user_id
-    //    is NOT NULL, so unlike drivers (nullable user_id) we can't insert-then-backfill.
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      normalizedEmail,
-      { data: { name: name.trim() }, redirectTo: `${getDashboardUrl()}/accept-invite` }
-    );
+    // 1. Generate invite link (creates Supabase Auth user without sending email),
+    //    then send via Resend to bypass Supabase's rate-limited built-in mailer.
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email: normalizedEmail,
+      options: { data: { name: name.trim() }, redirectTo: `${getDashboardUrl()}/accept-invite` },
+    });
 
-    if (authError || !authData?.user) {
-      console.error("[POST /api/team] Supabase invite failed:", authError?.message);
+    if (linkError || !linkData?.user) {
+      console.error("[POST /api/team] Supabase generateLink failed:", linkError?.message);
       return Response.json(
-        { data: null, error: { code: "AUTH_ERROR", message: authError?.message ?? "Failed to send invite" } },
+        { data: null, error: { code: "AUTH_ERROR", message: linkError?.message ?? "Failed to send invite" } },
         { status: 500 }
       );
     }
+
+    await sendInviteEmail(normalizedEmail, {
+      name: name.trim(),
+      inviteUrl: linkData.properties.action_link,
+    }).catch((err) => console.error("[POST /api/team] Resend failed:", err));
+
+    const authData = { user: linkData.user };
 
     // 2. Set app_metadata so requireAuth() and RLS policies work correctly
     await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {

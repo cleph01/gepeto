@@ -257,3 +257,54 @@ export async function getDispatcherEmails(labId: string): Promise<string[]> {
 export function getDashboardUrl() {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
+
+// ── Auth emails (bypass Supabase's rate-limited built-in mailer) ──────────────
+
+export async function sendInviteEmail(to: string, data: { name: string; inviteUrl: string }) {
+  const name = escapeHtml(data.name);
+  const body = `
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
+      You've been invited to Gepeto
+    </h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
+      Hi ${name}, you've been invited to join a lab on Gepeto. Click below to set your password and get started.
+    </p>
+    <a href="${data.inviteUrl}" style="display:inline-block;background:#185FA5;color:#ffffff;font-size:13.5px;font-weight:500;border-radius:7px;padding:10px 20px;text-decoration:none;">
+      Accept invite &amp; set password →
+    </a>
+    <p style="margin:16px 0 0;font-size:12px;color:#9a9a9a;line-height:1.5;">
+      This link expires in 24 hours. If you weren't expecting this, you can safely ignore it.
+    </p>`;
+
+  return getResend().emails.send({
+    from: FROM,
+    to,
+    subject: "You've been invited to Gepeto",
+    html: layout("You've been invited to Gepeto", body, "Gepeto · You're receiving this because someone invited you to their Gepeto account."),
+  });
+}
+
+export async function sendPasswordResetEmail(to: string, data: { resetUrl: string; name?: string; isReset?: boolean }) {
+  const greeting = data.name ? `Hi ${escapeHtml(data.name)}, c` : "C";
+  const heading = data.isReset ? "Reset your Gepeto password" : "Set up your Gepeto account";
+  const body = `
+    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
+      ${heading}
+    </h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
+      ${greeting}lick the link below to ${data.isReset ? "reset your password" : "set a password for your account"} and sign in.
+    </p>
+    <a href="${data.resetUrl}" style="display:inline-block;background:#185FA5;color:#ffffff;font-size:13.5px;font-weight:500;border-radius:7px;padding:10px 20px;text-decoration:none;">
+      ${data.isReset ? "Reset password" : "Set password"} →
+    </a>
+    <p style="margin:16px 0 0;font-size:12px;color:#9a9a9a;line-height:1.5;">
+      This link expires shortly. If you didn't request this, you can safely ignore it.
+    </p>`;
+
+  return getResend().emails.send({
+    from: FROM,
+    to,
+    subject: heading,
+    html: layout(heading, body, "Gepeto · You're receiving this because a password reset was requested for your account."),
+  });
+}

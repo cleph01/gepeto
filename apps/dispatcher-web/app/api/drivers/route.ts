@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { driversSharingLocation } from "@/lib/driver-sharing";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl } from "@/lib/email";
+import { getDashboardUrl, sendInviteEmail } from "@/lib/email";
 import { checkDriverRoom } from "@/lib/billing";
 import { breakFlagMins, hideLocationOnBreak } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -100,24 +100,33 @@ export async function POST(request: NextRequest) {
 
     driverId = driver.id;
 
-    // 2. Create Supabase Auth user and send invite email
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      email.trim().toLowerCase(),
-      {
+    // 2. Generate invite link (creates Supabase Auth user without sending email),
+    //    then send via Resend to bypass Supabase's rate-limited built-in mailer.
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email: email.trim().toLowerCase(),
+      options: {
         data: { name: name.trim() }, // stored in user_metadata (display purposes)
         redirectTo: `${getDashboardUrl()}/accept-invite`,
-      }
-    );
+      },
+    });
 
-    if (authError || !authData?.user) {
+    if (linkError || !linkData?.user) {
       // Rollback DB row
       await db("drivers").where({ id: driverId }).delete();
-      console.error("[POST /api/drivers] Supabase invite failed:", authError?.message);
+      console.error("[POST /api/drivers] Supabase generateLink failed:", linkError?.message);
       return Response.json(
-        { data: null, error: { code: "AUTH_ERROR", message: authError?.message ?? "Failed to send invite" } },
+        { data: null, error: { code: "AUTH_ERROR", message: linkError?.message ?? "Failed to send invite" } },
         { status: 500 }
       );
     }
+
+    await sendInviteEmail(email.trim().toLowerCase(), {
+      name: name.trim(),
+      inviteUrl: linkData.properties.action_link,
+    }).catch((err) => console.error("[POST /api/drivers] Resend failed:", err));
+
+    const authData = { user: linkData.user };
 
     // 3. Set app_metadata so RLS policies and requireAuth work correctly
     await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {

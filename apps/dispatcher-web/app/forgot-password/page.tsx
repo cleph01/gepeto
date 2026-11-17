@@ -2,7 +2,6 @@
 
 import { LegalLinks } from "@/components/legal-links";
 import { useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail]   = useState("");
@@ -14,9 +13,12 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/accept-invite`,
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
     });
+    const { error } = await res.json();
     setLoading(false);
     if (error) {
       setError(error.message);

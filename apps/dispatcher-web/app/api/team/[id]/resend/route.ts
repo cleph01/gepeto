@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl } from "@/lib/email";
+import { getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -35,25 +35,24 @@ export async function POST(
       );
     }
 
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(member.email, {
-      redirectTo: `${getDashboardUrl()}/accept-invite`,
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "recovery",
+      email: member.email,
+      options: { redirectTo: `${getDashboardUrl()}/accept-invite` },
     });
 
-    if (error) {
-      const isRateLimit = error.status === 429;
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error("[POST /api/team/[id]/resend] generateLink failed:", linkError?.message);
       return Response.json(
-        {
-          data: null,
-          error: {
-            code: isRateLimit ? "RATE_LIMITED" : "AUTH_ERROR",
-            message: isRateLimit
-              ? "Too many emails sent recently. Wait a bit and try again."
-              : error.message,
-          },
-        },
-        { status: isRateLimit ? 429 : 500 }
+        { data: null, error: { code: "AUTH_ERROR", message: linkError?.message ?? "Failed to generate reset link" } },
+        { status: 500 }
       );
     }
+
+    await sendPasswordResetEmail(member.email, {
+      name: member.name,
+      resetUrl: linkData.properties.action_link,
+    });
 
     return Response.json({ data: { sent: true }, error: null });
   } catch (err) {
