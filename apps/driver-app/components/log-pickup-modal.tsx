@@ -11,13 +11,19 @@ import {
   ScrollView,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
-import { EMPTY_RETURN, draftForPickup, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { EMPTY_RETURN, draftForPickup, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { useOutbox } from '@/context/outbox';
+import { newId } from '@/lib/outbox';
 
 type OfficeOption = { id: string; name: string; address: string };
+
+// The lab's offices, kept on the phone so a pickup can be logged with no signal.
+const OFFICES_KEY = 'gepeto.offices';
 
 // Log cases picked up at an office when there's no delivery to log them on
 // (the office called for a pickup). The office the driver is at, if any, is
@@ -37,10 +43,10 @@ export function LogPickupModal({
   onLogged: () => void;
 }) {
   const [offices, setOffices] = useState<OfficeOption[]>([]);
+  const { enqueue } = useOutbox();
   const [officeId, setOfficeId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ReturnDraft>({ ...EMPTY_RETURN, bringing: true });
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -48,27 +54,36 @@ export function LogPickupModal({
       .from('offices')
       .select('id, name, address')
       .order('name')
-      .then(({ data }) => setOffices((data as OfficeOption[] | null) ?? []));
+      .then(async ({ data, error }) => {
+        if (!error && data) {
+          setOffices(data as OfficeOption[]);
+          AsyncStorage.setItem(OFFICES_KEY, JSON.stringify(data)).catch(() => {});
+          return;
+        }
+        const saved = await AsyncStorage.getItem(OFFICES_KEY).catch(() => null);
+        if (saved) setOffices(JSON.parse(saved) as OfficeOption[]);
+      });
   }, [visible]);
 
   // Fresh form each time it opens.
   const reset = () => {
     setOfficeId(pickupRequest?.officeId ?? suggestedOfficeId ?? null);
     setDraft(pickupRequest ? draftForPickup(pickupRequest) : { ...EMPTY_RETURN, bringing: true });
-    setError(null);
   };
 
-  const submit = async () => {
+  // Saved on the phone and sent in the background (see context/outbox).
+  const submit = () => {
     if (!officeId || submitting) return;
     setSubmitting(true);
-    setError(null);
-    const err = await logReturn(draft, officeId);
+    enqueue([{
+      id: newId(),
+      kind: 'return_log',
+      occurredAt: new Date().toISOString(),
+      officeId,
+      officeName: offices.find((o) => o.id === officeId)?.name ?? null,
+      draft: { ...draft, bringing: true },
+    }]);
     setSubmitting(false);
-    if (err) {
-      setError(err);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onLogged();
     onClose();
@@ -124,7 +139,6 @@ export function LogPickupModal({
 
           <ReturnPickupFields value={draft} onChange={setDraft} askFirst={false} request={pickupRequest} />
 
-          {error && <Text style={styles.error}>{error}</Text>}
 
           <TouchableOpacity
             style={[styles.confirmBtn, (!officeId || submitting) && styles.confirmBtnDisabled]}
@@ -178,7 +192,6 @@ const styles = StyleSheet.create({
   officeBody: { flex: 1, gap: 2 },
   officeName: { fontFamily: Fonts.semibold, color: Colors.text, fontSize: FontSize.md },
   officeAddress: { fontFamily: Fonts.regular, color: Colors.textSecondary, fontSize: FontSize.sm },
-  error: { fontFamily: Fonts.medium, color: Colors.danger, fontSize: FontSize.sm },
   confirmBtn: {
     backgroundColor: Colors.primary,
     borderRadius: Radius.md,

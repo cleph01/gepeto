@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { clientId as readClientId, occurredAt } from "@/lib/offline-sync";
 import { notifyLab, notifyOffices } from "@/lib/realtime";
 import { cleanCaseNumbers, returnsQuery } from "@/lib/returns";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -48,7 +49,11 @@ export async function GET(request: NextRequest) {
 
 // POST /api/returns  (driver)
 // Logs cases picked up at an office to bring back to the lab.
-// Body: { officeId, caseCount, caseNumbers?: string[], note?, pickedUpDuringJobId? }
+// Body: { officeId, caseCount, caseNumbers?: string[], note?, pickedUpDuringJobId?,
+//         clientId?, occurredAt? }
+// clientId and occurredAt come from the driver app's offline queue: clientId
+// becomes the "logged" event's id, so a pickup sent twice is only logged once,
+// and occurredAt is when the driver logged it.
 // If that office has an open pickup request (assigned to this driver, or not
 // assigned yet), the pickup fulfills it instead of creating a second return,
 // so the office's request and the driver's pickup are one record.
@@ -60,6 +65,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
+
+    // Already logged by an earlier send whose reply was lost: return that one.
+    const eventId = readClientId(body.clientId);
+    if (eventId) {
+      const seen = await db("return_events").where({ id: eventId, lab_id: user.labId, actor_user_id: user.id }).first("return_id");
+      if (seen) {
+        const ret = await returnsQuery(user.labId).where("r.id", seen.returnId).first();
+        return Response.json({ data: ret, error: null }, { status: 200 });
+      }
+    }
+    const at = occurredAt(body.occurredAt);
+
     const caseCount = Number(body.caseCount);
     if (!Number.isInteger(caseCount) || caseCount < 1 || caseCount > MAX_CASES) {
       return Response.json({ data: null, error: { code: "BAD_REQUEST", message: `Case count must be between 1 and ${MAX_CASES}.` } }, { status: 400 });
@@ -104,7 +121,7 @@ export async function POST(request: NextRequest) {
           case_numbers: JSON.stringify(merged),
           note: mergedNote,
           picked_up_during_job_id: pickedUpDuringJobId,
-          picked_up_at: trx.fn.now(),
+          picked_up_at: at ?? trx.fn.now(),
           updated_at: trx.fn.now(),
         });
         await trx("return_events").insert({
@@ -114,6 +131,8 @@ export async function POST(request: NextRequest) {
           detail: JSON.stringify({ caseCount, caseNumbers, requestedCount: request.caseCount, fulfilledRequest: true }),
           actor_role: "driver",
           actor_user_id: user.id,
+          ...(eventId ? { id: eventId } : {}),
+          ...(at ? { created_at: at } : {}),
         });
         return { id: request.id as string, fulfilledRequest: true };
       }
@@ -128,7 +147,7 @@ export async function POST(request: NextRequest) {
           case_numbers: JSON.stringify(caseNumbers),
           note,
           picked_up_during_job_id: pickedUpDuringJobId,
-          picked_up_at: trx.fn.now(),
+          picked_up_at: at ?? trx.fn.now(),
         })
         .returning("id");
       await trx("return_events").insert({
@@ -138,6 +157,8 @@ export async function POST(request: NextRequest) {
         detail: JSON.stringify({ caseCount, caseNumbers }),
         actor_role: "driver",
         actor_user_id: user.id,
+        ...(eventId ? { id: eventId } : {}),
+        ...(at ? { created_at: at } : {}),
       });
       return { id: row.id as string, fulfilledRequest: false };
     });

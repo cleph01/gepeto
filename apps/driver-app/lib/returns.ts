@@ -70,28 +70,6 @@ export async function findPickupRequest(officeId: string): Promise<ReturnCase | 
   }
 }
 
-/** Logs the draft if the driver said they're bringing cases back. Returns an error message, or null.
- *  If the office has an open pickup request, the server fulfills it rather than adding a new return. */
-export async function logReturn(
-  draft: ReturnDraft,
-  officeId: string,
-  pickedUpDuringJobId?: string
-): Promise<string | null> {
-  if (!draft.bringing) return null;
-  try {
-    const res = await apiPost<ReturnCase>('/api/returns', {
-      officeId,
-      caseCount: draft.caseCount,
-      caseNumbers: draft.caseNumbers,
-      note: draft.note,
-      pickedUpDuringJobId,
-    });
-    return res.data ? null : res.error?.message ?? "Couldn't log the return.";
-  } catch {
-    return "Couldn't log the return. Check your signal.";
-  }
-}
-
 /** Accepts or rejects an assigned pickup. Returns an error message, or null. */
 export async function respondToPickup(id: string, driverResponse: 'accepted' | 'rejected'): Promise<string | null> {
   try {

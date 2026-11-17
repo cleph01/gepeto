@@ -18,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/context/auth';
 import { MessagesProvider } from '@/context/messages';
+import { OutboxProvider } from '@/context/outbox';
 import { JobAlerts } from '@/components/job-alerts';
 import { Colors, Fonts } from '@/constants/theme';
 
@@ -76,6 +77,7 @@ function RootLayout() {
 
   return (
     <AuthProvider>
+      <OutboxProvider>
       <MessagesProvider>
         <RouteGuard />
         <Stack
@@ -137,6 +139,7 @@ function RootLayout() {
         <JobAlerts />
         <StatusBar style="light" />
       </MessagesProvider>
+      </OutboxProvider>
     </AuthProvider>
   );
 }

@@ -1,12 +1,15 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { notifyLab, notifyOffices } from "@/lib/realtime";
+import { occurredAt } from "@/lib/offline-sync";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
 // POST /api/returns/drop  (driver)
 // "Dropped at lab": moves the driver's returns still with them to at_lab.
-// Body: { ids?: string[] }; omitted = every return the driver is carrying.
+// Body: { ids?: string[], occurredAt? }; ids omitted = every return the driver
+// is carrying. occurredAt: when the driver tapped, from the app's offline queue.
+// Sending it again does nothing more: those returns are no longer with_driver.
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
@@ -14,12 +17,13 @@ export async function POST(request: NextRequest) {
       return Response.json({ data: null, error: { code: "FORBIDDEN", message: "Only drivers drop off returns" } }, { status: 403 });
     }
     const body = await request.json().catch(() => ({}));
+    const at = occurredAt(body.occurredAt);
     const ids: string[] | null = Array.isArray(body.ids) ? body.ids.filter((v: unknown) => typeof v === "string") : null;
 
     const dropped: { id: string; officeId: string }[] = await db.transaction(async (trx: typeof db) => {
       const q = trx("returns").where({ lab_id: user.labId, driver_id: user.driverId, status: "with_driver" });
       if (ids) q.whereIn("id", ids);
-      const rows = await q.update({ status: "at_lab", dropped_at: trx.fn.now() }).returning(["id", "office_id"]);
+      const rows = await q.update({ status: "at_lab", dropped_at: at ?? trx.fn.now() }).returning(["id", "office_id"]);
       if (rows.length > 0) {
         await trx("return_events").insert(
           rows.map((r: { id: string }) => ({
@@ -28,6 +32,7 @@ export async function POST(request: NextRequest) {
             event: "dropped_at_lab",
             actor_role: "driver",
             actor_user_id: user.id,
+            ...(at ? { created_at: at } : {}),
           }))
         );
       }

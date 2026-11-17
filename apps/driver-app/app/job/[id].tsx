@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { rowToCamel } from '@/lib/transform';
 import {
   View,
@@ -36,11 +36,14 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { DeliveredToast } from '@/components/delivered-toast';
 import { forgetJob } from '@/components/job-alerts';
 import { STEPS, dueInfo } from '@/lib/jobs';
-import { EMPTY_RETURN, draftForPickup, findPickupRequest, logReturn, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { EMPTY_RETURN, draftForPickup, findPickupRequest, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
 import { PodPhotoField } from '@/components/pod-photo-field';
 import { DeliveredPhoto } from '@/components/delivered-photo';
-import { isPodPhotoRequired, uploadPodPhoto, type PodPhoto } from '@/lib/pod-photo';
+import { isPodPhotoRequired, type PodPhoto } from '@/lib/pod-photo';
+import { useOutbox } from '@/context/outbox';
+import { PendingTag, useJobPending } from '@/components/outbox-notice';
+import { keepPhoto, newId, withQueuedSteps, type OutboxItem } from '@/lib/outbox';
 
 const STATUS_PROGRESSION: Partial<Record<JobStatus, JobStatus>> = {
   picked_up:  'in_transit',
@@ -102,10 +105,13 @@ export default function JobDetailScreen() {
   const router = useRouter();
   const { unreadByJob } = useMessages();
 
-  const [job, setJob] = useState<Job | null>(null);
+  const [serverJob, setJob] = useState<Job | null>(null);
+  const { items: outbox, enqueue, syncedAt } = useOutbox();
+  // The job as the driver last left it, including steps still waiting to send.
+  const job = useMemo(() => (serverJob ? withQueuedSteps(serverJob, outbox) : null), [serverJob, outbox]);
+  const { pending, photo: photoPending } = useJobPending(serverJob?.id);
   const [officeName, setOfficeName] = useState<string | null>(null);
   const [latestMessage, setLatestMessage] = useState<Message | null>(null);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showPod, setShowPod] = useState(false);
   const [recipientName, setRecipientName] = useState('');
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
@@ -146,7 +152,8 @@ export default function JobDetailScreen() {
         }
       });
     return () => { cancelled = true; };
-  }, [id, loadTry]);
+    // syncedAt: queued updates just reached the server, so re-read the job.
+  }, [id, loadTry, syncedAt]);
 
   // While it couldn't load for lack of signal, keep trying, so the screen
   // recovers on its own once the phone is back online.
@@ -261,67 +268,65 @@ export default function JobDetailScreen() {
 
     const nextStatus = STATUS_PROGRESSION[job.status];
     if (!nextStatus) return;
-
-    setUpdatingStatus(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const updated = await patchJob(`/api/jobs/${job.id}/status`, { status: nextStatus });
-    if (updated) setJob(updated);
-    setUpdatingStatus(false);
+    queueStep(nextStatus);
   };
 
-  const handleConfirmDelivery = async () => {
-    if (!job || !recipientName.trim() || (photoRequired && !podPhoto)) return;
+  // Saved on the phone and sent in the background (see context/outbox), so
+  // the button works with no signal; a tag says when it hasn't reached the lab yet.
+  const queueStep = (to: JobStatus, extra: Partial<Extract<OutboxItem, { kind: 'job_status' }>> = {}) => {
+    if (!job) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    enqueue([{
+      id: newId(),
+      kind: 'job_status',
+      jobId: job.id,
+      caseId: job.caseId,
+      officeName,
+      from: job.status,
+      to,
+      occurredAt: new Date().toISOString(),
+      ...extra,
+    }]);
+  };
+
+  const handleConfirmDelivery = () => {
+    if (!job || !recipientName.trim() || (photoRequired && !podPhoto) || submittingPod) return;
     setSubmittingPod(true);
-    let photoPath: string | undefined;
+    const occurredAt = new Date().toISOString();
+    let photoFile: string | undefined;
     if (podPhoto) {
-      const uploaded = await uploadPodPhoto(podPhoto);
-      if ('error' in uploaded) {
+      try {
+        photoFile = keepPhoto(podPhoto.uri, newId());
+      } catch {
         setSubmittingPod(false);
-        Alert.alert("Photo didn't upload", `${uploaded.error} The delivery isn't marked yet.`);
+        Alert.alert("Couldn't save the photo", "Take it again. The delivery isn't marked yet.");
         return;
       }
-      photoPath = uploaded.path;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const res = await apiPatch<Job>(`/api/jobs/${job.id}/status`, {
-      status: 'delivered',
-      proofOfDelivery: {
-        recipientName: recipientName.trim(),
-        timestamp: new Date().toISOString(),
-        photoPath,
-      },
-    }).catch(() => null);
-    if (!res) {
-      // No signal: keep the sheet open with what they typed, so they can just tap Confirm again.
-      setSubmittingPod(false);
-      Alert.alert("Couldn't complete the delivery", "Check your signal and try again. The delivery isn't marked yet.");
-      return;
-    }
-    if (res.data) {
-      // Cases picked up at the door for the lab, logged against this delivery.
-      const returnError = await logReturn(returnDraft, job.officeId, job.id);
-      setSubmittingPod(false);
-      setJob(res.data);
-      setShowPod(false);
-      setToast(`Delivered · ${officeName ?? job.deliveryAddress}`);
-      if (returnError) {
-        Alert.alert('Delivery saved, but the return wasn\'t logged', `${returnError} Use "Log a pickup" on the Jobs tab to add it.`);
-      }
-    } else {
-      setSubmittingPod(false);
-      if (res.error?.code === 'PHOTO_REQUIRED') setPhotoRequired(true);
-      Alert.alert("Couldn't complete the delivery", res.error?.message ?? 'Try again.');
-    }
+    const delivered = {
+      id: newId(),
+      kind: 'job_status' as const,
+      jobId: job.id,
+      caseId: job.caseId,
+      officeName,
+      from: job.status,
+      to: 'delivered' as const,
+      occurredAt,
+      proof: { recipientName: recipientName.trim(), timestamp: occurredAt },
+      ...(photoFile ? { photo: { file: photoFile } } : {}),
+    };
+    // Cases picked up at the door for the lab, logged against this delivery.
+    const pickup: OutboxItem[] = returnDraft.bringing
+      ? [{ id: newId(), kind: 'return_log', occurredAt, officeId: job.officeId, officeName, draft: returnDraft, pickedUpDuringJobId: job.id }]
+      : [];
+    enqueue([delivered, ...pickup]);
+    setSubmittingPod(false);
+    setShowPod(false);
+    setToast(`Delivered · ${officeName ?? job.deliveryAddress}`);
   };
 
-  const handleMarkPickedUp = async () => {
-    if (!job) return;
-    setUpdatingStatus(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const updated = await patchJob(`/api/jobs/${job.id}/status`, { status: 'picked_up' });
-    if (updated) setJob(updated);
-    setUpdatingStatus(false);
-  };
+  const handleMarkPickedUp = () => queueStep('picked_up');
 
   if (!job) {
     return (
@@ -390,6 +395,7 @@ export default function JobDetailScreen() {
                 </View>
               )}
             </View>
+            {pending && <PendingTag photo={photoPending} style={{ marginTop: 0 }} />}
             <Text style={styles.title} accessibilityRole="header">{officeName ?? job.deliveryAddress}</Text>
             {due && (
               <View style={styles.metaRow}>
@@ -450,17 +456,13 @@ export default function JobDetailScreen() {
           {nextAction && (
             <View style={styles.nextStep}>
               <TouchableOpacity
-                style={[styles.actionBtn, job.status === 'arrived' && styles.actionBtnFinish, updatingStatus && styles.actionBtnDisabled]}
+                style={[styles.actionBtn, job.status === 'arrived' && styles.actionBtnFinish]}
                 onPress={showPickUpButton ? handleMarkPickedUp : handleStatusAdvance}
-                disabled={updatingStatus}
                 activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityHint={nextAction.hint}
               >
-                {updatingStatus
-                  ? <ActivityIndicator color={job.status === 'arrived' ? Colors.successInk : '#fff'} />
-                  : <Text style={[styles.actionBtnText, job.status === 'arrived' && styles.actionBtnTextFinish]}>{nextAction.label}</Text>
-                }
+                <Text style={[styles.actionBtnText, job.status === 'arrived' && styles.actionBtnTextFinish]}>{nextAction.label}</Text>
               </TouchableOpacity>
               <Text style={styles.nextHint}>{nextAction.hint}</Text>
             </View>
