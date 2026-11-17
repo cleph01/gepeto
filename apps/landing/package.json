@@ -9,7 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@gepeto/monitoring": "workspace:^",
+    "@sentry/nextjs": "11.13.0",
     "next": "16.4.5",
+    "posthog-js": "1.450.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

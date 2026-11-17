@@ -10,10 +10,13 @@
   },
   "dependencies": {
     "@gepeto/db": "workspace:^",
+    "@gepeto/monitoring": "workspace:^",
     "@gepeto/types": "workspace:^",
+    "@sentry/nextjs": "11.13.0",
     "@supabase/supabase-js": "^2.118.0",
     "leaflet": "^1.9.4",
     "next": "16.4.5",
+    "posthog-js": "1.450.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
