@@ -13,9 +13,9 @@
     "@gepeto/monitoring": "workspace:^",
     "@gepeto/types": "workspace:^",
     "@sentry/nextjs": "11.13.0",
-    "@supabase/supabase-js": "^2.118.0",
+    "@supabase/supabase-js": "^2.119.0",
     "leaflet": "^1.9.4",
-    "next": "16.4.5",
+    "next": "16.4.6",
     "posthog-js": "1.450.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
@@ -27,7 +27,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.5",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
