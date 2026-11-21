@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
+import { delivered, getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
 
 // POST /api/auth/reset-password — public route for the forgot-password page.
 // Generates a recovery link via Supabase admin (no email sent by Supabase) and
@@ -27,10 +27,12 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: null });
     }
 
-    await sendPasswordResetEmail(normalizedEmail, {
-      resetUrl: linkData.properties.action_link,
-      isReset: true,
-    }).catch((err) => console.error("[POST /api/auth/reset-password] Resend failed:", err));
+    // A failed send is logged (and reaches Sentry) but not shown: telling the
+    // caller would reveal that the address has an account.
+    await delivered(
+      sendPasswordResetEmail(normalizedEmail, { resetUrl: linkData.properties.action_link, isReset: true }),
+      "[POST /api/auth/reset-password] reset",
+    );
 
     return Response.json({ error: null });
   } catch (err) {

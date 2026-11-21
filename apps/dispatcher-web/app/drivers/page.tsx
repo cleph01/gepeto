@@ -376,7 +376,7 @@ export default function DriversPage() {
 
   const onSave = async (data: Omit<Driver, "id" | "activeJobs" | "location" | "joinedDate"> & { email?: string }) => {
     if (modalDriver === "new") {
-      const res = await apiFetch<ApiResponse<Driver>>("/api/drivers", {
+      const res = await apiFetch<ApiResponse<Driver & { inviteSent?: boolean }>>("/api/drivers", {
         method: "POST",
         body: JSON.stringify({ name: data.name, phone: data.phone, email: data.email, status: data.status }),
       });
@@ -386,6 +386,10 @@ export default function DriversPage() {
           location: "—",
           joinedDate: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
         }, ...prev]);
+        // Driver was added but the email bounced off Resend. Stays until they resend.
+        if (res.data.inviteSent === false) {
+          setResendState((prev) => ({ ...prev, [res.data!.id]: { status: "error", message: "Invite email didn't send. Resend it." } }));
+        }
       }
     } else if (modalDriver && "id" in modalDriver && modalDriver.id) {
       const res = await apiFetch<ApiResponse<Driver>>(`/api/drivers/${modalDriver.id}`, {

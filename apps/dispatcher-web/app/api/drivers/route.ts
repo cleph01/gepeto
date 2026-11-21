@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { driversSharingLocation } from "@/lib/driver-sharing";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl, sendInviteEmail } from "@/lib/email";
+import { delivered, getDashboardUrl, sendInviteEmail } from "@/lib/email";
 import { checkDriverRoom } from "@/lib/billing";
 import { breakFlagMins, hideLocationOnBreak } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -121,10 +121,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendInviteEmail(email.trim().toLowerCase(), {
-      name: name.trim(),
-      inviteUrl: linkData.properties.action_link,
-    }).catch((err) => console.error("[POST /api/drivers] Resend failed:", err));
+    // The account is created either way; if the email fails, the dispatcher sees
+    // it and can use Resend invite rather than the driver waiting on nothing.
+    const inviteSent = await delivered(
+      sendInviteEmail(email.trim().toLowerCase(), { name: name.trim(), inviteUrl: linkData.properties.action_link }),
+      "[POST /api/drivers] invite",
+    );
 
     const authData = { user: linkData.user };
 
@@ -141,7 +143,7 @@ export async function POST(request: NextRequest) {
     await db("drivers").where({ id: driver.id }).update({ user_id: authData.user.id });
 
     return Response.json({
-      data: { ...driver, user_id: authData.user.id, activeJobs: 0 },
+      data: { ...driver, user_id: authData.user.id, activeJobs: 0, inviteSent },
       error: null,
     }, { status: 201 });
   } catch (err) {

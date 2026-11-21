@@ -8,6 +8,19 @@ function getResend() {
 
 const FROM = "Gepeto <notifications@gepeto.delivery>";
 
+// Resend reports most failures (quota hit, bad address, domain problem) in its
+// response rather than throwing, so a bare .catch() misses them. Check both.
+export async function delivered(send: Promise<{ error: unknown }>, label: string) {
+  try {
+    const { error } = await send;
+    if (!error) return true;
+    console.error(`[email] ${label} failed:`, error);
+  } catch (e) {
+    console.error(`[email] ${label} failed:`, e);
+  }
+  return false;
+}
+
 // ── Shared HTML wrapper ───────────────────────────────────────────────────────
 
 const LAB_FOOTER = "Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.";

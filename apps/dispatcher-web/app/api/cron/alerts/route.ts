@@ -5,21 +5,10 @@ import {
   sendLateDeliveryAlert,
   getDispatcherEmails,
   getDashboardUrl,
+  delivered,
 } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
-
-// Resend reports most failures in its response rather than throwing, so check both.
-async function delivered(send: Promise<{ error: unknown }>, label: string) {
-  try {
-    const { error } = await send;
-    if (!error) return true;
-    console.error(`[cron] ${label} failed:`, error);
-  } catch (e) {
-    console.error(`[cron] ${label} failed:`, e);
-  }
-  return false;
-}
 
 /**
  * GET /api/cron/alerts

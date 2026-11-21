@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl, sendInviteEmail } from "@/lib/email";
+import { delivered, getDashboardUrl, sendInviteEmail } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -80,10 +80,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await sendInviteEmail(normalizedEmail, {
-      name: name.trim(),
-      inviteUrl: linkData.properties.action_link,
-    }).catch((err) => console.error("[POST /api/team] Resend failed:", err));
+    // The account is created either way; if the email fails, the owner sees it
+    // and can use Resend invite rather than the teammate waiting on nothing.
+    const inviteSent = await delivered(
+      sendInviteEmail(normalizedEmail, { name: name.trim(), inviteUrl: linkData.properties.action_link }),
+      "[POST /api/team] invite",
+    );
 
     const authData = { user: linkData.user };
 
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
       })
       .returning("*");
 
-    return Response.json({ data: labUser, error: null }, { status: 201 });
+    return Response.json({ data: { ...labUser, inviteSent }, error: null }, { status: 201 });
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[POST /api/team]", err);

@@ -135,7 +135,7 @@ export default function SettingsPage() {
 
   async function handleInvite(data: { name: string; email: string }) {
     setInviteError(null);
-    const res = await apiFetch<{ data: TeamMember | null; error: { message: string } | null }>("/api/team", {
+    const res = await apiFetch<{ data: (TeamMember & { inviteSent?: boolean }) | null; error: { message: string } | null }>("/api/team", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -144,6 +144,10 @@ export default function SettingsPage() {
       return;
     }
     setTeam((prev) => [...prev, res.data!]);
+    // Teammate was added but the email didn't go out. Stays until they resend.
+    if (res.data.inviteSent === false) {
+      setResendState((prev) => ({ ...prev, [res.data!.id]: { status: "error", message: "Invite email didn't send. Resend it." } }));
+    }
     setShowInvite(false);
   }
 

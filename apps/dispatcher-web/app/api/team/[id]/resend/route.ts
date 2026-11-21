@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
+import { delivered, getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -49,10 +49,16 @@ export async function POST(
       );
     }
 
-    await sendPasswordResetEmail(member.email, {
-      name: member.name,
-      resetUrl: linkData.properties.action_link,
-    });
+    const sent = await delivered(
+      sendPasswordResetEmail(member.email, { name: member.name, resetUrl: linkData.properties.action_link }),
+      "[POST /api/team/[id]/resend] setup",
+    );
+    if (!sent) {
+      return Response.json(
+        { data: null, error: { code: "EMAIL_FAILED", message: "Email didn't send. Try again later." } },
+        { status: 502 }
+      );
+    }
 
     return Response.json({ data: { sent: true }, error: null });
   } catch (err) {
