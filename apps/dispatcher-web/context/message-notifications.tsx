@@ -539,12 +539,11 @@ export function MessageNotificationsProvider({ children }: { children: React.Rea
     if (soundRef.current && !anotherTabFocused()) playChime();
   }, [session, apiFetch, pushToasts]);
 
-  const isDispatcher = session?.user.app_metadata?.role === "dispatcher" || session?.user.user_metadata?.role === "dispatcher";
-  // The lab id lives in app_metadata (Stripe signup) or user_metadata (seeded users);
-  // users added by hand have neither, so ask the server, which also checks lab_users.
-  const metaLabId =
-    (session?.user.app_metadata as Record<string, string> | undefined)?.lab_id ??
-    (session?.user.user_metadata as Record<string, string> | undefined)?.lab_id;
+  const isDispatcher = session?.user.app_metadata?.role === "dispatcher";
+  // The lab id lives in app_metadata; users added by hand don't have it, so ask
+  // the server, which also checks lab_users. Never read user_metadata here: the
+  // user can edit it.
+  const metaLabId = (session?.user.app_metadata as Record<string, string> | undefined)?.lab_id;
   const [fetchedLabId, setFetchedLabId] = useState<string | null>(null);
   const labId = metaLabId ?? fetchedLabId;
   useEffect(() => {

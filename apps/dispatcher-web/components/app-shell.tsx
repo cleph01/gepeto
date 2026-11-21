@@ -17,10 +17,9 @@ const isPublicRoute = (pathname: string) =>
 // NOT bounce to /dashboard until the user has actually set a password.
 const isInviteRoute = (pathname: string) => pathname === "/accept-invite";
 
-// Same lookup as requireAuth() on the server: app_metadata first, user_metadata for seeded users.
+// Same lookup as requireAuth() on the server: app_metadata only (user_metadata is user-editable).
 function sessionRole(session: ReturnType<typeof useAuth>["session"]) {
-  const meta = session?.user.app_metadata?.role ? session.user.app_metadata : session?.user.user_metadata;
-  return meta?.role as string | undefined;
+  return session?.user.app_metadata?.role as string | undefined;
 }
 
 // Drivers have valid logins but belong in the driver app, not the dispatcher console.

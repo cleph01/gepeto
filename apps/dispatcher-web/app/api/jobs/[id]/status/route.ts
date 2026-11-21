@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { notifyDriver, notifyLab, notifyOffices } from "@/lib/realtime";
 import { isLabPhotoPath, podPhotoSettings } from "@/lib/pod-photos";
+import { occurredAt } from "@/lib/offline-sync";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -13,6 +14,13 @@ const VALID_STATUSES = ["pending", "assigned", "picked_up", "in_transit", "arriv
 // Delivering takes proofOfDelivery { recipientName, timestamp, photoPath? };
 // photoPath comes from POST /api/driver/pod-photo, and is required of drivers
 // when the lab has "Require a photo" on.
+//
+// From the driver app's offline queue, also:
+//   occurredAt    when the driver tapped (recorded as the change's time)
+//   expectedFrom  the status the job was in then. If dispatch has moved the
+//                 job since, it's refused (409 JOB_CHANGED) instead of
+//                 overwriting their change. If it's already at `status`, an
+//                 earlier send got through, so it succeeds without changes.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,7 +28,7 @@ export async function PATCH(
   try {
     const user = await requireAuth(request);
     const { id } = await params;
-    const { status, proofOfDelivery } = await request.json();
+    const { status, proofOfDelivery, expectedFrom, occurredAt: tappedAt } = await request.json();
 
     if (!VALID_STATUSES.includes(status)) {
       return Response.json(
@@ -52,6 +60,20 @@ export async function PATCH(
       );
     }
 
+    const at = user.role === "driver" ? occurredAt(tappedAt) : null;
+    if (expectedFrom !== undefined) {
+      if (job.status === status) {
+        // Sent again after the first one landed (its reply was lost): nothing to change.
+        return Response.json({ data: await jobRow(id, user.role), error: null });
+      }
+      if (job.status !== expectedFrom) {
+        return Response.json(
+          { data: null, error: { code: "JOB_CHANGED", message: "Dispatch changed this job while you were offline, so this update wasn't saved." } },
+          { status: 409 }
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = { status };
 
     if (status === "delivered") {
@@ -72,7 +94,7 @@ export async function PATCH(
         }
       }
 
-      updates.delivered_at = new Date().toISOString();
+      updates.delivered_at = at ?? new Date().toISOString();
       if (proofOfDelivery) {
         updates.proof_of_delivery = JSON.stringify({
           recipientName: proofOfDelivery.recipientName,
@@ -95,6 +117,7 @@ export async function PATCH(
           to_status: status,
           changed_by_role: user.role,
           changed_by_user_id: user.id,
+          ...(at ? { created_at: at } : {}),
         });
       }
     });
@@ -113,22 +136,7 @@ export async function PATCH(
       await notifyOffices([job.officeId], "jobs");
     }
 
-    // Return the same joined shape as GET /api/jobs so the jobs list can re-render the row
-    const updated = await db("jobs")
-      .leftJoin("offices", "jobs.office_id", "offices.id")
-      .leftJoin("drivers", "jobs.driver_id", "drivers.id")
-      .where("jobs.id", id)
-      .select(
-        "jobs.*",
-        "offices.name as office_name",
-        "offices.tracking_token as office_tracking_token",
-        "drivers.name as driver_name"
-      )
-      .first();
-
-    // The office's tracking link is for the lab, never the driver.
-    if (user.role === "driver") delete updated.officeTrackingToken;
-
+    const updated = await jobRow(id, user.role);
     return Response.json({ data: updated, error: null });
   } catch (err) {
     if (err instanceof Response) return err;
@@ -138,4 +146,22 @@ export async function PATCH(
       { status: 500 }
     );
   }
+}
+
+// The same joined shape as GET /api/jobs, so the jobs list can re-render the row.
+async function jobRow(id: string, role: string) {
+  const row = await db("jobs")
+    .leftJoin("offices", "jobs.office_id", "offices.id")
+    .leftJoin("drivers", "jobs.driver_id", "drivers.id")
+    .where("jobs.id", id)
+    .select(
+      "jobs.*",
+      "offices.name as office_name",
+      "offices.tracking_token as office_tracking_token",
+      "drivers.name as driver_name"
+    )
+    .first();
+  // The office's tracking link is for the lab, never the driver.
+  if (role === "driver") delete row.officeTrackingToken;
+  return row;
 }

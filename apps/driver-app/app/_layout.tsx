@@ -2,7 +2,10 @@ import 'react-native-url-polyfill/auto';
 // Registers the background location task before anything else runs.
 import '@/lib/background-location';
 import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import * as Sentry from '@sentry/react-native';
+import { privacyOptions, tracesSampleRate } from '@gepeto/monitoring';
+import { analytics } from '@/lib/analytics';
+import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
@@ -15,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/context/auth';
 import { MessagesProvider } from '@/context/messages';
+import { OutboxProvider } from '@/context/outbox';
 import { JobAlerts } from '@/components/job-alerts';
 import { Colors, Fonts } from '@/constants/theme';
 
@@ -39,7 +43,23 @@ function RouteGuard() {
   return null;
 }
 
-export default function RootLayout() {
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  environment: __DEV__ ? 'development' : 'production',
+  tracesSampleRate: tracesSampleRate(),
+  // No mobile Session Replay: screens show patient-adjacent case info.
+  ...privacyOptions,
+});
+
+function useScreenTracking() {
+  const pathname = usePathname();
+  useEffect(() => {
+    analytics?.screen(pathname);
+  }, [pathname]);
+}
+
+function RootLayout() {
+  useScreenTracking();
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -57,6 +77,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <OutboxProvider>
       <MessagesProvider>
         <RouteGuard />
         <Stack
@@ -118,6 +139,9 @@ export default function RootLayout() {
         <JobAlerts />
         <StatusBar style="light" />
       </MessagesProvider>
+      </OutboxProvider>
     </AuthProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);

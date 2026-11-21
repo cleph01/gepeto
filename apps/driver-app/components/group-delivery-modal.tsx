@@ -10,12 +10,11 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Colors, FontSize, Radius, Spacing, Fonts } from '@/constants/theme';
 import { ReturnPickupFields } from '@/components/return-pickup-fields';
 import { PodPhotoField } from '@/components/pod-photo-field';
-import { isPodPhotoRequired, uploadPodPhoto, type PodPhoto } from '@/lib/pod-photo';
+import { isPodPhotoRequired, type PodPhoto } from '@/lib/pod-photo';
 import { EMPTY_RETURN, draftForPickup, type ReturnCase, type ReturnDraft } from '@/lib/returns';
 
 // Proof of delivery for several jobs at one office: the recipient's name is
@@ -35,7 +34,8 @@ export function GroupDeliveryModal({
   /** The office's open pickup request, if any: the return arrives pre-filled. */
   pickupRequest?: ReturnCase | null;
   onCancel: () => void;
-  onConfirm: (recipientName: string, returnDraft: ReturnDraft, photoPath?: string) => Promise<void>;
+  /** Queues the deliveries; the photo is kept on the phone until it uploads. */
+  onConfirm: (recipientName: string, returnDraft: ReturnDraft, photo?: PodPhoto) => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [returnDraft, setReturnDraft] = useState<ReturnDraft>(EMPTY_RETURN);
@@ -47,17 +47,7 @@ export function GroupDeliveryModal({
   const confirm = async () => {
     if (!ready || submitting) return;
     setSubmitting(true);
-    let photoPath: string | undefined;
-    if (photo) {
-      const uploaded = await uploadPodPhoto(photo);
-      if ('error' in uploaded) {
-        setSubmitting(false);
-        Alert.alert("Photo didn't upload", `${uploaded.error} The deliveries aren't marked yet.`);
-        return;
-      }
-      photoPath = uploaded.path;
-    }
-    await onConfirm(name.trim(), returnDraft, photoPath);
+    await onConfirm(name.trim(), returnDraft, photo ?? undefined);
     setSubmitting(false);
     setName('');
     setReturnDraft(EMPTY_RETURN);

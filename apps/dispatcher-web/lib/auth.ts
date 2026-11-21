@@ -66,10 +66,11 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
     );
   }
 
-  const appMeta  = (data.user.app_metadata  ?? {}) as Record<string, unknown>;
-  const userMeta = (data.user.user_metadata ?? {}) as Record<string, unknown>;
-  // app_metadata is admin-controlled (Stripe webhook); user_metadata is used by the seed
-  const meta  = appMeta.role ? appMeta : userMeta;
+  // Only app_metadata decides role and lab: the server sets it, the user can't.
+  // Never fall back to user_metadata. Anyone can sign up through Supabase's
+  // public auth API with their own user_metadata, so trusting it would let a
+  // stranger name any lab_id and act as its dispatcher.
+  const meta = (data.user.app_metadata ?? {}) as Record<string, unknown>;
   const role  = meta.role   as string;
   const labId = meta.lab_id as string;
 

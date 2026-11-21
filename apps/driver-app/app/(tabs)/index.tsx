@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { rowToCamel } from '@/lib/transform';
 import { useDriverBreak } from '@/hooks/use-driver-break';
 import { useLocationTracking } from '@/hooks/use-location-tracking';
@@ -34,12 +34,16 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverId } from '@/lib/driver';
 import { prefetchHelp } from '@/lib/help';
 import { navigate } from '@/lib/navigation';
-import { apiGet, apiPatch, apiPost } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 import { BreakControl } from '@/components/break-control';
 import { DeliveredToast } from '@/components/delivered-toast';
 import { GroupDeliveryModal } from '@/components/group-delivery-modal';
 import { LogPickupModal } from '@/components/log-pickup-modal';
-import { RETURN_STATUS_LABEL, logReturn, readyLabel, respondToPickup, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { RETURN_STATUS_LABEL, casesLabel, readyLabel, respondToPickup, returnLabel, type ReturnCase, type ReturnDraft } from '@/lib/returns';
+import { useOutbox } from '@/context/outbox';
+import { OutboxBanner, PendingTag, useJobPending } from '@/components/outbox-notice';
+import { keepPhoto, newId, withQueuedSteps, type JobStepItem, type ReturnLogItem } from '@/lib/outbox';
+import type { PodPhoto } from '@/lib/pod-photo';
 import { onJobRemoved, showPickupAlert, showReturnAlert, type ReturnAlert } from '@/components/job-alerts';
 import { ON_THE_WAY, STEPS, batchAction, dueInfo, needsReply, type BatchAction } from '@/lib/jobs';
 
@@ -78,6 +82,7 @@ function JobCard({ job, unread, inGroup, onPress }: { job: QueueJob; unread: num
   const due = dueInfo(job);
   const step = STEPS.findIndex((s) => s.status === job.status);
   const showProgress = step > 0; // once picked up
+  const { pending } = useJobPending(job.id);
 
   return (
     <TouchableOpacity
@@ -156,6 +161,8 @@ function JobCard({ job, unread, inGroup, onPress }: { job: QueueJob; unread: num
           </View>
         </View>
       )}
+
+      {pending && <PendingTag />}
 
       {pendingReply && (
         <View style={styles.replyPrompt}>
@@ -299,7 +306,8 @@ function ReturnMessagesLink({ unread, onPress }: { unread: number; onPress: () =
 
 function ReturningSection({
   returns,
-  dropping,
+  queued,
+  pendingIds,
   onDropAll,
   onLogPickup,
   respondingTo,
@@ -310,14 +318,18 @@ function ReturningSection({
   unreadByReturn: Record<string, number>;
   onOpenMessages: (r: ReturnCase) => void;
   returns: ReturnCase[];
-  dropping: boolean;
-  onDropAll: () => void;
+  /** Pickups logged on the phone that haven't reached the server yet. */
+  queued: { item: ReturnLogItem; atLab: boolean }[];
+  /** Returns shown as dropped off, with that drop-off still waiting to send. */
+  pendingIds: Set<string>;
+  onDropAll: (cases: number) => void;
   onLogPickup: (r: ReturnCase) => void;
   respondingTo: string | null;
   onRespond: (r: ReturnCase, response: 'accepted' | 'rejected') => void;
 }) {
-  const inCar = returns.filter((r) => r.status === 'with_driver');
-  const casesInCar = inCar.reduce((n, r) => n + r.caseCount, 0);
+  const casesInCar =
+    returns.filter((r) => r.status === 'with_driver').reduce((n, r) => n + r.caseCount, 0) +
+    queued.filter((q) => !q.atLab).reduce((n, q) => n + q.item.draft.caseCount, 0);
   return (
     <View style={styles.returnsWrap}>
       {returns.map((r) => {
@@ -408,22 +420,43 @@ function ReturningSection({
                 </Text>
               )}
             </View>
+            {pendingIds.has(r.id) && <PendingTag />}
             <ReturnMessagesLink unread={unreadByReturn[r.id] ?? 0} onPress={() => onOpenMessages(r)} />
           </View>
         );
       })}
-      {inCar.length > 0 && (
+      {queued.map(({ item, atLab }) => (
+        <View key={item.id} style={[styles.returnCard, !atLab && styles.returnCardInCar]}>
+          <View style={styles.returnTop}>
+            <Text style={styles.returnTitle} numberOfLines={1}>
+              {item.officeName ?? 'Office'} · {casesLabel(item.draft.caseCount)}
+            </Text>
+          </View>
+          {item.draft.caseNumbers.length > 0 && (
+            <Text style={styles.returnCases} numberOfLines={2}>{item.draft.caseNumbers.join(', ')}</Text>
+          )}
+          {!!item.draft.note && <Text style={styles.returnNote} numberOfLines={2}>{item.draft.note}</Text>}
+          <View style={styles.returnFooter}>
+            <IconSymbol name={atLab ? 'clock' : 'tray'} size={14} color={atLab ? Colors.textSecondary : Colors.accent} />
+            <Text style={[styles.returnStatus, !atLab && { color: Colors.accent }]}>
+              {RETURN_STATUS_LABEL[atLab ? 'at_lab' : 'with_driver']}
+            </Text>
+            <Text style={styles.returnTime}>
+              Picked up {new Date(item.occurredAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </Text>
+          </View>
+          <PendingTag />
+        </View>
+      ))}
+      {casesInCar > 0 && (
         <TouchableOpacity
-          style={[styles.batchBtn, dropping && styles.batchBtnBusy]}
-          onPress={onDropAll}
-          disabled={dropping}
+          style={styles.batchBtn}
+          onPress={() => onDropAll(casesInCar)}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityHint="Tells the lab these cases are waiting for check-in"
         >
-          {dropping
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.batchBtnText}>Dropped at lab · {casesInCar} case{casesInCar === 1 ? '' : 's'}</Text>}
+          <Text style={styles.batchBtnText}>Dropped at lab · {casesLabel(casesInCar)}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -488,14 +521,15 @@ export default function JobQueueScreen() {
   const router = useRouter();
   const { session } = useAuth();
   const { unreadByJob, unreadByReturn, newestUnread, refreshReturnUnread, dispatchUnread } = useMessages();
-  const [jobs, setJobs] = useState<QueueJob[]>([]);
+  const [serverJobs, setJobs] = useState<QueueJob[]>([]);
+  const { items: outbox, enqueue, syncedAt } = useOutbox();
+  // Jobs as the driver last left them, including steps still waiting to send.
+  const jobs = useMemo(() => serverJobs.map((j) => withQueuedSteps(j, outbox)), [serverJobs, outbox]);
   const [refreshing, setRefreshing] = useState(false);
-  const [busyGroup, setBusyGroup] = useState<string | null>(null);
   const [delivering, setDelivering] = useState<{ key: string; officeName: string; jobs: QueueJob[] } | null>(null);
   const [returns, setReturns] = useState<ReturnCase[]>([]);
   const [showLogPickup, setShowLogPickup] = useState(false);
   const [logPickupFor, setLogPickupFor] = useState<ReturnCase | null>(null);
-  const [dropping, setDropping] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const clearToast = useCallback(() => setToast(null), []);
@@ -528,27 +562,18 @@ export default function JobQueueScreen() {
     }, [loadReturns])
   );
 
-  const dropAllAtLab = () => {
-    const inCar = returns.filter((r) => r.status === 'with_driver');
-    const cases = inCar.reduce((n, r) => n + r.caseCount, 0);
+  // Saved on the phone and sent in the background (see context/outbox).
+  const dropAllAtLab = (cases: number) => {
     Alert.alert(
-      `Drop off ${cases} case${cases === 1 ? '' : 's'} at the lab?`,
+      `Drop off ${casesLabel(cases)} at the lab?`,
       'The lab will check them in.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Dropped off',
-          onPress: async () => {
-            setDropping(true);
-            try {
-              const res = await apiPost<{ dropped: number }>('/api/returns/drop', {});
-              if (res.data) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              else Alert.alert("Couldn't update", res.error?.message ?? 'Try again.');
-            } catch {
-              Alert.alert("Couldn't update", 'Check your signal and try again.');
-            }
-            await loadReturns();
-            setDropping(false);
+          onPress: () => {
+            enqueue([{ id: newId(), kind: 'returns_drop', occurredAt: new Date().toISOString(), caseCount: cases }]);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
         },
       ]
@@ -652,6 +677,14 @@ export default function JobQueueScreen() {
   // the spinner it shows first is intended.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  // Queued updates just reached the server: show what it now has.
+  useEffect(() => {
+    if (!syncedAt) return;
+    // Both only set state after their request returns.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchJobs(false);
+    loadReturns();
+  }, [syncedAt, fetchJobs, loadReturns]);
   // Keep the guide saved on the phone, so Help opens even without signal.
   useEffect(() => { prefetchHelp(); }, []);
 
@@ -703,29 +736,22 @@ export default function JobQueueScreen() {
   const inProgressJobs = activeJobs.filter((j) => !needsReply(j));
 
   // ── Group batch actions ──────────────────────────────────────────────────
-  // Each job is updated through the same endpoint as the single-job buttons,
-  // so status history, dispatch alerts and live updates all behave the same.
-  const applyToJobs = async (key: string, jobsToMove: QueueJob[], body: (job: QueueJob) => object) => {
-    setBusyGroup(key);
-    const results = await Promise.allSettled(
-      jobsToMove.map((job) => apiPatch<Job>(`/api/jobs/${job.id}/status`, body(job)))
-    );
-    const failed = jobsToMove.filter((_, i) => {
-      const r = results[i];
-      return r.status === 'rejected' || !r.value.data;
-    });
-    await fetchJobs(false);
-    setBusyGroup(null);
-    if (failed.length > 0) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        `${failed.length} of ${jobsToMove.length} didn't update`,
-        `${failed.map((j) => j.caseId).join(', ')}. Check your signal and try again, or open the job.`
-      );
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    return failed.length === 0;
+  // Each job gets its own queued step, sent through the same endpoint as the
+  // single-job buttons, so status history, dispatch alerts and live updates
+  // all behave the same.
+  const queueSteps = (jobsToMove: QueueJob[], to: JobStepItem['to'], extra: Partial<JobStepItem> = {}): JobStepItem[] => {
+    const occurredAt = extra.occurredAt ?? new Date().toISOString();
+    return jobsToMove.map((job) => ({
+      id: newId(),
+      kind: 'job_status',
+      jobId: job.id,
+      caseId: job.caseId,
+      officeName: job.officeName,
+      from: job.status,
+      to,
+      ...extra,
+      occurredAt,
+    }));
   };
 
   const runBatch = (key: string, group: QueueJob[], action: BatchAction & { jobs: QueueJob[] }) => {
@@ -739,27 +765,51 @@ export default function JobQueueScreen() {
       action.jobs.map((j) => j.caseId).join(', '),
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => applyToJobs(key, action.jobs, () => ({ status: action.next })) },
+        {
+          text: 'Confirm',
+          onPress: () => {
+            enqueue(queueSteps(action.jobs, action.next));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+        },
       ]
     );
   };
 
-  const confirmGroupDelivery = async (recipientName: string, returnDraft: ReturnDraft, photoPath?: string) => {
+  const confirmGroupDelivery = async (recipientName: string, returnDraft: ReturnDraft, photo?: PodPhoto) => {
     if (!delivering) return;
-    const { key, officeName, jobs: toDeliver } = delivering;
-    setDelivering(null);
-    const timestamp = new Date().toISOString();
-    const allDelivered = await applyToJobs(key, toDeliver, () => ({
-      status: 'delivered',
-      proofOfDelivery: { recipientName, timestamp, photoPath },
-    }));
-    if (allDelivered) setToast(`${toDeliver.length} delivered · ${officeName}`);
-    // One return for the stop, linked to the first delivery in the group.
-    const returnError = await logReturn(returnDraft, toDeliver[0].officeId, toDeliver[0].id);
-    if (returnError) {
-      Alert.alert("Deliveries saved, but the return wasn't logged", `${returnError} Use "Log a pickup" to add it.`);
+    const { officeName, jobs: toDeliver } = delivering;
+    const occurredAt = new Date().toISOString();
+    let photoFile: string | undefined;
+    if (photo) {
+      try {
+        photoFile = keepPhoto(photo.uri, newId());
+      } catch {
+        Alert.alert("Couldn't save the photo", 'Take it again. The deliveries aren\'t marked yet.');
+        return;
+      }
     }
-    loadReturns();
+    setDelivering(null);
+    const steps = queueSteps(toDeliver, 'delivered', {
+      occurredAt,
+      proof: { recipientName, timestamp: occurredAt },
+      ...(photoFile ? { photo: { file: photoFile } } : {}),
+    });
+    // One return for the stop, linked to the first delivery in the group.
+    const pickup: ReturnLogItem[] = returnDraft.bringing
+      ? [{
+          id: newId(),
+          kind: 'return_log',
+          occurredAt,
+          officeId: toDeliver[0].officeId,
+          officeName,
+          draft: returnDraft,
+          pickedUpDuringJobId: toDeliver[0].id,
+        }]
+      : [];
+    enqueue([...steps, ...pickup]);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setToast(`${toDeliver.length} delivered · ${officeName}`);
   };
 
   // Answering a pickup, same as a job: it can wait until the driver has a moment.
@@ -782,7 +832,17 @@ export default function JobQueueScreen() {
     ]);
   };
   const pendingPickups = returns.filter((r) => r.status === 'requested' && r.driverResponse === 'pending');
-  const otherReturns = returns.filter((r) => !pendingPickups.includes(r));
+  // Returns as the driver last left them: a drop-off still waiting to send
+  // shows its returns at the lab, and pickups logged offline show too.
+  const lastDrop = [...outbox].reverse().find((i) => i.kind === 'returns_drop' && !i.failed);
+  const dropIndex = lastDrop ? outbox.indexOf(lastDrop) : -1;
+  const droppedIds = new Set(lastDrop ? returns.filter((r) => r.status === 'with_driver').map((r) => r.id) : []);
+  const otherReturns = returns
+    .filter((r) => !pendingPickups.includes(r))
+    .map((r) => (droppedIds.has(r.id) ? { ...r, status: 'at_lab' as const, droppedAt: lastDrop!.occurredAt } : r));
+  const queuedPickups = outbox
+    .filter((i): i is ReturnLogItem => i.kind === 'return_log' && !i.failed)
+    .map((item) => ({ item, atLab: dropIndex > outbox.indexOf(item) }));
 
   // The lab sees the driver once they've accepted work or have cases on board.
   const hasActiveJob =
@@ -800,11 +860,12 @@ export default function JobQueueScreen() {
   ].filter((s) => s.data.length > 0 || s.pickups.length > 0);
 
   // "Returning to lab" sits after the active work.
-  const returningRows: Row[] = otherReturns.length > 0
+  const queuedCases = queuedPickups.reduce((n, q) => n + q.item.draft.caseCount, 0);
+  const returningRows: Row[] = otherReturns.length > 0 || queuedPickups.length > 0
     ? [
         {
           type: 'section',
-          title: `${otherReturns.some((r) => r.status === 'requested') ? 'Pickups & returns' : 'Returning to lab'} · ${returns.reduce((n, r) => n + r.caseCount, 0)} cases`,
+          title: `${otherReturns.some((r) => r.status === 'requested') ? 'Pickups & returns' : 'Returning to lab'} · ${returns.reduce((n, r) => n + r.caseCount, 0) + queuedCases} cases`,
         },
         { type: 'returns', items: otherReturns },
       ]
@@ -912,6 +973,7 @@ export default function JobQueueScreen() {
                     <Text style={styles.readOnlyText}>Your lab&apos;s Gepeto subscription has ended, so you can&apos;t update jobs or send messages. Check with your lab.</Text>
                   </View>
                 )}
+                <OutboxBanner />
                 <StatsRow jobs={jobs} />
                 <MessagesCard
                   unreadByJob={unreadByJob}
@@ -965,7 +1027,8 @@ export default function JobQueueScreen() {
             return (
               <ReturningSection
                 returns={item.items}
-                dropping={dropping}
+                queued={item.items === otherReturns ? queuedPickups : []}
+                pendingIds={droppedIds}
                 onDropAll={dropAllAtLab}
                 onLogPickup={(r) => { setLogPickupFor(r); setShowLogPickup(true); }}
                 respondingTo={respondingTo}
@@ -984,7 +1047,7 @@ export default function JobQueueScreen() {
               <GroupHeader
                 jobs={item.jobs}
                 action={action}
-                busy={busyGroup === item.key}
+                busy={false}
                 onAction={() => action && runBatch(item.key, item.jobs, action)}
               />
             );
