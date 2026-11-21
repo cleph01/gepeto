@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { driversSharingLocation } from "@/lib/driver-sharing";
 import { requireAuth } from "@/lib/auth";
+import { formatPhoneInput, phoneError } from "@/lib/phone";
 import { supabaseAdmin } from "@/lib/supabase";
 import { delivered, getDashboardUrl, sendInviteEmail } from "@/lib/email";
 import { checkDriverRoom } from "@/lib/billing";
@@ -81,6 +82,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const phoneMsg = phoneError(phone);
+    if (phoneMsg) {
+      return Response.json({ data: null, error: { code: "BAD_REQUEST", message: phoneMsg } }, { status: 400 });
+    }
+
     // Adding an active driver takes a spot on the plan (Off Duty ones don't).
     if ((status ?? "available") !== "off_duty") {
       const blocked = await checkDriverRoom(user.labId);
@@ -92,7 +98,7 @@ export async function POST(request: NextRequest) {
       .insert({
         lab_id: user.labId,
         name:   name.trim(),
-        phone:  phone.trim(),
+        phone:  formatPhoneInput(phone),
         email:  email.trim().toLowerCase(),
         status: status ?? "available",
       })

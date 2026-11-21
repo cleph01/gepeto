@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import HelpLink from "@/components/help-link";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useAuth } from "@/context/auth";
@@ -8,6 +8,7 @@ import { useSearch } from "@/context/search";
 import { useMessageNotifications } from "@/context/message-notifications";
 import { BreakPill } from "@/components/break-pill";
 import type { ApiResponse } from "@gepeto/types";
+import { formatPhoneInput, phoneEdit, phoneError } from "@/lib/phone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,13 +50,6 @@ function initials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
-function formatPhone(raw: string) {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  return raw;
-}
 
 // ─── Add / Edit modal ─────────────────────────────────────────────────────────
 
@@ -68,7 +62,18 @@ interface ModalProps {
 function DriverModal({ driver, onClose, onSave }: ModalProps) {
   const isEdit = !!driver?.id;
   const [name, setName]     = useState(driver?.name  ?? "");
+  // Shown as stored (not reformatted) so an old non-US number isn't silently cut short;
+  // it gets formatted once edited, and Save flags it if it isn't 10 digits.
   const [phone, setPhone]   = useState(driver?.phone ?? "");
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const phoneCaret = useRef<number | null>(null);
+  // After a reformat, put the cursor back where the person was typing.
+  useLayoutEffect(() => {
+    if (phoneCaret.current !== null && phoneRef.current === document.activeElement) {
+      phoneRef.current?.setSelectionRange(phoneCaret.current, phoneCaret.current);
+    }
+    phoneCaret.current = null;
+  }, [phone]);
   const [email, setEmail]   = useState("");
   const [status, setStatus] = useState<DriverStatus>(driver?.status ?? "available");
   const [saving, setSaving] = useState(false);
@@ -77,7 +82,8 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
   const validate = () => {
     const e: typeof errors = {};
     if (!name.trim())  e.name  = "Name is required.";
-    if (!phone.trim()) e.phone = "Phone number is required.";
+    const phoneMsg = phoneError(phone);
+    if (phoneMsg) e.phone = phoneMsg;
     if (!isEdit && !email.trim()) e.email = "Email is required.";
     if (!isEdit && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
       e.email = "Enter a valid email address.";
@@ -89,7 +95,7 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
     const e2 = validate();
     if (Object.keys(e2).length) { setErrors(e2); return; }
     setSaving(true);
-    await onSave({ name: name.trim(), phone: formatPhone(phone.trim()), status, ...(!isEdit && { email: email.trim() }) });
+    await onSave({ name: name.trim(), phone: formatPhoneInput(phone), status, ...(!isEdit && { email: email.trim() }) });
     setSaving(false);
   };
 
@@ -180,10 +186,20 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
               Phone Number <span style={{ color: "#A32D2D" }}>*</span>
             </label>
             <input
+              ref={phoneRef}
               type="tel"
               value={phone}
-              onChange={(e) => { setPhone(e.target.value); setErrors((prev) => ({ ...prev, phone: undefined })); }}
+              onChange={(e) => {
+                const input = e.target;
+                const forward = (e.nativeEvent as InputEvent).inputType === "deleteContentForward";
+                const next = phoneEdit(phone, input.value, input.selectionStart ?? input.value.length, forward);
+                phoneCaret.current = next.caret;
+                setPhone(next.value);
+                setErrors((prev) => ({ ...prev, phone: undefined }));
+              }}
               placeholder="(415) 555-0100"
+              inputMode="numeric"
+              autoComplete="tel-national"
               style={{
                 width: "100%", padding: "8px 11px", fontSize: 13.5,
                 border: `1px solid ${errors.phone ? "#A32D2D" : "rgba(0,0,0,0.14)"}`,
@@ -192,7 +208,13 @@ function DriverModal({ driver, onClose, onSave }: ModalProps) {
                 boxSizing: "border-box",
               }}
               onFocus={(e) => { e.currentTarget.style.borderColor = "#185FA5"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(24,95,165,0.10)"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = errors.phone ? "#A32D2D" : "rgba(0,0,0,0.14)"; e.currentTarget.style.boxShadow = "none"; }}
+              onBlur={(e) => {
+                // Flag an unfinished number when they leave the field, not while typing.
+                const msg = phone ? phoneError(phone) : null;
+                if (msg) setErrors((prev) => ({ ...prev, phone: msg }));
+                e.currentTarget.style.borderColor = msg || errors.phone ? "#A32D2D" : "rgba(0,0,0,0.14)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
             />
             {errors.phone && <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "#A32D2D" }}>{errors.phone}</p>}
           </div>

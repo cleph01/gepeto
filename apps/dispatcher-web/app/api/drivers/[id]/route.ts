@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { formatPhoneInput, phoneError } from "@/lib/phone";
 import { checkDriverRoom } from "@/lib/billing";
 import { hideLocationOnBreak } from "@/lib/driver-break";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -27,6 +28,14 @@ export async function PATCH(
     const updates: Record<string, string> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key];
+    }
+
+    if (updates.phone !== undefined) {
+      const phoneMsg = phoneError(String(updates.phone));
+      if (phoneMsg) {
+        return Response.json({ data: null, error: { code: "BAD_REQUEST", message: phoneMsg } }, { status: 400 });
+      }
+      updates.phone = formatPhoneInput(String(updates.phone));
     }
 
     if (Object.keys(updates).length === 0) {
