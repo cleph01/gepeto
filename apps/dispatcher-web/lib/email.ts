@@ -23,7 +23,11 @@ export async function delivered(send: Promise<{ error: unknown }>, label: string
 
 // ── Shared HTML wrapper ───────────────────────────────────────────────────────
 
-const LAB_FOOTER = "Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.";
+// Served by the landing site (apps/landing/public). Absolute URL because email
+// clients can't resolve relative paths.
+const LOGO_URL = "https://gepeto.delivery/gepeto-icon.png";
+
+const LAB_FOOTER ="Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.";
 
 function layout(title: string, body: string, footer = LAB_FOOTER) {
   return `<!DOCTYPE html>
@@ -38,10 +42,16 @@ function layout(title: string, body: string, footer = LAB_FOOTER) {
     <tr><td align="center">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
 
-        <!-- Header -->
-        <tr><td style="background:#185FA5;border-radius:10px 10px 0 0;padding:18px 24px;display:flex;align-items:center;gap:10px;">
-          <span style="font-size:16px;font-weight:600;color:#ffffff;letter-spacing:-0.01em;">Gepeto</span>
+        <!-- Header: logo on white, then a thin brand bar -->
+        <tr><td style="background:#ffffff;border:1px solid rgba(0,0,0,0.08);border-bottom:none;border-radius:10px 10px 0 0;padding:16px 24px;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle;padding-right:10px;">
+              <img src="${LOGO_URL}" width="36" height="36" alt="" style="display:block;border:0;" />
+            </td>
+            <td style="vertical-align:middle;font-size:19px;font-weight:700;color:#185FA5;letter-spacing:-0.01em;">Gepeto</td>
+          </tr></table>
         </td></tr>
+        <tr><td style="background:#185FA5;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
 
         <!-- Body -->
         <tr><td style="background:#ffffff;padding:28px 24px;border-left:1px solid rgba(0,0,0,0.08);border-right:1px solid rgba(0,0,0,0.08);">
@@ -273,27 +283,131 @@ export function getDashboardUrl() {
 
 // ── Auth emails (bypass Supabase's rate-limited built-in mailer) ──────────────
 
-export async function sendInviteEmail(to: string, data: { name: string; inviteUrl: string }) {
-  const name = escapeHtml(data.name);
+export type InviteRole = "driver" | "dispatcher";
+
+// Store links for the driver app. Unset until the EAS build is published; the
+// invite then says the dispatcher will send the app instead of showing buttons.
+export function getDriverAppLinks() {
+  return {
+    ios: process.env.DRIVER_APP_IOS_URL || null,
+    android: process.env.DRIVER_APP_ANDROID_URL || null,
+  };
+}
+
+const INVITE_COPY: Record<InviteRole, {
+  lead: (lab: string) => string;
+  perks: { title: string; text: string }[];
+}> = {
+  driver: {
+    lead: (lab) => `${lab} has added you as a driver on Gepeto, the app the lab uses to run its deliveries.`,
+    perks: [
+      { title: "Your jobs, on your phone", text: "New runs show up the moment dispatch assigns them, with the address, case details and pickup notes in one place." },
+      { title: "Message dispatch without phone tag", text: "Ask a question or flag a problem right from the job. The conversation stays with the case." },
+      { title: "Proof of delivery in one tap", text: "Snap a photo at drop-off and the lab knows it's done. No paperwork, no call-back." },
+    ],
+  },
+  dispatcher: {
+    lead: (lab) => `${lab} has added you to its dispatch team on Gepeto.`,
+    perks: [
+      { title: "Every run on one board", text: "See what's unassigned, in transit and delivered, and assign drivers in a couple of clicks." },
+      { title: "Drivers on a live map", text: "Know where each driver is without calling around." },
+      { title: "Offices track their own cases", text: "Dental offices get a tracking page, so fewer \"where's my case?\" calls." },
+    ],
+  },
+};
+
+function perkRow(n: number, title: string, text: string) {
+  return `<tr>
+    <td style="vertical-align:top;padding:0 12px 14px 0;width:26px;">
+      <div style="width:26px;height:26px;border-radius:13px;background:#EBF2FA;color:#185FA5;font-size:13px;font-weight:700;line-height:26px;text-align:center;">${n}</div>
+    </td>
+    <td style="vertical-align:top;padding:0 0 14px;">
+      <div style="font-size:14px;font-weight:600;color:#1a1a1a;margin:3px 0 2px;">${title}</div>
+      <div style="font-size:13px;color:#5F5E5A;line-height:1.5;">${text}</div>
+    </td>
+  </tr>`;
+}
+
+function storeButton(href: string, small: string, big: string) {
+  return `<a href="${href}" style="display:inline-block;background:#111827;color:#ffffff;border-radius:8px;padding:7px 14px;text-decoration:none;margin:0 8px 8px 0;">
+    <span style="display:block;font-size:10px;line-height:1.2;opacity:0.85;">${small}</span>
+    <span style="display:block;font-size:15px;font-weight:600;line-height:1.3;">${big}</span>
+  </a>`;
+}
+
+function driverAppStep() {
+  const { ios, android } = getDriverAppLinks();
+  if (!ios && !android) {
+    return `Your dispatcher will send you a link to download the Gepeto driver app.`;
+  }
+  return `Download the Gepeto driver app:<div style="margin-top:10px;">${
+    (ios ? storeButton(ios, "Download on the", "App Store") : "") +
+    (android ? storeButton(android, "Get it on", "Google Play") : "")
+  }</div>`;
+}
+
+export async function sendInviteEmail(
+  to: string,
+  data: { name: string; inviteUrl: string; role: InviteRole; labName?: string | null },
+) {
+  const firstName = escapeHtml(data.name.trim().split(/\s+/)[0] || data.name);
+  const lab = escapeHtml(data.labName?.trim() || "Your lab");
+  const copy = INVITE_COPY[data.role];
+  const email = escapeHtml(to);
+
+  const steps =
+    data.role === "driver"
+      ? [
+          "Set your password with the button above.",
+          driverAppStep(),
+          `Log in to the app with <strong style="color:#1a1a1a;">${email}</strong> and the password you chose.`,
+        ]
+      : [
+          "Set your password with the button above.",
+          `You'll land on the dispatch board. Next time, sign in at <a href="${getDashboardUrl()}" style="color:#185FA5;">${getDashboardUrl().replace(/^https?:\/\//, "")}</a> with <strong style="color:#1a1a1a;">${email}</strong>.`,
+        ];
+
   const body = `
-    <h2 style="margin:0 0 6px;font-size:17px;font-weight:600;color:#1a1a1a;">
-      You've been invited to Gepeto
-    </h2>
-    <p style="margin:0 0 20px;font-size:13.5px;color:#5F5E5A;line-height:1.5;">
-      Hi ${name}, you've been invited to join a lab on Gepeto. Click below to set your password and get started.
+    <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a1a;letter-spacing:-0.01em;">
+      Welcome to the team, ${firstName}
+    </h1>
+    <p style="margin:0 0 22px;font-size:14.5px;color:#3d3d3a;line-height:1.55;">
+      ${copy.lead(lab)}
     </p>
-    <a href="${data.inviteUrl}" style="display:inline-block;background:#185FA5;color:#ffffff;font-size:13.5px;font-weight:500;border-radius:7px;padding:10px 20px;text-decoration:none;">
-      Accept invite &amp; set password →
-    </a>
-    <p style="margin:16px 0 0;font-size:12px;color:#9a9a9a;line-height:1.5;">
-      This link expires in 24 hours. If you weren't expecting this, you can safely ignore it.
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 8px;"><tr><td style="border-radius:8px;background:#185FA5;">
+      <a href="${data.inviteUrl}" style="display:inline-block;color:#ffffff;font-size:15px;font-weight:600;border-radius:8px;padding:13px 26px;text-decoration:none;">
+        Set your password →
+      </a>
+    </td></tr></table>
+    <p style="margin:0 0 26px;font-size:12px;color:#9a9a9a;">This link expires in 24 hours.</p>
+
+    <div style="border-top:1px solid rgba(0,0,0,0.08);padding-top:22px;">
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#185FA5;margin:0 0 14px;">What Gepeto does for you</div>
+      <table cellpadding="0" cellspacing="0" width="100%">
+        ${copy.perks.map((p, i) => perkRow(i + 1, p.title, p.text)).join("")}
+      </table>
+    </div>
+
+    <div style="background:#F8F9FB;border-radius:8px;padding:16px 18px;margin-top:8px;">
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5F5E5A;margin:0 0 10px;">Getting started</div>
+      <ol style="margin:0;padding-left:18px;font-size:13px;color:#5F5E5A;line-height:1.55;">
+        ${steps.map((s) => `<li style="margin:0 0 8px;">${s}</li>`).join("")}
+      </ol>
+    </div>
+
+    <p style="margin:20px 0 0;font-size:12px;color:#9a9a9a;line-height:1.5;">
+      Weren't expecting this? You can safely ignore this email.
     </p>`;
+
+  const subject = data.labName?.trim()
+    ? `${data.labName.trim()} invited you to Gepeto`
+    : "You've been invited to Gepeto";
 
   return getResend().emails.send({
     from: FROM,
     to,
-    subject: "You've been invited to Gepeto",
-    html: layout("You've been invited to Gepeto", body, "Gepeto · You're receiving this because someone invited you to their Gepeto account."),
+    subject,
+    html: layout(escapeHtml(subject), body, `Gepeto · Dental lab delivery · <a href="https://gepeto.delivery" style="color:#9a9a9a;">gepeto.delivery</a><br/>You're receiving this because ${lab} invited you.`),
   });
 }
 

@@ -82,8 +82,15 @@ export async function POST(request: NextRequest) {
 
     // The account is created either way; if the email fails, the owner sees it
     // and can use Resend invite rather than the teammate waiting on nothing.
+    // Lab name only personalizes the email; a lookup failure must not block the invite.
+    const lab = await db("labs").where({ id: user.labId }).first("name").catch(() => null);
     const inviteSent = await delivered(
-      sendInviteEmail(normalizedEmail, { name: name.trim(), inviteUrl: linkData.properties.action_link }),
+      sendInviteEmail(normalizedEmail, {
+        name: name.trim(),
+        inviteUrl: linkData.properties.action_link,
+        role: "dispatcher",
+        labName: lab?.name,
+      }),
       "[POST /api/team] invite",
     );
 
