@@ -1,14 +1,14 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { delivered, getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
+import { delivered, getDashboardUrl, sendInviteEmail } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
 // POST /api/team/[id]/resend — resend a teammate's account-setup email (owner only)
 //
-// See the matching driver route for why this uses resetPasswordForEmail
-// rather than re-inviting: the original invite link is single-use and gets
+// See the matching driver route for why this uses a recovery link
+// rather than a fresh invite link: the original invite link is single-use and gets
 // consumed just by opening it, independent of whether a password was ever
 // set, so a stuck teammate needs a recovery-style resend instead.
 export async function POST(
@@ -49,8 +49,16 @@ export async function POST(
       );
     }
 
+    // Same branded invite as the first one, with a fresh recovery-type link
+    // (see above). Lab name only personalizes it; a failed lookup can't block it.
+    const lab = await db("labs").where({ id: user.labId }).first("name").catch(() => null);
     const sent = await delivered(
-      sendPasswordResetEmail(member.email, { name: member.name, resetUrl: linkData.properties.action_link }),
+      sendInviteEmail(member.email, {
+        name: member.name,
+        inviteUrl: linkData.properties.action_link,
+        role: member.labRole === "owner" ? "owner" : "dispatcher",
+        labName: lab?.name,
+      }),
       "[POST /api/team/[id]/resend] setup",
     );
     if (!sent) {

@@ -27,7 +27,7 @@ export async function delivered(send: Promise<{ error: unknown }>, label: string
 // clients can't resolve relative paths.
 const LOGO_URL = "https://gepeto.delivery/gepeto-icon.png";
 
-const LAB_FOOTER ="Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.";
+const LAB_FOOTER = "Gepeto · Dental Lab Logistics · You're receiving this because you manage alerts for your lab.";
 
 function layout(title: string, body: string, footer = LAB_FOOTER) {
   return `<!DOCTYPE html>
@@ -283,7 +283,8 @@ export function getDashboardUrl() {
 
 // ── Auth emails (bypass Supabase's rate-limited built-in mailer) ──────────────
 
-export type InviteRole = "driver" | "dispatcher";
+// "owner" is the person who just bought Gepeto for their lab (Stripe checkout).
+export type InviteRole = "driver" | "dispatcher" | "owner";
 
 // Store links for the driver app. Unset until the EAS build is published; the
 // invite then says the dispatcher will send the app instead of showing buttons.
@@ -295,10 +296,12 @@ export function getDriverAppLinks() {
 }
 
 const INVITE_COPY: Record<InviteRole, {
+  heading: (firstName: string) => string;
   lead: (lab: string) => string;
   perks: { title: string; text: string }[];
 }> = {
   driver: {
+    heading: (n) => (n ? `Welcome to the team, ${n}` : "Welcome to the team"),
     lead: (lab) => `${lab} has added you as a driver on Gepeto, the app the lab uses to run its deliveries.`,
     perks: [
       { title: "Your jobs, on your phone", text: "New runs show up the moment dispatch assigns them, with the address, case details and pickup notes in one place." },
@@ -307,7 +310,17 @@ const INVITE_COPY: Record<InviteRole, {
     ],
   },
   dispatcher: {
+    heading: (n) => (n ? `Welcome to the team, ${n}` : "Welcome to the team"),
     lead: (lab) => `${lab} has added you to its dispatch team on Gepeto.`,
+    perks: [
+      { title: "Every run on one board", text: "See what's unassigned, in transit and delivered, and assign drivers in a couple of clicks." },
+      { title: "Drivers on a live map", text: "Know where each driver is without calling around." },
+      { title: "Offices track their own cases", text: "Dental offices get a tracking page, so fewer \"where's my case?\" calls." },
+    ],
+  },
+  owner: {
+    heading: (n) => (n ? `Your lab is ready, ${n}` : "Your lab is ready"),
+    lead: (lab) => `Thanks for choosing Gepeto. ${lab} is set up and waiting for you.`,
     perks: [
       { title: "Every run on one board", text: "See what's unassigned, in transit and delivered, and assign drivers in a couple of clicks." },
       { title: "Drivers on a live map", text: "Know where each driver is without calling around." },
@@ -350,8 +363,9 @@ export async function sendInviteEmail(
   to: string,
   data: { name: string; inviteUrl: string; role: InviteRole; labName?: string | null },
 ) {
-  const firstName = escapeHtml(data.name.trim().split(/\s+/)[0] || data.name);
-  const lab = escapeHtml(data.labName?.trim() || "Your lab");
+  const firstName = escapeHtml(data.name.trim().split(/\s+/)[0] ?? "");
+  const labName = data.labName?.trim() ? escapeHtml(data.labName.trim()) : null;
+  const lab = labName ?? "Your lab";
   const copy = INVITE_COPY[data.role];
   const email = escapeHtml(to);
 
@@ -362,6 +376,12 @@ export async function sendInviteEmail(
           driverAppStep(),
           `Log in to the app with <strong style="color:#1a1a1a;">${email}</strong> and the password you chose.`,
         ]
+      : data.role === "owner"
+      ? [
+          "Set your password with the button above.",
+          "Add your drivers and dental offices from the sidebar. Each driver gets their own invite.",
+          `Next time, sign in at <a href="${getDashboardUrl()}" style="color:#185FA5;">${getDashboardUrl().replace(/^https?:\/\//, "")}</a> with <strong style="color:#1a1a1a;">${email}</strong>.`,
+        ]
       : [
           "Set your password with the button above.",
           `You'll land on the dispatch board. Next time, sign in at <a href="${getDashboardUrl()}" style="color:#185FA5;">${getDashboardUrl().replace(/^https?:\/\//, "")}</a> with <strong style="color:#1a1a1a;">${email}</strong>.`,
@@ -369,7 +389,7 @@ export async function sendInviteEmail(
 
   const body = `
     <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a1a;letter-spacing:-0.01em;">
-      Welcome to the team, ${firstName}
+      ${copy.heading(firstName)}
     </h1>
     <p style="margin:0 0 22px;font-size:14.5px;color:#3d3d3a;line-height:1.55;">
       ${copy.lead(lab)}
@@ -399,15 +419,22 @@ export async function sendInviteEmail(
       Weren't expecting this? You can safely ignore this email.
     </p>`;
 
-  const subject = data.labName?.trim()
-    ? `${data.labName.trim()} invited you to Gepeto`
-    : "You've been invited to Gepeto";
+  const subject =
+    data.role === "owner"
+      ? "Your Gepeto account is ready"
+      : data.labName?.trim()
+        ? `${data.labName.trim()} invited you to Gepeto`
+        : "You've been invited to Gepeto";
+  const reason =
+    data.role === "owner"
+      ? "you signed up for Gepeto"
+      : `${labName ?? "your lab"} invited you`;
 
   return getResend().emails.send({
     from: FROM,
     to,
     subject,
-    html: layout(escapeHtml(subject), body, `Gepeto · Dental lab delivery · <a href="https://gepeto.delivery" style="color:#9a9a9a;">gepeto.delivery</a><br/>You're receiving this because ${lab} invited you.`),
+    html: layout(escapeHtml(subject), body, `Gepeto · Dental lab delivery · <a href="https://gepeto.delivery" style="color:#9a9a9a;">gepeto.delivery</a><br/>You're receiving this because ${reason}.`),
   });
 }
 

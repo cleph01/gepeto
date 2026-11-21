@@ -2,7 +2,7 @@ import Stripe from "stripe";
 import type { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getDashboardUrl } from "@/lib/email";
+import { delivered, getDashboardUrl, sendInviteEmail } from "@/lib/email";
 import { subscriptionEndFields } from "@/lib/lab-deletion";
 import { PLANS, isExtraDriverLookupKey, parsePlanLookupKey } from "@/lib/plans";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -106,15 +106,20 @@ export async function POST(request: NextRequest) {
       terms_accepted_by_email: session.metadata?.termsVersion ? email : null,
     });
 
-    // 2. Invite the user via Supabase Auth — sends the invite email with a
-    //    password-setup link. The user is created immediately (before acceptance).
-    const { data: inviteData, error: inviteError } =
-      await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: `${getDashboardUrl()}/accept-invite`,
+    // 2. Create the owner's Supabase Auth user and a password-setup link
+    //    without Supabase sending anything; the email goes out through Resend
+    //    once the lab is fully linked (step 6).
+    const { data: linkData, error: linkError } =
+      await supabaseAdmin.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: { redirectTo: `${getDashboardUrl()}/accept-invite` },
       });
 
-    if (inviteError) throw inviteError;
-    const userId = inviteData.user.id;
+    if (linkError || !linkData?.user || !linkData.properties?.action_link) {
+      throw linkError ?? new Error("generateLink returned no user or link");
+    }
+    const userId = linkData.user.id;
 
     // 3. Set app_metadata so requireAuth() can read lab_id + role from the JWT
     await supabaseAdmin.auth.admin.updateUserById(userId, {
@@ -135,6 +140,20 @@ export async function POST(request: NextRequest) {
     if (subscriptionId) {
       await syncSubscription(await stripe.subscriptions.retrieve(subscriptionId));
     }
+
+    // 6. Welcome email. Sent last so the link only goes out once the account
+    //    works. A failed send is logged but doesn't fail the webhook: a Stripe
+    //    retry would skip provisioning (the owner exists now) and still not
+    //    resend. The owner can use "Forgot password" on the login page.
+    await delivered(
+      sendInviteEmail(email, {
+        name: session.customer_details?.name ?? "",
+        inviteUrl: linkData.properties.action_link,
+        role: "owner",
+        labName,
+      }),
+      `[webhook] owner welcome for ${labId}`,
+    );
 
     console.log(`[webhook] provisioned lab "${labName}" (${labId}) for ${email}`);
     return Response.json({ ok: true });

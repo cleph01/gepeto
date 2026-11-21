@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { delivered, getDashboardUrl, sendPasswordResetEmail } from "@/lib/email";
+import { delivered, getDashboardUrl, sendInviteEmail } from "@/lib/email";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require("@gepeto/db");
 
@@ -53,8 +53,16 @@ export async function POST(
       );
     }
 
+    // Same branded invite as the first one, with a fresh recovery-type link
+    // (see above). Lab name only personalizes it; a failed lookup can't block it.
+    const lab = await db("labs").where({ id: user.labId }).first("name").catch(() => null);
     const sent = await delivered(
-      sendPasswordResetEmail(driver.email, { name: driver.name, resetUrl: linkData.properties.action_link }),
+      sendInviteEmail(driver.email, {
+        name: driver.name,
+        inviteUrl: linkData.properties.action_link,
+        role: "driver",
+        labName: lab?.name,
+      }),
       "[POST /api/drivers/[id]/resend] setup",
     );
     if (!sent) {
